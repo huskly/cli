@@ -1,5 +1,5 @@
 import type { MarketDataSource, PriceHistoryResponse } from "#src/marketDataSource.js";
-import type { ExistingSpread, OptionQuote } from "#src/types.js";
+import type { ExistingSpread, OptionQuote, SchwabOrder, SchwabOrderStatus } from "#src/types.js";
 import type {
   SchwabAccount,
   SchwabAccountTransactionHistory,
@@ -391,6 +391,51 @@ export class SchwabMarketDataSource implements MarketDataSource {
     const formattedEndDate = format(endDate, "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
     return await this.makeApiRequest<SchwabTransaction[]>(
       `/trader/v1/accounts/${accountHash}/transactions?startDate=${formattedStartDate}&endDate=${formattedEndDate}`
+    );
+  }
+
+  async fetchOrders(options: {
+    fromEnteredTime: Date;
+    toEnteredTime: Date;
+    maxResults?: number;
+    status?: SchwabOrderStatus;
+  }): Promise<{ accountNumber: string; orders: SchwabOrder[] }[]> {
+    const accountHashes = await this.fetchAccountNumbers();
+    const ordersPerAccount = await Promise.all(
+      accountHashes.map(({ hashValue }) => this.fetchAccountOrders(hashValue, options))
+    );
+    return accountHashes.map((account, index) => ({
+      accountNumber: account.accountNumber,
+      orders: ordersPerAccount[index] ?? [],
+    }));
+  }
+
+  async fetchAccountOrders(
+    accountHash: string,
+    options: {
+      fromEnteredTime: Date;
+      toEnteredTime: Date;
+      maxResults?: number;
+      status?: SchwabOrderStatus;
+    }
+  ): Promise<SchwabOrder[]> {
+    if (!accountHash) {
+      throw new Error("Account hash is required to fetch orders");
+    }
+    const formattedFromTime = format(options.fromEnteredTime, "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
+    const formattedToTime = format(options.toEnteredTime, "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
+    const params = new URLSearchParams({
+      fromEnteredTime: formattedFromTime,
+      toEnteredTime: formattedToTime,
+    });
+    if (options.maxResults) {
+      params.append("maxResults", String(options.maxResults));
+    }
+    if (options.status) {
+      params.append("status", options.status);
+    }
+    return await this.makeApiRequest<SchwabOrder[]>(
+      `/trader/v1/accounts/${accountHash}/orders?${params.toString()}`
     );
   }
 

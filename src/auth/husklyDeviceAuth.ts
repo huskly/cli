@@ -139,7 +139,6 @@ export class HusklyDeviceAuth {
     }
 
     // Exchange session token for Schwab access token
-    console.log("Session token: ", session.sessionToken);
     try {
       const response = await fetch(`${this.baseUrl}/api/v1/cli/token`, {
         method: "GET",

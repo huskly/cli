@@ -10,6 +10,7 @@ import { handleChain } from "./market/chain.js";
 import { handleAccount } from "./market/account.js";
 import { handlePositions } from "./market/positions.js";
 import { handleTransactions } from "./market/transactions.js";
+import { handleOrders } from "./market/orders.js";
 import { handleRepl } from "./market/repl.js";
 import { disconnectCache } from "#src/cache.js";
 
@@ -105,6 +106,17 @@ program
   .option("-e, --end <date>", "End date (YYYY-MM-DD)")
   .action(async (options: { start?: string; end?: string }) => {
     await handleTransactions(options);
+  });
+
+program
+  .command("orders")
+  .description("List account orders (defaults to last 30 days)")
+  .option("-f, --from <date>", "From entered time (YYYY-MM-DD)")
+  .option("-t, --to <date>", "To entered time (YYYY-MM-DD)")
+  .option("-s, --status <status>", "Filter by order status (FILLED, WORKING, CANCELED, etc.)")
+  .option("-m, --max-results <n>", "Maximum number of orders to retrieve")
+  .action(async (options: { from?: string; to?: string; status?: string; maxResults?: string }) => {
+    await handleOrders(options as Parameters<typeof handleOrders>[0]);
   });
 
 program
