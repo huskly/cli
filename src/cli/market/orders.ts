@@ -82,7 +82,7 @@ function getOrderSymbol(order: SchwabOrder): string {
   if (uniqueSymbols.length === 1) {
     return uniqueSymbols[0] ?? "-";
   }
-  return `${uniqueSymbols[0] ?? "-"} +${legs.length - 1}`;
+  return `${uniqueSymbols[0] ?? "-"} +${String(legs.length - 1)}`;
 }
 
 function getOrderInstruction(order: SchwabOrder): string {
