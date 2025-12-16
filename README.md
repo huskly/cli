@@ -1,10 +1,12 @@
 # Huskly CLI
 
-A simple command line interface for interacting with the Schwab Trader API.
+A command line interface for interacting with the Schwab Trader API.
 
 ## Features
 
 - **Market Data**: Real-time quotes, options chains, and historical data
+- **Account Management**: View positions, balances, and transaction history
+- **Order Management**: View orders and place simple MARKET/LIMIT orders
 - **Caching**: Redis-backed caching for improved performance
 
 ## Requirements
@@ -18,7 +20,8 @@ A simple command line interface for interacting with the Schwab Trader API.
 ```bash
 git clone https://github.com/huskly/cli.git
 cd cli
-yarn install
+npm install
+npm run build
 ```
 
 ## Usage
@@ -27,40 +30,178 @@ yarn install
 
 ```bash
 # Login via huskly.finance auth
-bun src/index.ts auth login
+huskly-cli-auth login
+
+# Check authentication status
+huskly-cli-auth status
+
+# Logout
+huskly-cli-auth logout
 ```
 
-### Market Data
+### Market Data Commands
+
+#### quote - Get Stock Quotes
+
+Get current price quotes for one or more symbols.
 
 ```bash
-# Get a stock quote
-bun src/index.ts market quote SPY
+huskly-cli-market quote AAPL
+huskly-cli-market quote AAPL MSFT GOOGL
+```
 
-# Get options chain
-bun src/index.ts market chain SPX
+#### history - Price History
 
-# View all commands
-bun src/index.ts market --help
-Usage: huskly-cli-market [options] [command]
+Get historical price data for a symbol.
 
-Explore market data from Schwab API
+```bash
+huskly-cli-market history AAPL
+huskly-cli-market history AAPL --days 30
+```
 
 Options:
-  -V, --version                      output the version number
-  -h, --help                         display help for command
+- `-d, --days <n>` - Number of days of history (default: 10)
 
-Commands:
-  quote <symbols...>                 Get current price quotes for one or more symbols
-  history [options] <symbol>         Get price history for a symbol
-  chart [options] <symbol>           Display ASCII price chart for a symbol
-  vix                                Get current VIX level with sentiment indicator
-  expiries [options] <symbol>        List available option expiration dates
-  chain [options] <symbol> [expiry]  Get option chain for a symbol and expiry
-  account                            Show account equity/net liquidation value
-  positions [symbol]                 Show all account positions, optionally filtered by symbol
-  transactions [options]             List account transaction history (defaults to current year)
-  repl                               Start an interactive REPL to run multiple commands
-  help [command]                     display help for command
+#### chart - ASCII Price Chart
+
+Display an ASCII chart of price history.
+
+```bash
+huskly-cli-market chart SPY
+huskly-cli-market chart SPY --days 60 --height 20
+huskly-cli-market chart SPY --image  # Open image chart in browser
+```
+
+Options:
+- `-d, --days <n>` - Number of days of history (default: 30)
+- `-h, --height <n>` - Chart height in rows (default: 15)
+- `-i, --image` - Generate image chart and open in browser
+
+#### vix - VIX Level
+
+Get the current VIX level with sentiment indicator.
+
+```bash
+huskly-cli-market vix
+```
+
+#### expiries - Option Expiration Dates
+
+List available option expiration dates for a symbol.
+
+```bash
+huskly-cli-market expiries SPX
+huskly-cli-market expiries SPY --type CALL
+huskly-cli-market expiries AAPL --from 2024-01-01 --to 2024-06-30
+```
+
+Options:
+- `-t, --type <type>` - Contract type: PUT or CALL (default: PUT)
+- `-f, --from <date>` - Start date (YYYY-MM-DD)
+- `-e, --to <date>` - End date (YYYY-MM-DD)
+
+#### chain - Options Chain
+
+Get the options chain for a symbol and expiration date.
+
+```bash
+huskly-cli-market chain SPX
+huskly-cli-market chain SPX 2024-12-20
+huskly-cli-market chain AAPL --around 180 --strikes 5
+```
+
+Options:
+- `-a, --around <strike>` - Filter strikes around this price (defaults to last price)
+- `-s, --strikes <count>` - Number of strikes to show above/below center (default: 10)
+
+### Account Commands
+
+#### account - Account Summary
+
+Show account equity and net liquidation value.
+
+```bash
+huskly-cli-market account
+```
+
+#### positions - Account Positions
+
+Show all account positions, optionally filtered by symbol.
+
+```bash
+huskly-cli-market positions
+huskly-cli-market positions AAPL
+```
+
+#### transactions - Transaction History
+
+List account transaction history.
+
+```bash
+huskly-cli-market transactions
+huskly-cli-market transactions --start 2024-01-01 --end 2024-12-31
+```
+
+Options:
+- `-s, --start <date>` - Start date (YYYY-MM-DD, defaults to start of year)
+- `-e, --end <date>` - End date (YYYY-MM-DD, defaults to today)
+
+### Order Commands
+
+#### orders - List Orders
+
+List account orders with optional filtering.
+
+```bash
+huskly-cli-market orders
+huskly-cli-market orders --from 2024-01-01 --to 2024-12-31
+huskly-cli-market orders --status FILLED
+huskly-cli-market orders --max-results 10
+```
+
+Options:
+- `-f, --from <date>` - From entered time (YYYY-MM-DD, defaults to 30 days ago)
+- `-t, --to <date>` - To entered time (YYYY-MM-DD, defaults to today)
+- `-s, --status <status>` - Filter by order status (FILLED, WORKING, CANCELED, etc.)
+- `-m, --max-results <n>` - Maximum number of orders to retrieve
+
+#### place-order - Place an Order
+
+Place a simple MARKET or LIMIT order for equities.
+
+```bash
+# Market order to buy 10 shares of AAPL
+huskly-cli-market place-order AAPL 10 BUY
+
+# Limit order to buy 5 shares of MSFT at $400
+huskly-cli-market place-order MSFT 5 BUY --type LIMIT --price 400
+
+# Market order to sell 20 shares
+huskly-cli-market place-order GOOGL 20 SELL
+
+# Sell short with Good Till Cancel duration
+huskly-cli-market place-order SPY 100 SELL_SHORT --duration GOOD_TILL_CANCEL
+```
+
+Arguments:
+- `<symbol>` - Stock symbol to trade
+- `<quantity>` - Number of shares
+- `<instruction>` - Order instruction: BUY, SELL, BUY_TO_COVER, SELL_SHORT
+
+Options:
+- `-t, --type <type>` - Order type: MARKET or LIMIT (default: MARKET)
+- `-p, --price <price>` - Limit price (required for LIMIT orders)
+- `-s, --session <session>` - Trading session: NORMAL, AM, PM, SEAMLESS (default: NORMAL)
+- `-d, --duration <duration>` - Order duration: DAY, GOOD_TILL_CANCEL, FILL_OR_KILL, IMMEDIATE_OR_CANCEL (default: DAY)
+
+### Interactive Mode
+
+#### repl - Interactive REPL
+
+Start an interactive REPL to run multiple commands without re-authenticating.
+
+```bash
+huskly-cli-market repl
 ```
 
 ## Project Structure
@@ -68,13 +209,20 @@ Commands:
 ```
 src/
 ├── auth/           # Authentication (huskly.finance device auth)
-├── cli/            # CLI commands (market, strategy, backtest)
+├── cli/            # CLI commands
+│   └── market/     # Market command handlers
 ├── schwab/         # Schwab API integration
+├── types.ts        # TypeScript type definitions
 ├── cache.ts        # Redis caching layer
 ├── helpers.ts      # Utility functions
 ├── logger.ts       # Logging configuration
 └── marketDataSource.ts  # Market data abstraction
 ```
+
+## Environment Variables
+
+- `LOG_LEVEL` - Set logging level (trace, debug, info, warn, error)
+- `REDIS_URL` - Redis connection URL (defaults to localhost:6379)
 
 ## License
 

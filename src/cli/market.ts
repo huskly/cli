@@ -11,6 +11,7 @@ import { handleAccount } from "./market/account.js";
 import { handlePositions } from "./market/positions.js";
 import { handleTransactions } from "./market/transactions.js";
 import { handleOrders } from "./market/orders.js";
+import { handlePlaceOrder } from "./market/placeOrder.js";
 import { handleRepl } from "./market/repl.js";
 import { disconnectCache } from "#src/cache.js";
 
@@ -118,6 +119,27 @@ program
   .action(async (options: { from?: string; to?: string; status?: string; maxResults?: string }) => {
     await handleOrders(options as Parameters<typeof handleOrders>[0]);
   });
+
+program
+  .command("place-order")
+  .description("Place a simple MARKET or LIMIT order for equities")
+  .argument("<symbol>", "Stock symbol to trade")
+  .argument("<quantity>", "Number of shares")
+  .argument("<instruction>", "Order instruction: BUY, SELL, BUY_TO_COVER, SELL_SHORT")
+  .option("-t, --type <type>", "Order type: MARKET or LIMIT", "MARKET")
+  .option("-p, --price <price>", "Limit price (required for LIMIT orders)")
+  .option("-s, --session <session>", "Trading session: NORMAL, AM, PM, SEAMLESS", "NORMAL")
+  .option("-d, --duration <duration>", "Order duration: DAY, GOOD_TILL_CANCEL, etc.", "DAY")
+  .action(
+    async (
+      symbol: string,
+      quantity: string,
+      instruction: string,
+      options: { type: string; price?: string; session?: string; duration?: string }
+    ) => {
+      await handlePlaceOrder(symbol, quantity, instruction, options);
+    }
+  );
 
 program
   .command("repl")

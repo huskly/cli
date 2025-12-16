@@ -1,5 +1,11 @@
 import type { MarketDataSource, PriceHistoryResponse } from "#src/marketDataSource.js";
-import type { ExistingSpread, OptionQuote, SchwabOrder, SchwabOrderStatus } from "#src/types.js";
+import type {
+  ExistingSpread,
+  OptionQuote,
+  SchwabOrder,
+  SchwabOrderRequest,
+  SchwabOrderStatus,
+} from "#src/types.js";
 import type {
   SchwabAccount,
   SchwabAccountTransactionHistory,
@@ -387,8 +393,9 @@ export class SchwabMarketDataSource implements MarketDataSource {
     if (!accountHash) {
       throw new Error("Account hash is required to fetch transaction history");
     }
-    const formattedStartDate = format(startDate, "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
-    const formattedEndDate = format(endDate, "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
+    // Use toISOString() to properly convert local time to UTC with Z suffix
+    const formattedStartDate = startDate.toISOString();
+    const formattedEndDate = endDate.toISOString();
     return await this.makeApiRequest<SchwabTransaction[]>(
       `/trader/v1/accounts/${accountHash}/transactions?startDate=${formattedStartDate}&endDate=${formattedEndDate}`
     );
@@ -422,8 +429,9 @@ export class SchwabMarketDataSource implements MarketDataSource {
     if (!accountHash) {
       throw new Error("Account hash is required to fetch orders");
     }
-    const formattedFromTime = format(options.fromEnteredTime, "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
-    const formattedToTime = format(options.toEnteredTime, "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
+    // Use toISOString() to properly convert local time to UTC with Z suffix
+    const formattedFromTime = options.fromEnteredTime.toISOString();
+    const formattedToTime = options.toEnteredTime.toISOString();
     const params = new URLSearchParams({
       fromEnteredTime: formattedFromTime,
       toEnteredTime: formattedToTime,
@@ -437,6 +445,43 @@ export class SchwabMarketDataSource implements MarketDataSource {
     return await this.makeApiRequest<SchwabOrder[]>(
       `/trader/v1/accounts/${accountHash}/orders?${params.toString()}`
     );
+  }
+
+  /**
+   * Place an order for a specific account.
+   * Returns the order ID from the Location header on success.
+   */
+  async placeOrder(accountHash: string, order: SchwabOrderRequest): Promise<{ orderId: string }> {
+    if (!accountHash) {
+      throw new Error("Account hash is required to place an order");
+    }
+    const token = await this.authorize();
+    const baseUrl = "https://api.schwabapi.com";
+    const url = `${baseUrl}/trader/v1/accounts/${accountHash}/orders`;
+    logger.debug({ method: "POST", url, order }, "API request");
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(order),
+    });
+
+    logger.debug({ method: "POST", url, status: response.status }, "API response");
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      logger.error({ status: response.status, errorBody }, "Place order failed");
+      throw new Error(`Failed to place order: ${String(response.status)} ${response.statusText} - ${errorBody}`);
+    }
+
+    // Schwab returns 201 Created with Location header containing the order URL
+    const locationHeader = response.headers.get("Location");
+    const orderId = locationHeader?.split("/").pop() ?? "unknown";
+
+    return { orderId };
   }
 
   private headersToRecord(headers: RequestInit["headers"]): Record<string, string> {

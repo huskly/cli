@@ -408,3 +408,52 @@ export interface SchwabOrder {
 
 // Convenience if you want to type the response you showed:
 export type SchwabOrdersResponse = SchwabOrder[];
+
+// ---- Order Request (for placing orders) ----
+
+/**
+ * Simplified order types for placing simple orders.
+ * Only MARKET and LIMIT are supported for now.
+ */
+export type SimpleOrderType = "MARKET" | "LIMIT";
+
+/**
+ * Instrument for order requests - simplified version with required fields
+ */
+export interface SchwabOrderRequestInstrument {
+  assetType: SchwabAssetType;
+  symbol: string;
+}
+
+/**
+ * Order leg for order requests
+ */
+export interface SchwabOrderRequestLeg {
+  instruction: SchwabInstruction;
+  quantity: number;
+  instrument: SchwabOrderRequestInstrument;
+}
+
+/**
+ * Order request payload for placing orders via POST /accounts/{accountNumber}/orders
+ * This is a simplified version supporting only MARKET and LIMIT orders.
+ */
+export interface SchwabOrderRequest {
+  /** Trading session - defaults to NORMAL */
+  session: SchwabSession;
+
+  /** Order duration - defaults to DAY */
+  duration: SchwabDuration;
+
+  /** Order type - only MARKET or LIMIT for simple orders */
+  orderType: SimpleOrderType;
+
+  /** Order strategy type - SINGLE for simple orders */
+  orderStrategyType: SchwabOrderStrategyType;
+
+  /** Limit price - required for LIMIT orders, omit for MARKET orders */
+  price?: number;
+
+  /** The order legs (what to buy/sell) */
+  orderLegCollection: SchwabOrderRequestLeg[];
+}

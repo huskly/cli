@@ -1,5 +1,5 @@
 {
-  "name": "huskly-cli",
+  "name": "@huskly/cli",
   "version": "1.0.0",
   "description": "derivatives strategies",
   "type": "module",
