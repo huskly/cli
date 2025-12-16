@@ -1,0 +1,456 @@
+import type { MarketDataSource, PriceHistoryResponse } from "#src/marketDataSource.js";
+import type { ExistingSpread, OptionQuote } from "#src/engine/types.js";
+import type {
+  SchwabAccount,
+  SchwabAccountTransactionHistory,
+  SchwabPosition,
+  SchwabTransaction,
+} from "#src/schwab/schwabApiTypes.js";
+import { HusklyDeviceAuth } from "#src/auth/husklyDeviceAuth.js";
+import { logger } from "#src/logger.js";
+import { cacheFetch, CACHE_DURATION } from "#src/cache.js";
+import { differenceInDays, format, parse, startOfYear } from "date-fns";
+
+type SchwabQuoteResponse = Record<string, { quote: { lastPrice: number; mark?: number } }>;
+
+interface SchwabOptionChainResponse {
+  symbol: string;
+  status: string;
+  underlying?: { symbol: string; last: number };
+  putExpDateMap?: Record<string, Record<string, SchwabOptionContract[]>>;
+  callExpDateMap?: Record<string, Record<string, SchwabOptionContract[]>>;
+}
+
+interface SchwabOptionContract {
+  putCall: "PUT" | "CALL";
+  symbol: string;
+  description: string;
+  exchangeName: string;
+  bid: number;
+  ask: number;
+  last: number;
+  mark: number;
+  bidSize: number;
+  askSize: number;
+  lastSize: number;
+  highPrice: number;
+  lowPrice: number;
+  openPrice: number;
+  closePrice: number;
+  totalVolume: number;
+  tradeDate: number | null;
+  delta: number;
+  gamma: number;
+  theta: number;
+  vega: number;
+  rho: number;
+  openInterest: number;
+  strikePrice: number;
+  expirationDate: string;
+  daysToExpiration: number;
+  expirationType: string;
+  multiplier: number;
+  settlementType: string;
+  inTheMoney: boolean;
+}
+
+export class SchwabMarketDataSource implements MarketDataSource {
+  private token: string | null = null;
+
+  constructor(private readonly auth: HusklyDeviceAuth = new HusklyDeviceAuth()) {}
+
+  today(): Date {
+    return new Date();
+  }
+
+  getRiskFreeRate(_date: Date): Promise<number> {
+    // For simplicity, return a fixed risk-free rate of 2%
+    return Promise.resolve(0.02);
+  }
+
+  async authorize(): Promise<string> {
+    if (this.token) return this.token;
+
+    const accessToken = await this.auth.getAccessToken();
+    if (!accessToken) {
+      throw new Error("Not authenticated. Run 'huskly-cli auth login' first.");
+    }
+    this.token = accessToken;
+    return this.token;
+  }
+
+  async getQuotes(symbols: string[]): Promise<Record<string, number>> {
+    const symbolsStr = symbols.map(encodeURIComponent).join(",");
+    const data = await this.makeApiRequest<SchwabQuoteResponse>(
+      `/marketdata/v1/quotes?symbols=${symbolsStr}`
+    );
+    return Object.entries(data).reduce<Record<string, number>>((acc, [symbol, quoteData]) => {
+      acc[symbol] = quoteData.quote.mark ?? quoteData.quote.lastPrice;
+      return acc;
+    }, {});
+  }
+
+  async getPriceHistory({
+    symbol,
+    days,
+    startDate,
+    endDate = Date.now(),
+  }: {
+    symbol: string;
+    days?: number;
+    startDate?: number;
+    endDate?: number;
+  }): Promise<PriceHistoryResponse["candles"]> {
+    // If days is not provided but startDate and endDate are, calculate days from the date range
+    const effectiveDays = days ?? (startDate ? differenceInDays(endDate, startDate) : 30);
+    // For requests > 132 trading days (~6 months), use periodType "year"
+    // Otherwise use periodType "month" with appropriate period
+    const useYear = effectiveDays > 132;
+    const periodType = useYear ? "year" : "month";
+    const period = useYear
+      ? 1
+      : effectiveDays <= 22
+        ? 1
+        : effectiveDays <= 44
+          ? 2
+          : effectiveDays <= 66
+            ? 3
+            : 6;
+    const params = new URLSearchParams({
+      symbol,
+      periodType,
+      period: String(period),
+      frequencyType: "daily",
+      frequency: "1",
+      endDate: String(endDate),
+    });
+    if (startDate) {
+      params.append("startDate", String(startDate));
+    }
+    const data = await this.makeApiRequest<PriceHistoryResponse>(
+      `/marketdata/v1/pricehistory?${params.toString()}`
+    );
+
+    if (data.empty) {
+      return [];
+    }
+
+    return data.candles.sort((a, b) => a.datetime - b.datetime);
+  }
+
+  async getVixLevel(): Promise<number | undefined> {
+    const quotes = await this.getQuotes(["$VIX"]);
+    return quotes["$VIX"];
+  }
+
+  // fromDate and toDate are in "YYYY-MM-DD" format
+  async getAvailableExpiries(
+    symbol: string,
+    contractType: "PUT" | "CALL",
+    fromDate: string,
+    toDate: string
+  ): Promise<Date[]> {
+    const data = await this.makeApiRequest<SchwabOptionChainResponse>(
+      `/marketdata/v1/chains?symbol=${encodeURIComponent(symbol)}&contractType=${contractType}&fromDate=${fromDate}&toDate=${toDate}`
+    );
+
+    if (!data.putExpDateMap) {
+      return [];
+    }
+
+    const expiries = Object.keys(data.putExpDateMap).map((key) => {
+      // Key format is "2024-01-19:30" (date:DTE)
+      const dateStr = key.split(":")[0] ?? key;
+      return parse(dateStr, "yyyy-MM-dd", new Date());
+    });
+
+    return expiries.sort((a, b) => a.getTime() - b.getTime());
+  }
+
+  async getOptionChain(symbol: string, expiry: Date): Promise<OptionQuote[]> {
+    const expiryStr = format(expiry, "yyyy-MM-dd");
+    const data = await this.makeApiRequest<SchwabOptionChainResponse>(
+      `/marketdata/v1/chains?symbol=${encodeURIComponent(symbol)}&fromDate=${expiryStr}&toDate=${expiryStr}`
+    );
+
+    const options: OptionQuote[] = [];
+
+    const processExpDateMap = (
+      expDateMap: Record<string, Record<string, SchwabOptionContract[]>> | undefined,
+      isCall: boolean
+    ) => {
+      if (!expDateMap) return;
+
+      for (const dateKey of Object.keys(expDateMap)) {
+        const strikeMap = expDateMap[dateKey];
+        if (!strikeMap) continue;
+        for (const strikeKey of Object.keys(strikeMap)) {
+          const contracts = strikeMap[strikeKey];
+          if (!contracts) continue;
+          for (const contract of contracts) {
+            const expirationDate = new Date(contract.expirationDate);
+            options.push({
+              symbol: contract.symbol,
+              expiry: expirationDate,
+              strike: contract.strikePrice,
+              isCall,
+              bid: contract.bid > 0 ? contract.bid : null,
+              ask: contract.ask > 0 ? contract.ask : null,
+              mid: contract.mark,
+              delta: contract.delta,
+            });
+          }
+        }
+      }
+    };
+
+    processExpDateMap(data.callExpDateMap, true);
+    processExpDateMap(data.putExpDateMap, false);
+
+    return options;
+  }
+
+  async getOptionQuote(args: {
+    symbol: string;
+    expiry: Date;
+    strike: number;
+    type: "call" | "put";
+  }): Promise<OptionQuote | null> {
+    const { symbol, expiry, strike, type } = args;
+    const isCall = type === "call";
+    const chain = await this.getOptionChain(symbol, expiry);
+    const match = chain.find((o) => o.strike === strike && o.isCall === isCall);
+    return match ?? null;
+  }
+
+  async getAccountEquity(): Promise<number> {
+    // This assumes there is exactly one account connected, which is the one we want.
+    const [account] = await this.makeApiRequest<SchwabAccount[]>(
+      "/trader/v1/accounts?fields=positions"
+    );
+    if (!account) {
+      throw new Error("No Schwab account found");
+    }
+    return account.securitiesAccount.currentBalances.liquidationValue;
+  }
+
+  async getAccountBalances(): Promise<{
+    liquidationValue: number;
+    cashBalance: number;
+    availableFunds: number;
+    buyingPower: number;
+    equity: number;
+  }> {
+    const [account] = await this.makeApiRequest<SchwabAccount[]>(
+      "/trader/v1/accounts?fields=positions"
+    );
+    if (!account) {
+      throw new Error("No Schwab account found");
+    }
+    const balances = account.securitiesAccount.currentBalances;
+    return {
+      liquidationValue: balances.liquidationValue,
+      cashBalance: balances.cashBalance,
+      availableFunds: balances.availableFunds,
+      buyingPower: balances.buyingPower,
+      equity: balances.equity,
+    };
+  }
+
+  async getPositions(symbol?: string): Promise<SchwabPosition[]> {
+    const accounts = await this.makeApiRequest<SchwabAccount[]>(
+      "/trader/v1/accounts?fields=positions"
+    );
+
+    const allPositions: SchwabPosition[] = [];
+    for (const account of accounts) {
+      allPositions.push(...account.securitiesAccount.positions);
+    }
+
+    if (symbol) {
+      const upperSymbol = symbol.toUpperCase();
+      return allPositions.filter((pos) => {
+        const posSymbol = pos.instrument.symbol.toUpperCase();
+        const underlying = pos.instrument.underlyingSymbol?.toUpperCase();
+        return posSymbol.startsWith(upperSymbol) || underlying === upperSymbol;
+      });
+    }
+
+    return allPositions;
+  }
+
+  async getExistingSpreads(symbol: string): Promise<ExistingSpread[]> {
+    const accounts = await this.makeApiRequest<SchwabAccount[]>(
+      "/trader/v1/accounts?fields=positions"
+    );
+
+    const spreads: ExistingSpread[] = [];
+
+    for (const account of accounts) {
+      const positions = account.securitiesAccount.positions;
+      const optionPositions = positions.filter(
+        (pos) => pos.instrument.assetType === "OPTION" && pos.instrument.underlyingSymbol === symbol
+      );
+
+      // Group by expiry to find spreads
+      const byExpiry = new Map<string, SchwabPosition[]>();
+      for (const pos of optionPositions) {
+        const optionSymbol = pos.instrument.symbol;
+        // Parse option symbol format: SPX   241220P05900000
+        // Symbol structure: underlying + expiry (YYMMDD) + P/C + strike
+        const match = /^(\w+)\s*(\d{6})([PC])(\d+)$/.exec(optionSymbol);
+        if (!match) continue;
+
+        const expiryKey = match[2];
+        if (!expiryKey) continue;
+        const existing = byExpiry.get(expiryKey) ?? [];
+        existing.push(pos);
+        byExpiry.set(expiryKey, existing);
+      }
+
+      // Find put spreads (short put + long put at lower strike)
+      for (const [expiryKey, expiryPositions] of byExpiry) {
+        const puts = expiryPositions.filter((p) => p.instrument.symbol.includes("P"));
+
+        const shortPuts = puts.filter((p) => p.shortQuantity > 0);
+        const longPuts = puts.filter((p) => p.longQuantity > 0);
+
+        for (const shortPut of shortPuts) {
+          const shortMatch = /(\d{6})P(\d+)$/.exec(shortPut.instrument.symbol);
+          if (!shortMatch?.[2]) continue;
+          const shortStrike = parseInt(shortMatch[2]) / 1000;
+
+          // Find corresponding long put at lower strike
+          for (const longPut of longPuts) {
+            const longMatch = /(\d{6})P(\d+)$/.exec(longPut.instrument.symbol);
+            if (!longMatch?.[2]) continue;
+            const longStrike = parseInt(longMatch[2]) / 1000;
+
+            if (longStrike < shortStrike) {
+              const quantity = Math.min(shortPut.shortQuantity, longPut.longQuantity);
+              const width = shortStrike - longStrike;
+              const credit = shortPut.averagePrice - longPut.averagePrice;
+
+              // Parse expiry date from YYMMDD format
+              const year = 2000 + parseInt(expiryKey.slice(0, 2));
+              const month = parseInt(expiryKey.slice(2, 4)) - 1;
+              const day = parseInt(expiryKey.slice(4, 6));
+              const expiry = new Date(year, month, day);
+
+              spreads.push({
+                underlying: symbol,
+                expiry,
+                shortStrike,
+                longStrike,
+                credit,
+                quantity,
+                theoreticalMaxLossPts: width - credit,
+                plannedLossPts: credit * 2, // stop at 2x credit
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return spreads;
+  }
+
+  async fetchAccountNumbers(): Promise<{ accountNumber: string; hashValue: string }[]> {
+    const accountNumbers = await this.makeApiRequest<
+      { accountNumber: string; hashValue: string }[]
+    >("/trader/v1/accounts/accountNumbers");
+    return accountNumbers;
+  }
+
+  async fetchTransactionHistory(
+    startDate: Date = startOfYear(this.today()),
+    endDate: Date = this.today()
+  ): Promise<SchwabAccountTransactionHistory[]> {
+    const accountHashes = await this.fetchAccountNumbers();
+    const histories = await Promise.all(
+      accountHashes.map(({ hashValue }) =>
+        this.fetchAccountTransactionHistory(hashValue, startDate, endDate)
+      )
+    );
+    return accountHashes.map((account, index) => ({
+      accountNumber: account.accountNumber,
+      transactions: histories[index] ?? [],
+    }));
+  }
+
+  async fetchAccountTransactionHistory(
+    accountHash: string,
+    startDate: Date = startOfYear(this.today()),
+    endDate: Date = this.today()
+  ): Promise<SchwabTransaction[]> {
+    if (!accountHash) {
+      throw new Error("Account hash is required to fetch transaction history");
+    }
+    const formattedStartDate = format(startDate, "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
+    const formattedEndDate = format(endDate, "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
+    return await this.makeApiRequest<SchwabTransaction[]>(
+      `/trader/v1/accounts/${accountHash}/transactions?startDate=${formattedStartDate}&endDate=${formattedEndDate}`
+    );
+  }
+
+  private headersToRecord(headers: RequestInit["headers"]): Record<string, string> {
+    const result: Record<string, string> = {};
+    if (!headers) return result;
+
+    if (headers instanceof Headers) {
+      headers.forEach((value, key) => {
+        result[key] = value;
+      });
+    } else if (Array.isArray(headers)) {
+      for (const [k, v] of headers) {
+        if (k && v) {
+          result[k] = v;
+        }
+      }
+    } else {
+      Object.assign(result, headers);
+    }
+    return result;
+  }
+
+  private async makeApiRequest<T>(
+    endpoint: string,
+    options: RequestInit = {},
+    cacheDuration: number = CACHE_DURATION
+  ): Promise<T> {
+    const method = options.method ?? "GET";
+    // Only cache GET requests
+    if (method !== "GET") {
+      return this.fetchFromApi<T>(endpoint, options);
+    }
+
+    const cacheKey = `schwab:${endpoint}`;
+    return cacheFetch(cacheKey, () => this.fetchFromApi<T>(endpoint, options), cacheDuration);
+  }
+
+  private async fetchFromApi<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    const token = await this.authorize();
+    const existingHeaders = this.headersToRecord(options.headers);
+    const baseUrl = "https://api.schwabapi.com";
+    const normalizedEndpoint = endpoint.startsWith("/") ? endpoint.slice(1) : endpoint;
+    const url = `${baseUrl}/${normalizedEndpoint}`;
+    const method = options.method ?? "GET";
+    logger.debug({ method, url }, "API request");
+    const response = await fetch(url, {
+      ...options,
+      headers: { ...existingHeaders, Authorization: `Bearer ${token}` },
+    });
+    logger.debug({ method, url, status: response.status }, "API response");
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error("Unauthorized");
+      }
+      throw new Error(`Failed to fetch ${endpoint}: ${response.statusText}`);
+    }
+    const responseBody = await response.json();
+    logger.trace({ method, url, responseBody }, "API response body");
+    return responseBody as T;
+  }
+}

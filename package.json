@@ -1,0 +1,65 @@
+{
+  "name": "huskly-cli",
+  "version": "1.0.0",
+  "description": "derivatives strategies",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": "github.com/felipecsl/huskly-cli",
+  "author": "Felipe Lima",
+  "license": "MIT",
+  "imports": {
+    "#src/*.js": "./src/*.ts",
+    "#src/schwab/*.js": "./src/schwab/*.ts",
+    "#src/auth/*.js": "./src/auth/*.ts",
+    "#src/cli/*.js": "./src/cli/*.ts"
+  },
+  "bin": {
+    "huskly-cli": "./dist/cli/index.js",
+    "huskly-cli-auth": "./dist/auth/cli.js",
+    "huskly-cli-market": "./dist/cli/market.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "check": "npm run lint && npm run format:check && npm run typecheck",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/asciichart": "^1.5.8",
+    "@types/node": "^25",
+    "@typescript-eslint/eslint-plugin": "^8.17.0",
+    "@typescript-eslint/parser": "^8.17.0",
+    "eslint": "^9.16.0",
+    "eslint-config-prettier": "^10",
+    "eslint-plugin-prettier": "^5.2.1",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.49.0"
+  },
+  "dependencies": {
+    "asciichart": "^1.5.25",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.2",
+    "date-fns": "^4.1.0",
+    "dotenv": "^17.2.3",
+    "ioredis": "^5.8.2",
+    "keytar": "^7.9.0",
+    "open": "^11.0.0",
+    "ora": "^9.0.0",
+    "pino": "^10.1.0",
+    "pino-pretty": "^13.1.3"
+  }
+}
