@@ -474,7 +474,9 @@ export class SchwabMarketDataSource implements MarketDataSource {
     if (!response.ok) {
       const errorBody = await response.text();
       logger.error({ status: response.status, errorBody }, "Place order failed");
-      throw new Error(`Failed to place order: ${String(response.status)} ${response.statusText} - ${errorBody}`);
+      throw new Error(
+        `Failed to place order: ${String(response.status)} ${response.statusText} - ${errorBody}`
+      );
     }
 
     // Schwab returns 201 Created with Location header containing the order URL

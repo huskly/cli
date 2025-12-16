@@ -1,10 +1,6 @@
 import chalk from "chalk";
 import { api } from "./shared.js";
-import type {
-  SchwabInstruction,
-  SchwabOrderRequest,
-  SimpleOrderType,
-} from "#src/types.js";
+import type { SchwabInstruction, SchwabOrderRequest, SimpleOrderType } from "#src/types.js";
 
 interface PlaceOrderOptions {
   type: string;
@@ -13,12 +9,7 @@ interface PlaceOrderOptions {
   duration?: string;
 }
 
-const VALID_INSTRUCTIONS: SchwabInstruction[] = [
-  "BUY",
-  "SELL",
-  "BUY_TO_COVER",
-  "SELL_SHORT",
-];
+const VALID_INSTRUCTIONS: SchwabInstruction[] = ["BUY", "SELL", "BUY_TO_COVER", "SELL_SHORT"];
 
 const VALID_ORDER_TYPES: SimpleOrderType[] = ["MARKET", "LIMIT"];
 
