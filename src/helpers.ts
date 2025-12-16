@@ -1,20 +1,8 @@
-import { isSameDay } from "date-fns";
-import type { StrategyConfig } from "#src/engine/types.js";
-
 export function simpleSma(values: number[], window: number): number | null {
   if (values.length < window) return null;
   const slice = values.slice(values.length - window);
   const sum = slice.reduce((acc, v) => acc + v, 0);
   return sum / window;
-}
-
-export function isEventDay(cfg: StrategyConfig, today: Date): boolean {
-  const keys = Object.keys(cfg.EVENT_DATES);
-  for (const key of keys) {
-    const dates = cfg.EVENT_DATES[key];
-    if (dates?.some((d) => isSameDay(d, today))) return true;
-  }
-  return false;
 }
 
 export function ensure<T>(value: T | null | undefined, message?: string): T {

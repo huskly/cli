@@ -1,5 +1,5 @@
 import type { MarketDataSource, PriceHistoryResponse } from "#src/marketDataSource.js";
-import type { ExistingSpread, OptionQuote } from "#src/engine/types.js";
+import type { ExistingSpread, OptionQuote } from "#src/types.js";
 import type {
   SchwabAccount,
   SchwabAccountTransactionHistory,

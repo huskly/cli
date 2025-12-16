@@ -1,4 +1,4 @@
-import type { OptionQuote, ExistingSpread } from "#src/engine/types.js";
+import type { OptionQuote, ExistingSpread } from "#src/types.js";
 
 export interface PriceHistoryCandle {
   datetime: number;
