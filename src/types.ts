@@ -535,18 +535,15 @@ export interface SchwabOrderRequestLeg {
 export interface SchwabOrderRequest {
   /** Trading session - defaults to NORMAL */
   session: SchwabSession;
-
   /** Order duration - defaults to DAY */
   duration: SchwabDuration;
-
-  orderType: SimpleOrderType;
-
+  orderType: SchwabOrderType;
   /** Order strategy type - SINGLE for simple orders */
   orderStrategyType: SchwabOrderStrategyType;
 
   /** Limit price - required for LIMIT orders, omit for MARKET orders */
   price?: number;
-
+  /** stop price for STOP orders */
   stopPrice?: number;
   stopPriceLinkBasis?: SchwabLinkBasis;
   stopPriceLinkType?: SchwabLinkType;
