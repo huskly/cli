@@ -1,6 +1,13 @@
 import chalk from "chalk";
 import { api } from "./shared.js";
-import type { SchwabInstruction, SchwabOrderRequest, SimpleOrderType } from "#src/types.js";
+import {
+  ALL_SCHWAB_INSTRUCTIONS,
+  ALL_SCHWAB_ORDER_TYPES,
+  type SchwabInstruction,
+  type SchwabOrderRequest,
+  type SchwabOrderType,
+} from "#src/types.js";
+import { ensureFloat } from "#src/helpers.js";
 
 interface PlaceOrderOptions {
   type: string;
@@ -9,25 +16,21 @@ interface PlaceOrderOptions {
   duration?: string;
 }
 
-const VALID_INSTRUCTIONS: SchwabInstruction[] = ["BUY", "SELL", "BUY_TO_COVER", "SELL_SHORT"];
-
-const VALID_ORDER_TYPES: SimpleOrderType[] = ["MARKET", "LIMIT"];
-
 function validateInstruction(instruction: string): SchwabInstruction {
   const upper = instruction.toUpperCase() as SchwabInstruction;
-  if (!VALID_INSTRUCTIONS.includes(upper)) {
+  if (!ALL_SCHWAB_INSTRUCTIONS.includes(upper)) {
     throw new Error(
-      `Invalid instruction "${instruction}". Valid options: ${VALID_INSTRUCTIONS.join(", ")}`
+      `Invalid instruction "${instruction}". Valid options: ${ALL_SCHWAB_INSTRUCTIONS.join(", ")}`
     );
   }
   return upper;
 }
 
-function validateOrderType(orderType: string): SimpleOrderType {
-  const upper = orderType.toUpperCase() as SimpleOrderType;
-  if (!VALID_ORDER_TYPES.includes(upper)) {
+function validateOrderType(orderType: string): SchwabOrderType {
+  const upper = orderType.toUpperCase() as SchwabOrderType;
+  if (!ALL_SCHWAB_ORDER_TYPES.includes(upper)) {
     throw new Error(
-      `Invalid order type "${orderType}". Valid options: ${VALID_ORDER_TYPES.join(", ")}`
+      `Invalid order type "${orderType}". Valid options: ${ALL_SCHWAB_ORDER_TYPES.join(", ")}`
     );
   }
   return upper;
@@ -41,16 +44,12 @@ function validateQuantity(quantity: string): number {
   return num;
 }
 
-function validatePrice(price: string | undefined, orderType: SimpleOrderType): number | undefined {
+function validatePrice(price: string | undefined, orderType: SchwabOrderType): number | undefined {
   if (orderType === "LIMIT") {
-    if (!price) {
-      throw new Error("Price is required for LIMIT orders. Use --price <price>.");
-    }
-    const num = parseFloat(price);
-    if (isNaN(num) || num <= 0) {
-      throw new Error(`Invalid price "${price}". Must be a positive number.`);
-    }
-    return num;
+    return ensureFloat(price, "Price is required for LIMIT orders. Use --price <price>.");
+  }
+  if (orderType === "STOP") {
+    return ensureFloat(price, "Price is required for STOP orders. Use --price <price>.");
   }
   return undefined;
 }
@@ -65,8 +64,6 @@ export async function handlePlaceOrder(
   const validatedOrderType = validateOrderType(options.type);
   const validatedQuantity = validateQuantity(quantity);
   const validatedPrice = validatePrice(options.price, validatedOrderType);
-
-  // Build the order request
   const orderRequest: SchwabOrderRequest = {
     session: (options.session?.toUpperCase() ?? "NORMAL") as SchwabOrderRequest["session"],
     duration: (options.duration?.toUpperCase() ?? "DAY") as SchwabOrderRequest["duration"],
@@ -76,17 +73,20 @@ export async function handlePlaceOrder(
       {
         instruction: validatedInstruction,
         quantity: validatedQuantity,
-        instrument: {
-          assetType: "EQUITY",
-          symbol: symbol.toUpperCase(),
-        },
+        instrument: { assetType: "EQUITY", symbol: symbol.toUpperCase() },
       },
     ],
   };
 
-  // Add price for LIMIT orders
-  if (validatedPrice !== undefined) {
-    orderRequest.price = validatedPrice;
+  if (orderRequest.orderType === "LIMIT") {
+    // validatePrice already ensures price is defined for LIMIT orders
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    orderRequest.price = validatedPrice!;
+  }
+  if (orderRequest.orderType === "STOP") {
+    // validatePrice already ensures price is defined for STOP orders
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    orderRequest.stopPrice = validatedPrice!;
   }
 
   // Get the first account (most users have one account)

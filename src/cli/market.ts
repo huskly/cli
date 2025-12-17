@@ -122,11 +122,11 @@ program
 
 program
   .command("place-order")
-  .description("Place a simple MARKET or LIMIT order for equities")
+  .description("Place an order for equities")
   .argument("<symbol>", "Stock symbol to trade")
   .argument("<quantity>", "Number of shares")
   .argument("<instruction>", "Order instruction: BUY, SELL, BUY_TO_COVER, SELL_SHORT")
-  .option("-t, --type <type>", "Order type: MARKET or LIMIT", "MARKET")
+  .option("-t, --type <type>", "Order type: eg.MARKET, STOP, LIMIT, MARKET")
   .option("-p, --price <price>", "Limit price (required for LIMIT orders)")
   .option("-s, --session <session>", "Trading session: NORMAL, AM, PM, SEAMLESS", "NORMAL")
   .option("-d, --duration <duration>", "Order duration: DAY, GOOD_TILL_CANCEL, etc.", "DAY")

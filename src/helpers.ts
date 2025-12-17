@@ -12,6 +12,15 @@ export function ensure<T>(value: T | null | undefined, message?: string): T {
   return value;
 }
 
+export function ensureFloat(value: unknown, message?: string): number {
+  const actualValue = ensure(value, message);
+  const num = typeof actualValue === "number" ? actualValue : parseFloat(String(actualValue));
+  if (isNaN(num) || num <= 0) {
+    throw new Error(`Invalid float value "${String(actualValue)}". Must be a positive number.`);
+  }
+  return num;
+}
+
 export function currencyFormatUsd(value: number): string {
   return value.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }

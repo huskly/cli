@@ -139,22 +139,25 @@ export type SchwabDuration =
   | "NEXT_END_OF_MONTH"
   | "UNKNOWN";
 
-export type SchwabOrderType =
-  | "MARKET"
-  | "LIMIT"
-  | "STOP"
-  | "STOP_LIMIT"
-  | "TRAILING_STOP"
-  | "CABINET"
-  | "NON_MARKETABLE"
-  | "MARKET_ON_CLOSE"
-  | "EXERCISE"
-  | "TRAILING_STOP_LIMIT"
-  | "NET_DEBIT"
-  | "NET_CREDIT"
-  | "NET_ZERO"
-  | "LIMIT_ON_CLOSE"
-  | "UNKNOWN";
+export const ALL_SCHWAB_ORDER_TYPES = [
+  "MARKET",
+  "LIMIT",
+  "STOP",
+  "STOP_LIMIT",
+  "TRAILING_STOP",
+  "CABINET",
+  "NON_MARKETABLE",
+  "MARKET_ON_CLOSE",
+  "EXERCISE",
+  "TRAILING_STOP_LIMIT",
+  "NET_DEBIT",
+  "NET_CREDIT",
+  "NET_ZERO",
+  "LIMIT_ON_CLOSE",
+  "UNKNOWN",
+] as const;
+
+export type SchwabOrderType = (typeof ALL_SCHWAB_ORDER_TYPES)[number];
 
 export type SchwabComplexOrderStrategyType =
   | "NONE"
@@ -233,17 +236,20 @@ export type SchwabOrderLegType =
   | "CURRENCY"
   | "COLLECTIVE_INVESTMENT";
 
-export type SchwabInstruction =
-  | "BUY"
-  | "SELL"
-  | "BUY_TO_COVER"
-  | "SELL_SHORT"
-  | "BUY_TO_OPEN"
-  | "BUY_TO_CLOSE"
-  | "SELL_TO_OPEN"
-  | "SELL_TO_CLOSE"
-  | "EXCHANGE"
-  | "SELL_SHORT_EXEMPT";
+export const ALL_SCHWAB_INSTRUCTIONS = [
+  "BUY",
+  "SELL",
+  "BUY_TO_COVER",
+  "SELL_SHORT",
+  "BUY_TO_OPEN",
+  "BUY_TO_CLOSE",
+  "SELL_TO_OPEN",
+  "SELL_TO_CLOSE",
+  "EXCHANGE",
+  "SELL_SHORT_EXEMPT",
+] as const;
+
+export type SchwabInstruction = (typeof ALL_SCHWAB_INSTRUCTIONS)[number];
 
 export type SchwabPositionEffect = "OPENING" | "CLOSING" | "AUTOMATIC";
 
@@ -507,12 +513,6 @@ export type SchwabOrdersResponse = SchwabOrder[];
 // ---- Order Request (for placing orders) ----
 
 /**
- * Simplified order types for placing simple orders.
- * Only MARKET and LIMIT are supported for now.
- */
-export type SimpleOrderType = "MARKET" | "LIMIT";
-
-/**
  * Instrument for order requests - simplified version with required fields
  */
 export interface SchwabOrderRequestInstrument {
@@ -531,7 +531,6 @@ export interface SchwabOrderRequestLeg {
 
 /**
  * Order request payload for placing orders via POST /accounts/{accountNumber}/orders
- * This is a simplified version supporting only MARKET and LIMIT orders.
  */
 export interface SchwabOrderRequest {
   /** Trading session - defaults to NORMAL */
@@ -540,7 +539,6 @@ export interface SchwabOrderRequest {
   /** Order duration - defaults to DAY */
   duration: SchwabDuration;
 
-  /** Order type - only MARKET or LIMIT for simple orders */
   orderType: SimpleOrderType;
 
   /** Order strategy type - SINGLE for simple orders */
@@ -548,6 +546,12 @@ export interface SchwabOrderRequest {
 
   /** Limit price - required for LIMIT orders, omit for MARKET orders */
   price?: number;
+
+  stopPrice?: number;
+  stopPriceLinkBasis?: SchwabLinkBasis;
+  stopPriceLinkType?: SchwabLinkType;
+  stopPriceOffset?: number;
+  stopType?: SchwabStopType;
 
   /** The order legs (what to buy/sell) */
   orderLegCollection: SchwabOrderRequestLeg[];

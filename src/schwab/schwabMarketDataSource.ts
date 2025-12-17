@@ -458,10 +458,7 @@ export class SchwabMarketDataSource implements MarketDataSource {
 
     const response = await fetch(url, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify(order),
     });
 

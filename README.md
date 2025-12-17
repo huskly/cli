@@ -173,7 +173,7 @@ Options:
 
 #### place-order - Place an Order
 
-Place a simple MARKET or LIMIT order for equities.
+Place an order for equities.
 
 ```bash
 # Market order to buy 10 shares of AAPL
