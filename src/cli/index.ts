@@ -14,6 +14,8 @@ import { handleOrders } from "./orders.js";
 import { handlePlaceOrder } from "./placeOrder.js";
 import { handleRepl } from "./repl.js";
 import { handleUserPreference } from "./userPreference.js";
+import { handleSearch } from "./search.js";
+import { handleMovers } from "./movers.js";
 import { disconnectCache } from "#src/cache.js";
 
 const program = new Command();
@@ -66,6 +68,32 @@ program
   .argument("<symbols...>", "Stock symbols to quote")
   .action(async (symbols: string[]) => {
     await handleQuote(symbols);
+  });
+
+program
+  .command("search")
+  .description("Search for instruments by symbol or description")
+  .argument("<symbol>", "Search term (symbol or description fragment)")
+  .option(
+    "-p, --projection <type>",
+    "Search type: symbol-search, symbol-regex, desc-search, desc-regex, search, fundamental",
+    "symbol-search"
+  )
+  .action(async (symbol: string, options: { projection: string }) => {
+    await handleSearch(symbol, options);
+  });
+
+program
+  .command("movers")
+  .description("Get top 10 movers for a specific index")
+  .argument(
+    "<index>",
+    "Index symbol: $DJI, $COMPX, $SPX, NYSE, NASDAQ, OTCBB, INDEX_ALL, EQUITY_ALL, OPTION_ALL, OPTION_PUT, OPTION_CALL"
+  )
+  .option("-s, --sort <type>", "Sort by: VOLUME, TRADES, PERCENT_CHANGE_UP, PERCENT_CHANGE_DOWN")
+  .option("-f, --frequency <minutes>", "Frequency in minutes: 0, 1, 5, 10, 30, 60 (default: 0)")
+  .action(async (index: string, options: { sort?: string; frequency?: string }) => {
+    await handleMovers(index, options);
   });
 
 program

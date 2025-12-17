@@ -1,6 +1,7 @@
 import chalk from "chalk";
 import { api } from "./shared.js";
-import { currencyFormatUsd, parseOccSymbol } from "#src/helpers.js";
+import { parseOccSymbol } from "#src/helpers.js";
+import { currencyFormatUsd } from "#src/format.js";
 
 const COLUMN_WIDTHS = {
   symbol: 25,

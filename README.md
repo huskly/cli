@@ -4,7 +4,8 @@ A command line interface for interacting with the Schwab Trader API.
 
 ## Features
 
-- **Market Data**: Real-time quotes, options chains, and historical data
+- **Market Data**: Real-time quotes, options chains, historical data, instrument search, and market movers
+- **Instrument Search**: Search by symbol or description with fundamental data support
 - **Account Management**: View positions, balances, and transaction history
 - **Order Management**: View orders and place simple MARKET/LIMIT orders
 - **Caching**: Redis-backed caching for improved performance
@@ -49,6 +50,64 @@ Get current price quotes for one or more symbols.
 huskly-cli quote AAPL
 huskly-cli quote AAPL MSFT GOOGL
 ```
+
+#### search - Search Instruments
+
+Search for instruments by symbol or description. Supports multiple search modes including fundamental data retrieval.
+
+```bash
+# Search by symbol prefix (default)
+huskly-cli search AAPL
+
+# Search by symbol using regex
+huskly-cli search "^AA" --projection symbol-regex
+
+# Search by description
+huskly-cli search "Apple" --projection desc-search
+
+# Search description with regex
+huskly-cli search "tech.*inc" --projection desc-regex
+
+# Get fundamental data for a symbol
+huskly-cli search AAPL --projection fundamental
+```
+
+Options:
+
+- `-p, --projection <type>` - Search type (default: symbol-search)
+  - `symbol-search` - Search by symbol prefix
+  - `symbol-regex` - Search by symbol using regex pattern
+  - `desc-search` - Search by description text
+  - `desc-regex` - Search description using regex pattern
+  - `search` - General search
+  - `fundamental` - Get detailed fundamental data (P/E, EPS, market cap, dividends, margins, etc.)
+
+#### movers - Top Market Movers
+
+Get the top 10 movers for a specific index or market segment.
+
+```bash
+# Get top movers for Dow Jones Industrial Average
+huskly-cli movers '$DJI'
+
+# Get top movers for S&P 500 sorted by percent change up
+huskly-cli movers '$SPX' --sort PERCENT_CHANGE_UP
+
+# Get NASDAQ movers sorted by volume
+huskly-cli movers NASDAQ --sort VOLUME
+
+# Get all equity movers with 5-minute frequency
+huskly-cli movers EQUITY_ALL --frequency 5
+```
+
+Arguments:
+
+- `<index>` - Index symbol: `$DJI`, `$COMPX`, `$SPX`, `NYSE`, `NASDAQ`, `OTCBB`, `INDEX_ALL`, `EQUITY_ALL`, `OPTION_ALL`, `OPTION_PUT`, `OPTION_CALL`
+
+Options:
+
+- `-s, --sort <type>` - Sort by: `VOLUME`, `TRADES`, `PERCENT_CHANGE_UP`, `PERCENT_CHANGE_DOWN`
+- `-f, --frequency <minutes>` - Frequency in minutes: 0, 1, 5, 10, 30, 60 (default: 0)
 
 #### history - Price History
 

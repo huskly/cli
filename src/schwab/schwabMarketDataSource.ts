@@ -6,6 +6,12 @@ import type {
   SchwabOrderRequest,
   SchwabOrderStatus,
   SchwabQuoteResponse,
+  SchwabInstrumentSearchProjection,
+  SchwabInstrumentResponse,
+  SchwabMoversIndexSymbol,
+  SchwabMoversSort,
+  SchwabMoversFrequency,
+  SchwabMoversResponse,
 } from "#src/types.js";
 import type {
   SchwabAccount,
@@ -482,6 +488,51 @@ export class SchwabMarketDataSource implements MarketDataSource {
 
   async getUserPreference(): Promise<SchwabUserPreference> {
     return await this.makeApiRequest<SchwabUserPreference>("/trader/v1/userPreference");
+  }
+
+  /**
+   * Search for instruments by symbol or description.
+   * @param symbol - The search term (symbol or description fragment)
+   * @param projection - The type of search to perform
+   * @returns Array of matching instruments
+   */
+  async searchInstruments(
+    symbol: string,
+    projection: SchwabInstrumentSearchProjection
+  ): Promise<SchwabInstrumentResponse[]> {
+    const params = new URLSearchParams({
+      symbol: symbol,
+      projection: projection,
+    });
+    const response = await this.makeApiRequest<{
+      instruments?: Record<string, SchwabInstrumentResponse>;
+    }>(`/marketdata/v1/instruments?${params.toString()}`);
+    // The API returns instruments as an object keyed by symbol, convert to array
+    return Object.values(response.instruments ?? {});
+  }
+
+  /**
+   * Get top 10 movers for a specific index.
+   * @param symbolId - Index symbol ($DJI, $COMPX, $SPX, NYSE, NASDAQ, etc.)
+   * @param sort - Sort by VOLUME, TRADES, PERCENT_CHANGE_UP, or PERCENT_CHANGE_DOWN
+   * @param frequency - Frequency in minutes (0, 1, 5, 10, 30, 60). Default is 0.
+   * @returns List of top movers
+   */
+  async getMovers(
+    symbolId: SchwabMoversIndexSymbol,
+    sort?: SchwabMoversSort,
+    frequency?: SchwabMoversFrequency
+  ): Promise<SchwabMoversResponse> {
+    const params = new URLSearchParams();
+    if (sort) {
+      params.append("sort", sort);
+    }
+    if (frequency !== undefined) {
+      params.append("frequency", String(frequency));
+    }
+    const queryString = params.toString();
+    const url = `/marketdata/v1/movers/${encodeURIComponent(symbolId)}${queryString ? `?${queryString}` : ""}`;
+    return await this.makeApiRequest<SchwabMoversResponse>(url);
   }
 
   private headersToRecord(headers: RequestInit["headers"]): Record<string, string> {

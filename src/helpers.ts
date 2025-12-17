@@ -21,10 +21,6 @@ export function ensureFloat(value: unknown, message?: string): number {
   return num;
 }
 
-export function currencyFormatUsd(value: number): string {
-  return value.toLocaleString("en-US", { style: "currency", currency: "USD" });
-}
-
 export function calculateCagr(startEquity: number, finalEquity: number, years: number): number {
   if (years <= 0 || startEquity <= 0) return 0;
   return (Math.pow(finalEquity / startEquity, 1 / years) - 1) * 100;

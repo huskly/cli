@@ -1,22 +1,8 @@
 import chalk from "chalk";
 import { api } from "./shared.js";
+import { formatNumber, formatVolume } from "../format.js";
 import { ensure } from "#src/helpers.js";
 import type { SchwabQuoteResponse } from "#src/types.js";
-
-function formatNumber(value: number | undefined, decimals = 2): string {
-  if (value === undefined) return "-";
-  return value.toLocaleString("en-US", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  });
-}
-
-function formatVolume(value: number | undefined): string {
-  if (value === undefined) return "-";
-  if (value >= 1_000_000) return (value / 1_000_000).toFixed(2) + "M";
-  if (value >= 1_000) return (value / 1_000).toFixed(2) + "K";
-  return value.toString();
-}
 
 function formatChange(change: number | undefined, percentChange: number | undefined): string {
   if (change === undefined) return "-";

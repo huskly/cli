@@ -510,6 +510,165 @@ export interface SchwabOrder {
 // Convenience if you want to type the response you showed:
 export type SchwabOrdersResponse = SchwabOrder[];
 
+// ---- Instrument Search types (from Schwab Trader API /instruments endpoint) ----
+
+export type SchwabInstrumentSearchProjection =
+  | "symbol-search"
+  | "symbol-regex"
+  | "desc-search"
+  | "desc-regex"
+  | "search"
+  | "fundamental";
+
+export type SchwabInstrumentAssetType =
+  | "BOND"
+  | "EQUITY"
+  | "ETF"
+  | "EXTENDED"
+  | "FOREX"
+  | "FUTURE"
+  | "FUTURE_OPTION"
+  | "FUNDAMENTAL"
+  | "INDEX"
+  | "INDICATOR"
+  | "MUTUAL_FUND"
+  | "OPTION"
+  | "UNKNOWN";
+
+export interface SchwabFundamentalInstrument {
+  symbol?: string;
+  high52?: number;
+  low52?: number;
+  dividendAmount?: number;
+  dividendYield?: number;
+  dividendDate?: string;
+  peRatio?: number;
+  pegRatio?: number;
+  pbRatio?: number;
+  prRatio?: number;
+  pcfRatio?: number;
+  grossMarginTTM?: number;
+  grossMarginMRQ?: number;
+  netProfitMarginTTM?: number;
+  netProfitMarginMRQ?: number;
+  operatingMarginTTM?: number;
+  operatingMarginMRQ?: number;
+  returnOnEquity?: number;
+  returnOnAssets?: number;
+  returnOnInvestment?: number;
+  quickRatio?: number;
+  currentRatio?: number;
+  interestCoverage?: number;
+  totalDebtToCapital?: number;
+  ltDebtToEquity?: number;
+  totalDebtToEquity?: number;
+  epsTTM?: number;
+  epsChangePercentTTM?: number;
+  epsChangeYear?: number;
+  epsChange?: number;
+  revChangeYear?: number;
+  revChangeTTM?: number;
+  revChangeIn?: number;
+  sharesOutstanding?: number;
+  marketCapFloat?: number;
+  marketCap?: number;
+  bookValuePerShare?: number;
+  shortIntToFloat?: number;
+  shortIntDayToCover?: number;
+  divGrowthRate3Year?: number;
+  dividendPayAmount?: number;
+  dividendPayDate?: string;
+  beta?: number;
+  vol1DayAvg?: number;
+  vol10DayAvg?: number;
+  vol3MonthAvg?: number;
+  avg10DaysVolume?: number;
+  avg1DayVolume?: number;
+  avg3MonthVolume?: number;
+  declarationDate?: string;
+  dividendFreq?: number;
+  eps?: number;
+  dtnVolume?: number;
+  nextDividendPayDate?: string;
+  nextDividendDate?: string;
+  fundLeverageFactor?: number;
+  fundStrategy?: string;
+}
+
+export interface SchwabBasicInstrument {
+  cusip?: string;
+  symbol?: string;
+  description?: string;
+  exchange?: string;
+  assetType?: SchwabInstrumentAssetType;
+}
+
+export interface SchwabBondInstrument {
+  cusip?: string;
+  symbol?: string;
+  description?: string;
+  exchange?: string;
+  assetType?: SchwabInstrumentAssetType;
+  bondFactor?: number;
+  bondMultiplier?: number;
+  bondPrice?: number;
+}
+
+export interface SchwabInstrumentResponse {
+  cusip?: string;
+  symbol?: string;
+  description?: string;
+  exchange?: string;
+  assetType?: SchwabInstrumentAssetType;
+  bondFactor?: string;
+  bondMultiplier?: string;
+  bondPrice?: string;
+  fundamental?: SchwabFundamentalInstrument;
+  instrumentInfo?: SchwabBasicInstrument;
+  bondInstrumentInfo?: SchwabBondInstrument;
+}
+
+export interface SchwabInstrumentSearchResponse {
+  instruments?: SchwabInstrumentResponse[];
+}
+
+// ---- Movers API types (from Schwab Market Data API /movers endpoint) ----
+
+export type SchwabMoversIndexSymbol =
+  | "$DJI"
+  | "$COMPX"
+  | "$SPX"
+  | "NYSE"
+  | "NASDAQ"
+  | "OTCBB"
+  | "INDEX_ALL"
+  | "EQUITY_ALL"
+  | "OPTION_ALL"
+  | "OPTION_PUT"
+  | "OPTION_CALL";
+
+export type SchwabMoversSort = "VOLUME" | "TRADES" | "PERCENT_CHANGE_UP" | "PERCENT_CHANGE_DOWN";
+
+export type SchwabMoversFrequency = 0 | 1 | 5 | 10 | 30 | 60;
+
+export type SchwabMoversDirection = "up" | "down";
+
+export interface SchwabMover {
+  change?: number;
+  description?: string;
+  direction?: SchwabMoversDirection;
+  lastPrice?: number;
+  netChange?: number;
+  netPercentChange?: number;
+  symbol?: string;
+  totalVolume?: number;
+  volume?: number;
+}
+
+export interface SchwabMoversResponse {
+  screeners?: SchwabMover[];
+}
+
 // ---- Order Request (for placing orders) ----
 
 /**
