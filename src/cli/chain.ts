@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import { addDays, format, parse } from "date-fns";
-import { api } from "./shared.js";
+import { apiClient } from "./shared.js";
 
 export async function handleChain(
   symbol: string,
@@ -9,7 +9,7 @@ export async function handleChain(
 ): Promise<void> {
   let expiry: Date;
   const defaultDaysAhead = 30;
-
+  const api = await apiClient();
   if (expiryArg) {
     // Parse as local date to avoid timezone offset issues
     expiry = parse(expiryArg, "yyyy-MM-dd", new Date());

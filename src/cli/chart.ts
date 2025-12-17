@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import { format, subDays, addDays } from "date-fns";
 import open from "open";
-import { api, asciichart } from "./shared.js";
+import { apiClient, asciichart } from "./shared.js";
 
 export async function handleChart(
   symbol: string,
@@ -11,6 +11,7 @@ export async function handleChart(
 ): Promise<void> {
   console.log(chalk.bold(`\n📈 Price Chart: ${symbol} (${String(days)} days)\n`));
 
+  const api = await apiClient();
   const prices = (await api.getPriceHistory({ symbol, days })).map((c) => c.close);
 
   if (prices.length === 0) {

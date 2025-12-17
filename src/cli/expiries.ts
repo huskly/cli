@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import { addDays, format } from "date-fns";
-import { api } from "./shared.js";
+import { apiClient } from "./shared.js";
 
 export async function handleExpiries(
   symbol: string,
@@ -13,6 +13,7 @@ export async function handleExpiries(
 
   console.log(chalk.bold(`\n📅 Available Expiries: ${symbol}\n`));
 
+  const api = await apiClient();
   const expiries = await api.getAvailableExpiries(symbol, contractType, fromDate, toDate);
 
   if (expiries.length === 0) {

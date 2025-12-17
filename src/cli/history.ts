@@ -1,9 +1,10 @@
 import chalk from "chalk";
-import { api } from "./shared.js";
+import { apiClient } from "./shared.js";
 
 export async function handleHistory(symbol: string, days: number): Promise<void> {
   console.log(chalk.bold(`\n📊 Price History: ${symbol} (${days.toFixed(0)} days)\n`));
 
+  const api = await apiClient();
   const prices = (await api.getPriceHistory({ symbol, days })).map((c) => c.close);
 
   if (prices.length === 0) {

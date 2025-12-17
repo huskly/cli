@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { api } from "./shared.js";
+import { apiClient } from "./shared.js";
 import { parseOccSymbol } from "#src/helpers.js";
 import { currencyFormatUsd } from "#src/format.js";
 
@@ -32,7 +32,7 @@ export async function handlePositions(symbol?: string, type?: string): Promise<v
   if (type) filters.push(type.toUpperCase());
   const filterText = filters.length > 0 ? `: ${filters.join(", ")}` : "";
   console.log(chalk.bold(`\n📋 Account Positions${filterText}\n`));
-
+  const api = await apiClient();
   let positions = await api.getPositions(symbol);
 
   // Filter by asset type if specified

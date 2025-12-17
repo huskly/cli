@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import { format, isValid, parseISO, subDays } from "date-fns";
-import { api } from "./shared.js";
+import { apiClient } from "./shared.js";
 import type { SchwabOrder, SchwabOrderStatus } from "#src/types.js";
 import { currencyFormatUsd } from "#src/format.js";
 
@@ -132,6 +132,7 @@ export async function handleOrders(options: OrdersOptions): Promise<void> {
     fetchOptions.status = options.status;
   }
 
+  const api = await apiClient();
   const accountOrders = await api.fetchOrders(fetchOptions);
 
   if (accountOrders.length === 0) {

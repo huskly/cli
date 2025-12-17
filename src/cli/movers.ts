@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { api } from "./shared.js";
+import { apiClient } from "./shared.js";
 import { formatNumber, formatVolume } from "../format.js";
 import type {
   SchwabMoversIndexSymbol,
@@ -102,6 +102,7 @@ export async function handleMovers(symbolId: string, options: MoversOptions): Pr
   console.log(chalk.gray(`Sort: ${sortLabel}  |  Frequency: ${freqLabel}\n`));
   console.log(chalk.gray("-".repeat(70)));
 
+  const api = await apiClient();
   const response = await api.getMovers(upperSymbolId, sort, frequency);
 
   if (!response.screeners || response.screeners.length === 0) {

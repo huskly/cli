@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { api } from "./shared.js";
+import { apiClient } from "./shared.js";
 
 function formatCurrency(value: number): string {
   return "$" + value.toLocaleString("en-US", { minimumFractionDigits: 2 });
@@ -8,6 +8,7 @@ function formatCurrency(value: number): string {
 export async function handleAccount(): Promise<void> {
   console.log(chalk.bold("\n💰 Account Summary\n"));
 
+  const api = await apiClient();
   const balances = await api.getAccountBalances();
 
   console.log(chalk.gray("─".repeat(50)));

@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import { format, isValid, parseISO, startOfYear } from "date-fns";
-import { api } from "./shared.js";
+import { apiClient } from "./shared.js";
 import type { SchwabTransaction, SchwabTransferItem } from "#src/schwab/schwabApiTypes.js";
 import { currencyFormatUsd } from "#src/format.js";
 
@@ -62,7 +62,7 @@ export async function handleTransactions(options: TransactionOptions): Promise<v
       `\n📜 Transaction History (${format(startDate, DATE_FORMAT)} to ${format(endDate, DATE_FORMAT)})\n`
     )
   );
-
+  const api = await apiClient();
   const histories = await api.fetchTransactionHistory(startDate, endDate);
 
   if (histories.length === 0) {

@@ -1,9 +1,9 @@
 import chalk from "chalk";
-import { api } from "./shared.js";
+import { apiClient } from "./shared.js";
 
 export async function handleVix(): Promise<void> {
   console.log(chalk.bold("\n😱 VIX (Fear Index)\n"));
-
+  const api = await apiClient();
   const vix = await api.getVixLevel();
   if (!vix) {
     console.log(chalk.red("VIX level unavailable."));

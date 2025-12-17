@@ -1,9 +1,9 @@
 import chalk from "chalk";
-import { api } from "./shared.js";
+import { apiClient } from "./shared.js";
 
 export async function handleUserPreference(): Promise<void> {
   console.log(chalk.bold("\n User Preferences\n"));
-
+  const api = await apiClient();
   const prefs = await api.getUserPreference();
 
   // Accounts section

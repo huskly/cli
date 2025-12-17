@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { api } from "./shared.js";
+import { apiClient } from "./shared.js";
 import { formatNumber, formatLargeNumber } from "../format.js";
 import type {
   SchwabInstrumentSearchProjection,
@@ -150,7 +150,7 @@ export async function handleSearch(symbol: string, options: SearchOptions): Prom
   console.log(chalk.bold("\nInstrument Search\n"));
   console.log(chalk.gray(`Searching for "${symbol}" using ${projection} projection...\n`));
   console.log(chalk.gray("-".repeat(60)));
-
+  const api = await apiClient();
   const instruments = await api.searchInstruments(symbol, projection);
 
   if (instruments.length === 0) {

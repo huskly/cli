@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { api } from "./shared.js";
+import { apiClient } from "./shared.js";
 import {
   ALL_SCHWAB_INSTRUCTIONS,
   ALL_SCHWAB_ORDER_TYPES,
@@ -90,6 +90,7 @@ export async function handlePlaceOrder(
   }
 
   // Get the first account (most users have one account)
+  const api = await apiClient();
   const accounts = await api.fetchAccountNumbers();
   const account = accounts[0];
   if (!account) {

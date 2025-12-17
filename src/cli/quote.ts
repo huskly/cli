@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { api } from "./shared.js";
+import { apiClient } from "./shared.js";
 import { formatNumber, formatVolume } from "../format.js";
 import { ensure } from "#src/helpers.js";
 import type { SchwabQuoteResponse } from "#src/types.js";
@@ -84,7 +84,7 @@ function printQuote(quote: SchwabQuoteResponse): void {
 export async function handleQuote(symbols: string[]): Promise<void> {
   console.log(chalk.bold("\n📈 Market Quotes\n"));
   console.log(chalk.gray("─".repeat(60)));
-
+  const api = await apiClient();
   const quotes = await api.getQuotes(symbols);
 
   for (const symbol of symbols) {
