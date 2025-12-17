@@ -30,24 +30,24 @@ npm run build
 
 ```bash
 # Login via huskly.finance auth
-huskly-cli-auth login
+huskly-cli auth login
 
 # Check authentication status
-huskly-cli-auth status
+huskly-cli auth status
 
 # Logout
-huskly-cli-auth logout
+huskly-cli auth logout
 ```
 
-### Market Data Commands
+### Data Commands
 
 #### quote - Get Stock Quotes
 
 Get current price quotes for one or more symbols.
 
 ```bash
-huskly-cli-market quote AAPL
-huskly-cli-market quote AAPL MSFT GOOGL
+huskly-cli quote AAPL
+huskly-cli quote AAPL MSFT GOOGL
 ```
 
 #### history - Price History
@@ -55,11 +55,12 @@ huskly-cli-market quote AAPL MSFT GOOGL
 Get historical price data for a symbol.
 
 ```bash
-huskly-cli-market history AAPL
-huskly-cli-market history AAPL --days 30
+huskly-cli history AAPL
+huskly-cli history AAPL --days 30
 ```
 
 Options:
+
 - `-d, --days <n>` - Number of days of history (default: 10)
 
 #### chart - ASCII Price Chart
@@ -67,12 +68,13 @@ Options:
 Display an ASCII chart of price history.
 
 ```bash
-huskly-cli-market chart SPY
-huskly-cli-market chart SPY --days 60 --height 20
-huskly-cli-market chart SPY --image  # Open image chart in browser
+huskly-cli chart SPY
+huskly-cli chart SPY --days 60 --height 20
+huskly-cli chart SPY --image  # Open image chart in browser
 ```
 
 Options:
+
 - `-d, --days <n>` - Number of days of history (default: 30)
 - `-h, --height <n>` - Chart height in rows (default: 15)
 - `-i, --image` - Generate image chart and open in browser
@@ -82,7 +84,7 @@ Options:
 Get the current VIX level with sentiment indicator.
 
 ```bash
-huskly-cli-market vix
+huskly-cli vix
 ```
 
 #### expiries - Option Expiration Dates
@@ -90,12 +92,13 @@ huskly-cli-market vix
 List available option expiration dates for a symbol.
 
 ```bash
-huskly-cli-market expiries SPX
-huskly-cli-market expiries SPY --type CALL
-huskly-cli-market expiries AAPL --from 2024-01-01 --to 2024-06-30
+huskly-cli expiries SPX
+huskly-cli expiries SPY --type CALL
+huskly-cli expiries AAPL --from 2024-01-01 --to 2024-06-30
 ```
 
 Options:
+
 - `-t, --type <type>` - Contract type: PUT or CALL (default: PUT)
 - `-f, --from <date>` - Start date (YYYY-MM-DD)
 - `-e, --to <date>` - End date (YYYY-MM-DD)
@@ -105,12 +108,13 @@ Options:
 Get the options chain for a symbol and expiration date.
 
 ```bash
-huskly-cli-market chain SPX
-huskly-cli-market chain SPX 2024-12-20
-huskly-cli-market chain AAPL --around 180 --strikes 5
+huskly-cli chain SPX
+huskly-cli chain SPX 2024-12-20
+huskly-cli chain AAPL --around 180 --strikes 5
 ```
 
 Options:
+
 - `-a, --around <strike>` - Filter strikes around this price (defaults to last price)
 - `-s, --strikes <count>` - Number of strikes to show above/below center (default: 10)
 
@@ -121,7 +125,7 @@ Options:
 Show account equity and net liquidation value.
 
 ```bash
-huskly-cli-market account
+huskly-cli account
 ```
 
 #### positions - Account Positions
@@ -129,8 +133,8 @@ huskly-cli-market account
 Show all account positions, optionally filtered by symbol.
 
 ```bash
-huskly-cli-market positions
-huskly-cli-market positions AAPL
+huskly-cli positions
+huskly-cli positions AAPL
 ```
 
 #### transactions - Transaction History
@@ -138,11 +142,12 @@ huskly-cli-market positions AAPL
 List account transaction history.
 
 ```bash
-huskly-cli-market transactions
-huskly-cli-market transactions --start 2024-01-01 --end 2024-12-31
+huskly-cli transactions
+huskly-cli transactions --start 2024-01-01 --end 2024-12-31
 ```
 
 Options:
+
 - `-s, --start <date>` - Start date (YYYY-MM-DD, defaults to start of year)
 - `-e, --end <date>` - End date (YYYY-MM-DD, defaults to today)
 
@@ -153,13 +158,14 @@ Options:
 List account orders with optional filtering.
 
 ```bash
-huskly-cli-market orders
-huskly-cli-market orders --from 2024-01-01 --to 2024-12-31
-huskly-cli-market orders --status FILLED
-huskly-cli-market orders --max-results 10
+huskly-cli orders
+huskly-cli orders --from 2024-01-01 --to 2024-12-31
+huskly-cli orders --status FILLED
+huskly-cli orders --max-results 10
 ```
 
 Options:
+
 - `-f, --from <date>` - From entered time (YYYY-MM-DD, defaults to 30 days ago)
 - `-t, --to <date>` - To entered time (YYYY-MM-DD, defaults to today)
 - `-s, --status <status>` - Filter by order status (FILLED, WORKING, CANCELED, etc.)
@@ -171,24 +177,26 @@ Place a simple MARKET or LIMIT order for equities.
 
 ```bash
 # Market order to buy 10 shares of AAPL
-huskly-cli-market place-order AAPL 10 BUY
+huskly-cli place-order AAPL 10 BUY
 
 # Limit order to buy 5 shares of MSFT at $400
-huskly-cli-market place-order MSFT 5 BUY --type LIMIT --price 400
+huskly-cli place-order MSFT 5 BUY --type LIMIT --price 400
 
 # Market order to sell 20 shares
-huskly-cli-market place-order GOOGL 20 SELL
+huskly-cli place-order GOOGL 20 SELL
 
 # Sell short with Good Till Cancel duration
-huskly-cli-market place-order SPY 100 SELL_SHORT --duration GOOD_TILL_CANCEL
+huskly-cli place-order SPY 100 SELL_SHORT --duration GOOD_TILL_CANCEL
 ```
 
 Arguments:
+
 - `<symbol>` - Stock symbol to trade
 - `<quantity>` - Number of shares
 - `<instruction>` - Order instruction: BUY, SELL, BUY_TO_COVER, SELL_SHORT
 
 Options:
+
 - `-t, --type <type>` - Order type: MARKET or LIMIT (default: MARKET)
 - `-p, --price <price>` - Limit price (required for LIMIT orders)
 - `-s, --session <session>` - Trading session: NORMAL, AM, PM, SEAMLESS (default: NORMAL)
@@ -201,7 +209,7 @@ Options:
 Start an interactive REPL to run multiple commands without re-authenticating.
 
 ```bash
-huskly-cli-market repl
+huskly-cli repl
 ```
 
 ## Project Structure
@@ -210,7 +218,6 @@ huskly-cli-market repl
 src/
 ├── auth/           # Authentication (huskly.finance device auth)
 ├── cli/            # CLI commands
-│   └── market/     # Market command handlers
 ├── schwab/         # Schwab API integration
 ├── types.ts        # TypeScript type definitions
 ├── cache.ts        # Redis caching layer
