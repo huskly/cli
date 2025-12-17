@@ -210,25 +210,32 @@ export function handleRepl(): void {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
+    terminal: true,
+    historySize: 100,
+    prompt: chalk.green("market> "),
   });
 
-  const prompt = (): void => {
-    rl.question(chalk.green("market> "), (input: string) => {
-      executeCommand(input)
-        .catch((error: unknown) => {
-          const message = error instanceof Error ? error.message : String(error);
-          console.error(chalk.red("Error:"), message);
-        })
-        .finally(() => {
-          prompt();
-        });
-    });
-  };
+  let isProcessing = false;
+
+  rl.on("line", (input: string) => {
+    if (isProcessing) return;
+    isProcessing = true;
+
+    executeCommand(input)
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(chalk.red("Error:"), message);
+      })
+      .finally(() => {
+        isProcessing = false;
+        rl.prompt();
+      });
+  });
 
   rl.on("close", () => {
     console.log(chalk.gray("\nGoodbye!"));
     process.exit(0);
   });
 
-  prompt();
+  rl.prompt();
 }
