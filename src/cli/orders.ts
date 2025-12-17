@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import { format, isValid, parseISO, subDays } from "date-fns";
 import { apiClient } from "./shared.js";
-import type { SchwabOrder, SchwabOrderStatus } from "#src/types.js";
+import type { SchwabOrder, SchwabOrderStatus } from "@huskly/schwab-client";
 import { currencyFormatUsd } from "#src/format.js";
 
 interface OrdersOptions {

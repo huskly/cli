@@ -6,7 +6,7 @@ import {
   type SchwabInstruction,
   type SchwabOrderRequest,
   type SchwabOrderType,
-} from "#src/types.js";
+} from "@huskly/schwab-client";
 import { ensureFloat } from "#src/helpers.js";
 
 interface PlaceOrderOptions {

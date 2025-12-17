@@ -5,7 +5,7 @@ import type {
   SchwabInstrumentSearchProjection,
   SchwabInstrumentResponse,
   SchwabFundamentalInstrument,
-} from "#src/types.js";
+} from "@huskly/schwab-client";
 
 const VALID_PROJECTIONS: SchwabInstrumentSearchProjection[] = [
   "symbol-search",

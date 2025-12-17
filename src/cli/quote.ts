@@ -2,7 +2,7 @@ import chalk from "chalk";
 import { apiClient } from "./shared.js";
 import { formatNumber, formatVolume } from "../format.js";
 import { ensure } from "#src/helpers.js";
-import type { SchwabQuoteResponse } from "#src/types.js";
+import type { SchwabQuoteResponse } from "@huskly/schwab-client";
 
 function formatChange(change: number | undefined, percentChange: number | undefined): string {
   if (change === undefined) return "-";

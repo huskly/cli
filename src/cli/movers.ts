@@ -6,7 +6,7 @@ import type {
   SchwabMoversSort,
   SchwabMoversFrequency,
   SchwabMover,
-} from "#src/types.js";
+} from "@huskly/schwab-client";
 
 const VALID_INDEX_SYMBOLS: SchwabMoversIndexSymbol[] = [
   "$DJI",
