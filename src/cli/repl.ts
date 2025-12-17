@@ -19,7 +19,7 @@ ${chalk.bold("Available commands:")}
   ${chalk.cyan("expiries <symbol>")}      List option expiration dates (options: -t/--type, -f/--from, -e/--to)
   ${chalk.cyan("chain <symbol> [expiry]")} Get option chain (options: -a/--around, -s/--strikes)
   ${chalk.cyan("account")}                Show account equity
-  ${chalk.cyan("positions <symbol>")}     Show option positions
+  ${chalk.cyan("positions [symbol]")}     Show positions (options: -t/--type)
   ${chalk.cyan("help")}                   Show this help
   ${chalk.cyan("exit")}                   Exit the REPL
 
@@ -176,11 +176,8 @@ async function executeCommand(input: string): Promise<void> {
 
       case "positions": {
         const symbol = positional[0];
-        if (!symbol) {
-          console.log(chalk.red("Usage: positions <symbol>"));
-          return;
-        }
-        await handlePositions(symbol);
+        const type = options["t"] ?? options["type"];
+        await handlePositions(symbol, type);
         break;
       }
 

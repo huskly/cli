@@ -29,3 +29,44 @@ export function calculateCagr(startEquity: number, finalEquity: number, years: n
   if (years <= 0 || startEquity <= 0) return 0;
   return (Math.pow(finalEquity / startEquity, 1 / years) - 1) * 100;
 }
+
+const MONTH_ABBREVS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+export function parseOccSymbol(occSymbol: string): string {
+  // OCC format: ROOT(6 chars padded) + YYMMDD + C/P + Strike(8 digits, 3 implied decimals)
+  // Example: "AAPL  251219C00195000" -> "AAPL Dec 19 $195 C"
+  const trimmed = occSymbol.replace(/\s+/g, "");
+  const match = /^([A-Z]+)(\d{6})([CP])(\d{8})$/.exec(trimmed);
+  if (!match) return occSymbol;
+
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  const root = match[1]!;
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  const expDate = match[2]!;
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  const optionType = match[3]!;
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  const strikeStr = match[4]!;
+  const month = parseInt(expDate.slice(2, 4), 10) - 1;
+  const day = parseInt(expDate.slice(4, 6), 10);
+  const strike = parseInt(strikeStr, 10) / 1000;
+  const year = 2000 + parseInt(expDate.slice(0, 2), 10);
+
+  const monthAbbrev = MONTH_ABBREVS[month] ?? "???";
+  const strikeFormatted = strike % 1 === 0 ? String(strike) : strike.toFixed(2);
+
+  return `${root} ${monthAbbrev} ${String(day)} ${String(year)} ${strikeFormatted} ${optionType}`;
+}

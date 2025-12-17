@@ -139,10 +139,11 @@ program
 
 program
   .command("positions")
-  .description("Show all account positions, optionally filtered by symbol")
+  .description("Show all account positions, optionally filtered by symbol or type")
   .argument("[symbol]", "Optional symbol to filter positions", undefined)
-  .action(async (symbol?: string) => {
-    await handlePositions(symbol);
+  .option("-t, --type <type>", "Filter by asset type (e.g., OPTION, EQUITY)")
+  .action(async (symbol: string | undefined, options: { type?: string }) => {
+    await handlePositions(symbol, options.type);
   });
 
 program
