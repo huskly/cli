@@ -1,3 +1,98 @@
+// ---- Quote types (from Schwab Market Data API) ----
+
+export type SchwabQuoteAssetMainType =
+  | "EQUITY"
+  | "OPTION"
+  | "INDEX"
+  | "MUTUAL_FUND"
+  | "FUTURE"
+  | "FOREX";
+
+export interface SchwabQuoteReference {
+  cusip?: string;
+  description: string;
+  exchange: string;
+  exchangeName: string;
+  otcMarketTier?: string;
+  // Option-specific fields
+  contractType?: "C" | "P";
+  daysToExpiration?: number;
+  expirationDay?: number;
+  expirationMonth?: number;
+  expirationYear?: number;
+  strikePrice?: number;
+  underlying?: string;
+  multiplier?: number;
+}
+
+export interface SchwabQuoteData {
+  "52WeekHigh"?: number;
+  "52WeekLow"?: number;
+  askPrice?: number;
+  askSize?: number;
+  bidPrice?: number;
+  bidSize?: number;
+  closePrice?: number;
+  highPrice?: number;
+  lowPrice?: number;
+  lastPrice?: number;
+  lastSize?: number;
+  mark?: number;
+  markChange?: number;
+  markPercentChange?: number;
+  netChange?: number;
+  netPercentChange?: number;
+  openPrice?: number;
+  totalVolume?: number;
+  tradeTime?: number;
+  quoteTime?: number;
+  securityStatus?: string;
+  volatility?: number;
+  // Option Greeks
+  delta?: number;
+  gamma?: number;
+  theta?: number;
+  vega?: number;
+  rho?: number;
+  openInterest?: number;
+  underlyingPrice?: number;
+}
+
+export interface SchwabQuoteRegular {
+  regularMarketLastPrice?: number;
+  regularMarketLastSize?: number;
+  regularMarketNetChange?: number;
+  regularMarketPercentChange?: number;
+  regularMarketTradeTime?: number;
+}
+
+export interface SchwabQuoteFundamental {
+  avg10DaysVolume?: number;
+  avg1YearVolume?: number;
+  divAmount?: number;
+  divFreq?: number;
+  divPayAmount?: number;
+  divYield?: number;
+  eps?: number;
+  peRatio?: number;
+  declarationDate?: string;
+  divExDate?: string;
+  divPayDate?: string;
+}
+
+export interface SchwabQuoteResponse {
+  assetMainType: SchwabQuoteAssetMainType;
+  assetSubType?: string;
+  symbol: string;
+  quoteType?: string;
+  realtime: boolean;
+  ssid: number;
+  reference: SchwabQuoteReference;
+  quote: SchwabQuoteData;
+  regular?: SchwabQuoteRegular;
+  fundamental?: SchwabQuoteFundamental;
+}
+
 export interface OptionQuote {
   symbol: string;
   expiry: Date;

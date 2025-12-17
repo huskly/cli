@@ -45,7 +45,8 @@ export async function handleChain(
   const puts = chain.filter((o) => !o.isCall);
 
   // Default to current stock price if --around not specified
-  const currentPrice = quotes[symbol];
+  const quoteData = quotes[symbol];
+  const currentPrice = quoteData?.quote.mark ?? quoteData?.quote.lastPrice;
   const aroundStrike = options.around ? parseFloat(options.around) : (currentPrice ?? null);
   const strikeCount = parseInt(options.strikes, 10);
 

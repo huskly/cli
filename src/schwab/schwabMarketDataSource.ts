@@ -5,6 +5,7 @@ import type {
   SchwabOrder,
   SchwabOrderRequest,
   SchwabOrderStatus,
+  SchwabQuoteResponse,
 } from "#src/types.js";
 import type {
   SchwabAccount,
@@ -16,8 +17,6 @@ import { HusklyDeviceAuth } from "#src/auth/husklyDeviceAuth.js";
 import { logger } from "#src/logger.js";
 import { cacheFetch, CACHE_DURATION } from "#src/cache.js";
 import { differenceInDays, format, parse, startOfYear } from "date-fns";
-
-type SchwabQuoteResponse = Record<string, { quote: { lastPrice: number; mark?: number } }>;
 
 interface SchwabOptionChainResponse {
   symbol: string;
@@ -85,15 +84,11 @@ export class SchwabMarketDataSource implements MarketDataSource {
     return this.token;
   }
 
-  async getQuotes(symbols: string[]): Promise<Record<string, number>> {
+  async getQuotes(symbols: string[]): Promise<Record<string, SchwabQuoteResponse>> {
     const symbolsStr = symbols.map(encodeURIComponent).join(",");
-    const data = await this.makeApiRequest<SchwabQuoteResponse>(
+    return await this.makeApiRequest<Record<string, SchwabQuoteResponse>>(
       `/marketdata/v1/quotes?symbols=${symbolsStr}`
     );
-    return Object.entries(data).reduce<Record<string, number>>((acc, [symbol, quoteData]) => {
-      acc[symbol] = quoteData.quote.mark ?? quoteData.quote.lastPrice;
-      return acc;
-    }, {});
   }
 
   async getPriceHistory({
@@ -146,7 +141,8 @@ export class SchwabMarketDataSource implements MarketDataSource {
 
   async getVixLevel(): Promise<number | undefined> {
     const quotes = await this.getQuotes(["$VIX"]);
-    return quotes["$VIX"];
+    const vixQuote = quotes["$VIX"];
+    return vixQuote?.quote.mark ?? vixQuote?.quote.lastPrice;
   }
 
   // fromDate and toDate are in "YYYY-MM-DD" format

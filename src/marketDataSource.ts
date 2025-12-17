@@ -1,4 +1,4 @@
-import type { OptionQuote, ExistingSpread } from "#src/types.js";
+import type { OptionQuote, ExistingSpread, SchwabQuoteResponse } from "#src/types.js";
 
 export interface PriceHistoryCandle {
   datetime: number;
@@ -18,8 +18,8 @@ export interface MarketDataSource {
 
   getRiskFreeRate(date: Date): Promise<number>;
 
-  /* Returns a mapping of symbol -> last price */
-  getQuotes(symbols: string[]): Promise<Record<string, number>>;
+  /* Returns a mapping of symbol -> full quote data */
+  getQuotes(symbols: string[]): Promise<Record<string, SchwabQuoteResponse>>;
 
   // Returns an array of daily closes, most recent last
   getPriceHistory(args: {
