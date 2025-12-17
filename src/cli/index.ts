@@ -1,54 +1,192 @@
 #!/usr/bin/env node
-import { disconnectCache } from "#src/cache.js";
+import { Command } from "commander";
 import chalk from "chalk";
+import { handleQuote } from "./market/quote.js";
+import { handleHistory } from "./market/history.js";
+import { handleChart } from "./market/chart.js";
+import { handleVix } from "./market/vix.js";
+import { handleExpiries } from "./market/expiries.js";
+import { handleChain } from "./market/chain.js";
+import { handleAccount } from "./market/account.js";
+import { handlePositions } from "./market/positions.js";
+import { handleTransactions } from "./market/transactions.js";
+import { handleOrders } from "./market/orders.js";
+import { handlePlaceOrder } from "./market/placeOrder.js";
+import { handleRepl } from "./market/repl.js";
+import { disconnectCache } from "#src/cache.js";
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  const subcommand = args[0];
+const program = new Command();
 
-  switch (subcommand) {
-    case "auth": {
-      // Re-execute with auth CLI
-      process.argv = ["node", "huskly-cli", ...args.slice(1)];
-      await import("../auth/cli.js");
-      break;
+program
+  .name("huskly-cli")
+  .description("Terminal-based trading tools powered by Schwab API")
+  .version("1.0.0");
+
+// Auth subcommand
+const authCmd = new Command("auth")
+  .description("Manage authentication with huskly.finance")
+  .action(() => {
+    authCmd.outputHelp();
+  });
+
+authCmd
+  .command("login")
+  .description("Authenticate with huskly.finance")
+  .action(async () => {
+    const { HusklyDeviceAuth } = await import("../auth/husklyDeviceAuth.js");
+    const auth = new HusklyDeviceAuth();
+    await auth.login();
+  });
+
+authCmd
+  .command("logout")
+  .description("Clear stored credentials")
+  .action(async () => {
+    const { HusklyDeviceAuth } = await import("../auth/husklyDeviceAuth.js");
+    const auth = new HusklyDeviceAuth();
+    await auth.logout();
+  });
+
+authCmd
+  .command("status")
+  .description("Check authentication status")
+  .action(async () => {
+    const { HusklyDeviceAuth } = await import("../auth/husklyDeviceAuth.js");
+    const auth = new HusklyDeviceAuth();
+    await auth.status();
+  });
+
+program.addCommand(authCmd);
+
+// Market commands (now top-level)
+program
+  .command("quote")
+  .description("Get current price quotes for one or more symbols")
+  .argument("<symbols...>", "Stock symbols to quote")
+  .action(async (symbols: string[]) => {
+    await handleQuote(symbols);
+  });
+
+program
+  .command("history")
+  .description("Get price history for a symbol")
+  .argument("<symbol>", "Stock symbol")
+  .option("-d, --days <n>", "Number of days of history", "10")
+  .action(async (symbol: string, options: { days: string }) => {
+    await handleHistory(symbol, parseInt(options.days));
+  });
+
+program
+  .command("chart")
+  .description("Display ASCII price chart for a symbol")
+  .argument("<symbol>", "Stock symbol")
+  .option("-d, --days <n>", "Number of days of history", "30")
+  .option("-h, --height <n>", "Chart height in rows", "15")
+  .option("-i, --image", "Generate image chart and open in browser")
+  .action(async (symbol: string, options: { days: string; height: string; image?: boolean }) => {
+    await handleChart(symbol, parseInt(options.days), parseInt(options.height), options.image);
+  });
+
+program
+  .command("vix")
+  .description("Get current VIX level with sentiment indicator")
+  .action(async () => {
+    await handleVix();
+  });
+
+program
+  .command("expiries")
+  .description("List available option expiration dates")
+  .argument("<symbol>", "Stock symbol")
+  .option("-t, --type <type>", "Contract type (PUT or CALL)", "PUT")
+  .option("-f, --from <date>", "Start date (YYYY-MM-DD)")
+  .option("-e, --to <date>", "End date (YYYY-MM-DD)")
+  .action(async (symbol: string, options: { type: string; from?: string; to?: string }) => {
+    await handleExpiries(symbol, options);
+  });
+
+program
+  .command("chain")
+  .description("Get option chain for a symbol and expiry")
+  .argument("<symbol>", "Stock symbol")
+  .argument("[expiry]", "Expiration date (YYYY-MM-DD)")
+  .option("-a, --around <strike>", "Filter strikes around this price, defaults to the last price")
+  .option("-s, --strikes <count>", "Number of strikes to show above/below center", "10")
+  .action(
+    async (
+      symbol: string,
+      expiry: string | undefined,
+      options: { around?: string; strikes: string }
+    ) => {
+      await handleChain(symbol, expiry, options);
     }
+  );
 
-    case "market": {
-      // Re-execute with market CLI
-      process.argv = ["node", "huskly-cli", ...args.slice(1)];
-      await import("./market.js");
-      break;
+program
+  .command("account")
+  .description("Show account equity/net liquidation value")
+  .action(async () => {
+    await handleAccount();
+  });
+
+program
+  .command("positions")
+  .description("Show all account positions, optionally filtered by symbol")
+  .argument("[symbol]", "Optional symbol to filter positions", undefined)
+  .action(async (symbol?: string) => {
+    await handlePositions(symbol);
+  });
+
+program
+  .command("transactions")
+  .description("List account transaction history (defaults to current year)")
+  .option("-s, --start <date>", "Start date (YYYY-MM-DD)")
+  .option("-e, --end <date>", "End date (YYYY-MM-DD)")
+  .action(async (options: { start?: string; end?: string }) => {
+    await handleTransactions(options);
+  });
+
+program
+  .command("orders")
+  .description("List account orders (defaults to last 30 days)")
+  .option("-f, --from <date>", "From entered time (YYYY-MM-DD)")
+  .option("-t, --to <date>", "To entered time (YYYY-MM-DD)")
+  .option("-s, --status <status>", "Filter by order status (FILLED, WORKING, CANCELED, etc.)")
+  .option("-m, --max-results <n>", "Maximum number of orders to retrieve")
+  .action(async (options: { from?: string; to?: string; status?: string; maxResults?: string }) => {
+    await handleOrders(options as Parameters<typeof handleOrders>[0]);
+  });
+
+program
+  .command("place-order")
+  .description("Place a simple MARKET or LIMIT order for equities")
+  .argument("<symbol>", "Stock symbol to trade")
+  .argument("<quantity>", "Number of shares")
+  .argument("<instruction>", "Order instruction: BUY, SELL, BUY_TO_COVER, SELL_SHORT")
+  .option("-t, --type <type>", "Order type: MARKET or LIMIT", "MARKET")
+  .option("-p, --price <price>", "Limit price (required for LIMIT orders)")
+  .option("-s, --session <session>", "Trading session: NORMAL, AM, PM, SEAMLESS", "NORMAL")
+  .option("-d, --duration <duration>", "Order duration: DAY, GOOD_TILL_CANCEL, etc.", "DAY")
+  .action(
+    async (
+      symbol: string,
+      quantity: string,
+      instruction: string,
+      options: { type: string; price?: string; session?: string; duration?: string }
+    ) => {
+      await handlePlaceOrder(symbol, quantity, instruction, options);
     }
+  );
 
-    default:
-      printUsage();
-      process.exit(subcommand ? 1 : 0);
-  }
-}
+program
+  .command("repl")
+  .description("Start an interactive REPL to run multiple commands")
+  .action(() => {
+    handleRepl();
+  });
 
-function printUsage(): void {
-  console.log(`
-${chalk.bold("huskly-cli")} - Terminal-based trading tools powered by Schwab API
-
-${chalk.bold("Usage:")}
-  huskly-cli <command> [options]
-
-${chalk.bold("Commands:")}
-  ${chalk.cyan("auth")}      Manage authentication with huskly.finance
-  ${chalk.cyan("market")}    Explore market data (quotes, options, history)
-
-${chalk.bold("Examples:")}
-  $ huskly-cli auth login
-  $ huskly-cli market quote SPY
-  $ huskly-cli market vix
-  $ huskly-cli market chain SPX --puts
-
-Run ${chalk.cyan("huskly-cli <command>")} without arguments for command-specific help.
-`);
-}
-
-main()
+program
+  .parseAsync(process.argv)
   .catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
     console.error(chalk.red("Error:"), message);

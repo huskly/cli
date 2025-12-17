@@ -16,8 +16,7 @@
   },
   "bin": {
     "huskly-cli": "./dist/cli/index.js",
-    "huskly-cli-auth": "./dist/auth/cli.js",
-    "huskly-cli-market": "./dist/cli/market.js"
+    "huskly-cli-auth": "./dist/auth/cli.js"
   },
   "engines": {
     "node": ">=20.0.0"
