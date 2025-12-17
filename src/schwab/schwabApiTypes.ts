@@ -95,3 +95,33 @@ export interface SchwabAccountTransactionHistory {
   accountNumber: string;
   transactions: SchwabTransaction[];
 }
+
+// User Preference types
+export interface SchwabUserPreferenceAccount {
+  accountNumber: string;
+  primaryAccount: boolean;
+  type: string;
+  nickName: string;
+  accountColor: string;
+  displayAcctId: string;
+  autoPositionEffect: boolean;
+}
+
+export interface SchwabStreamerInfo {
+  streamerSocketUrl: string;
+  schwabClientCustomerId: string;
+  schwabClientCorrelId: string;
+  schwabClientChannel: string;
+  schwabClientFunctionId: string;
+}
+
+export interface SchwabOffer {
+  level2Permissions: boolean;
+  mktDataPermission: string;
+}
+
+export interface SchwabUserPreference {
+  accounts: SchwabUserPreferenceAccount[];
+  streamerInfo: SchwabStreamerInfo;
+  offers: SchwabOffer[];
+}

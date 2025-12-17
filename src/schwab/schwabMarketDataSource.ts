@@ -12,6 +12,7 @@ import type {
   SchwabAccountTransactionHistory,
   SchwabPosition,
   SchwabTransaction,
+  SchwabUserPreference,
 } from "#src/schwab/schwabApiTypes.js";
 import { HusklyDeviceAuth } from "#src/auth/husklyDeviceAuth.js";
 import { logger } from "#src/logger.js";
@@ -477,6 +478,10 @@ export class SchwabMarketDataSource implements MarketDataSource {
     const orderId = locationHeader?.split("/").pop() ?? "unknown";
 
     return { orderId };
+  }
+
+  async getUserPreference(): Promise<SchwabUserPreference> {
+    return await this.makeApiRequest<SchwabUserPreference>("/trader/v1/userPreference");
   }
 
   private headersToRecord(headers: RequestInit["headers"]): Record<string, string> {

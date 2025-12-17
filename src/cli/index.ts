@@ -13,6 +13,7 @@ import { handleTransactions } from "./transactions.js";
 import { handleOrders } from "./orders.js";
 import { handlePlaceOrder } from "./placeOrder.js";
 import { handleRepl } from "./repl.js";
+import { handleUserPreference } from "./userPreference.js";
 import { disconnectCache } from "#src/cache.js";
 
 const program = new Command();
@@ -127,6 +128,13 @@ program
   .description("Show account equity/net liquidation value")
   .action(async () => {
     await handleAccount();
+  });
+
+program
+  .command("user-preference")
+  .description("Show user preferences, streamer info, and account settings")
+  .action(async () => {
+    await handleUserPreference();
   });
 
 program
