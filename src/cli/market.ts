@@ -18,47 +18,10 @@ import { disconnectCache } from "#src/cache.js";
 const program = new Command();
 
 program
-  .name("huskly-cli")
-  .description("Terminal-based trading tools powered by Schwab API")
+  .name("huskly-cli-market")
+  .description("Explore market data from Schwab API")
   .version("1.0.0");
 
-// Auth subcommand
-const authCmd = new Command("auth")
-  .description("Manage authentication with huskly.finance")
-  .action(() => {
-    authCmd.outputHelp();
-  });
-
-authCmd
-  .command("login")
-  .description("Authenticate with huskly.finance")
-  .action(async () => {
-    const { HusklyDeviceAuth } = await import("../auth/husklyDeviceAuth.js");
-    const auth = new HusklyDeviceAuth();
-    await auth.login();
-  });
-
-authCmd
-  .command("logout")
-  .description("Clear stored credentials")
-  .action(async () => {
-    const { HusklyDeviceAuth } = await import("../auth/husklyDeviceAuth.js");
-    const auth = new HusklyDeviceAuth();
-    await auth.logout();
-  });
-
-authCmd
-  .command("status")
-  .description("Check authentication status")
-  .action(async () => {
-    const { HusklyDeviceAuth } = await import("../auth/husklyDeviceAuth.js");
-    const auth = new HusklyDeviceAuth();
-    await auth.status();
-  });
-
-program.addCommand(authCmd);
-
-// Market commands (now top-level)
 program
   .command("quote")
   .description("Get current price quotes for one or more symbols")

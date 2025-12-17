@@ -1,4 +1,4 @@
-import { SchwabMarketDataSource } from "../../schwab/schwabMarketDataSource.js";
+import { SchwabMarketDataSource } from "../schwab/schwabMarketDataSource.js";
 import { createRequire } from "module";
 
 export interface PlotConfig {
