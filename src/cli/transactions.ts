@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import { format, isValid, parseISO, startOfYear } from "date-fns";
 import { apiClient } from "./shared.js";
-import type { SchwabTransaction, SchwabTransferItem } from "#src/schwab/schwabApiTypes.js";
+import type { SchwabTransaction, SchwabTransferItem } from "@huskly/schwab-client";
 import { currencyFormatUsd } from "#src/format.js";
 
 interface TransactionOptions {

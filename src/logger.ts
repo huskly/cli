@@ -1,7 +1,6 @@
 import pino from "pino";
 
 const level = process.env["LOG_LEVEL"] ?? "info";
-
 const options: pino.LoggerOptions = { level };
 
 if (process.stdout.isTTY) {
