@@ -10,6 +10,8 @@ const COLUMN_WIDTHS = {
   avgPrice: 12,
   marketValue: 14,
   dayPL: 12,
+  plOpen: 14,
+  plPct: 10,
 } as const;
 
 const SEPARATOR_LENGTH =
@@ -35,7 +37,7 @@ export async function handlePositions(symbol?: string): Promise<void> {
 
   console.log(chalk.gray("─".repeat(SEPARATOR_LENGTH)));
   console.log(
-    `${chalk.gray(formatColumn("Symbol", COLUMN_WIDTHS.symbol))} ${chalk.gray(formatColumn("Type", COLUMN_WIDTHS.type))} ${chalk.gray(formatColumn("Long", COLUMN_WIDTHS.longQty, "right"))} ${chalk.gray(formatColumn("Short", COLUMN_WIDTHS.shortQty, "right"))} ${chalk.gray(formatColumn("Avg Price", COLUMN_WIDTHS.avgPrice, "right"))} ${chalk.gray(formatColumn("Mkt Value", COLUMN_WIDTHS.marketValue, "right"))} ${chalk.gray(formatColumn("Day P/L", COLUMN_WIDTHS.dayPL, "right"))}`
+    `${chalk.gray(formatColumn("Symbol", COLUMN_WIDTHS.symbol))} ${chalk.gray(formatColumn("Type", COLUMN_WIDTHS.type))} ${chalk.gray(formatColumn("Long", COLUMN_WIDTHS.longQty, "right"))} ${chalk.gray(formatColumn("Short", COLUMN_WIDTHS.shortQty, "right"))} ${chalk.gray(formatColumn("Avg Price", COLUMN_WIDTHS.avgPrice, "right"))} ${chalk.gray(formatColumn("Mkt Value", COLUMN_WIDTHS.marketValue, "right"))} ${chalk.gray(formatColumn("Day P/L", COLUMN_WIDTHS.dayPL, "right"))} ${chalk.gray(formatColumn("P/L Open", COLUMN_WIDTHS.plOpen, "right"))} ${chalk.gray(formatColumn("P/L %", COLUMN_WIDTHS.plPct, "right"))}`
   );
   console.log(chalk.gray("─".repeat(SEPARATOR_LENGTH)));
 
@@ -49,6 +51,16 @@ export async function handlePositions(symbol?: string): Promise<void> {
     const dayPL = pos.currentDayProfitLoss;
     const dayPLValue = dayPL >= 0 ? `+$${dayPL.toFixed(2)}` : `-$${Math.abs(dayPL).toFixed(2)}`;
 
+    // P/L Open: use long or short open P/L based on position type
+    const plOpen = pos.longQuantity > 0 ? pos.longOpenProfitLoss : pos.shortOpenProfitLoss;
+    const plOpenValue = plOpen >= 0 ? `+$${plOpen.toFixed(2)}` : `-$${Math.abs(plOpen).toFixed(2)}`;
+
+    // P/L %: calculate percentage based on cost basis
+    const quantity = pos.longQuantity > 0 ? pos.longQuantity : pos.shortQuantity;
+    const costBasis = pos.averagePrice * quantity;
+    const plPct = costBasis !== 0 ? (plOpen / costBasis) * 100 : 0;
+    const plPctValue = `${plPct >= 0 ? "+" : ""}${plPct.toFixed(2)}%`;
+
     const symbolLabel = formatColumn(symbol, COLUMN_WIDTHS.symbol);
     const typeLabel = formatColumn(assetType, COLUMN_WIDTHS.type);
     const longQtyLabel = formatColumn(longQty, COLUMN_WIDTHS.longQty, "right");
@@ -56,8 +68,10 @@ export async function handlePositions(symbol?: string): Promise<void> {
     const avgPriceLabel = formatColumn(avgPrice, COLUMN_WIDTHS.avgPrice, "right");
     const marketValueLabel = formatColumn(marketValue, COLUMN_WIDTHS.marketValue, "right");
     const dayPLLabel = formatColumn(dayPLValue, COLUMN_WIDTHS.dayPL, "right");
+    const plOpenLabel = formatColumn(plOpenValue, COLUMN_WIDTHS.plOpen, "right");
+    const plPctLabel = formatColumn(plPctValue, COLUMN_WIDTHS.plPct, "right");
     console.log(
-      `${chalk.cyan(symbolLabel)} ${chalk.white(typeLabel)} ${chalk.green(longQtyLabel)} ${chalk.red(shortQtyLabel)} ${chalk.white(avgPriceLabel)} ${chalk.yellow(marketValueLabel)} ${dayPL >= 0 ? chalk.green(dayPLLabel) : chalk.red(dayPLLabel)}`
+      `${chalk.cyan(symbolLabel)} ${chalk.white(typeLabel)} ${chalk.green(longQtyLabel)} ${chalk.red(shortQtyLabel)} ${chalk.white(avgPriceLabel)} ${chalk.yellow(marketValueLabel)} ${dayPL >= 0 ? chalk.green(dayPLLabel) : chalk.red(dayPLLabel)} ${plOpen >= 0 ? chalk.green(plOpenLabel) : chalk.red(plOpenLabel)} ${plPct >= 0 ? chalk.green(plPctLabel) : chalk.red(plPctLabel)}`
     );
   }
   console.log();

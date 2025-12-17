@@ -44,6 +44,19 @@ export interface SchwabPosition {
   averagePrice: number;
   currentDayProfitLoss: number;
   currentDayProfitLossPercentage: number;
+  settledLongQuantity: number;
+  settledShortQuantity: number;
+  agedQuantity: number;
+  maintenanceRequirement: number;
+  averageLongPrice: number;
+  averageShortPrice: number;
+  taxLotAverageLongPrice: number;
+  taxLotAverageShortPrice: number;
+  longOpenProfitLoss: number;
+  shortOpenProfitLoss: number;
+  previousSessionLongQuantity: number;
+  previousSessionShortQuantity: number;
+  currentDayCost: number;
   instrument: {
     assetType: string;
     cusip: string;
