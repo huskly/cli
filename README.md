@@ -18,6 +18,10 @@ A command line interface for interacting with the Schwab Trader API.
 
 ## Installation
 
+`npm install -g @huskly/cli`
+
+## Building from source
+
 ```bash
 git clone https://github.com/huskly/cli.git
 cd cli
