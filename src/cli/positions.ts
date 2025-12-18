@@ -65,8 +65,7 @@ export async function handlePositions(symbol?: string, type?: string): Promise<v
     const shortQty = pos.shortQuantity > 0 ? String(pos.shortQuantity) : "-";
     const avgPrice = `$${pos.averagePrice.toFixed(2)}`;
     const quantity = pos.longQuantity > 0 ? pos.longQuantity : pos.shortQuantity;
-    const curPrice =
-      quantity !== 0 ? Math.abs(pos.marketValue / quantity / contractMultiplier) : 0;
+    const curPrice = quantity !== 0 ? Math.abs(pos.marketValue / quantity / contractMultiplier) : 0;
     const curPriceStr = `$${curPrice.toFixed(2)}`;
     const marketValue = currencyFormatUsd(pos.marketValue);
     const dayPL = pos.currentDayProfitLoss;
