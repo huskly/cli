@@ -59,13 +59,14 @@ export async function handlePositions(symbol?: string, type?: string): Promise<v
   for (const pos of sortedPositions) {
     const assetType = pos.instrument.assetType;
     const isOption = assetType === "OPTION";
+    const contractMultiplier = isOption ? 100 : 1;
     const symbol = isOption ? parseOccSymbol(pos.instrument.symbol) : pos.instrument.symbol;
     const longQty = pos.longQuantity > 0 ? String(pos.longQuantity) : "-";
     const shortQty = pos.shortQuantity > 0 ? String(pos.shortQuantity) : "-";
     const avgPrice = `$${pos.averagePrice.toFixed(2)}`;
     const quantity = pos.longQuantity > 0 ? pos.longQuantity : pos.shortQuantity;
     const curPrice =
-      quantity !== 0 ? Math.abs(pos.marketValue / quantity / (isOption ? 100 : 1)) : 0;
+      quantity !== 0 ? Math.abs(pos.marketValue / quantity / contractMultiplier) : 0;
     const curPriceStr = `$${curPrice.toFixed(2)}`;
     const marketValue = currencyFormatUsd(pos.marketValue);
     const dayPL = pos.currentDayProfitLoss;
@@ -76,7 +77,7 @@ export async function handlePositions(symbol?: string, type?: string): Promise<v
     const plOpenValue = plOpen >= 0 ? `+$${plOpen.toFixed(2)}` : `-$${Math.abs(plOpen).toFixed(2)}`;
 
     // P/L %: calculate percentage based on cost basis
-    const costBasis = pos.averagePrice * quantity;
+    const costBasis = pos.averagePrice * quantity * contractMultiplier;
     const plPct = costBasis !== 0 ? (plOpen / costBasis) * 100 : 0;
     const plPctValue = `${plPct >= 0 ? "+" : ""}${plPct.toFixed(2)}%`;
 
