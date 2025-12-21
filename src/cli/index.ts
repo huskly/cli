@@ -170,8 +170,9 @@ program
   .description("Show all account positions, optionally filtered by symbol or type")
   .argument("[symbol]", "Optional symbol to filter positions", undefined)
   .option("-t, --type <type>", "Filter by asset type (e.g., OPTION, EQUITY)")
-  .action(async (symbol: string | undefined, options: { type?: string }) => {
-    await handlePositions(symbol, options.type);
+  .option("--csv", "Output in CSV format instead of table")
+  .action(async (symbol: string | undefined, options: { type?: string; csv?: boolean }) => {
+    await handlePositions(symbol, options.type, options.csv);
   });
 
 program

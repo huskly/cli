@@ -3,6 +3,14 @@ import { apiClient } from "./shared.js";
 import { parseOccSymbol } from "#src/helpers.js";
 import { currencyFormatUsd } from "#src/format.js";
 
+/** Escapes a value for CSV output by wrapping in quotes if it contains special characters. */
+function escapeCsv(value: string): string {
+  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
 const COLUMN_WIDTHS = {
   symbol: 25,
   type: 22,
@@ -26,12 +34,11 @@ function formatColumn(value: string, width: number, align: "left" | "right" = "l
   return align === "right" ? truncated.padStart(width) : truncated.padEnd(width);
 }
 
-export async function handlePositions(symbol?: string, type?: string): Promise<void> {
-  const filters: string[] = [];
-  if (symbol) filters.push(symbol.toUpperCase());
-  if (type) filters.push(type.toUpperCase());
-  const filterText = filters.length > 0 ? `: ${filters.join(", ")}` : "";
-  console.log(chalk.bold(`\n📋 Account Positions${filterText}\n`));
+export async function handlePositions(
+  symbol?: string,
+  type?: string,
+  csv?: boolean
+): Promise<void> {
   const api = await apiClient();
   let positions = await api.getPositions(symbol);
 
@@ -42,25 +49,74 @@ export async function handlePositions(symbol?: string, type?: string): Promise<v
   }
 
   if (positions.length === 0) {
+    if (csv) {
+      // No output for CSV when empty
+      return;
+    }
     console.log(chalk.yellow("No positions found"));
     return;
   }
-
-  console.log(chalk.gray("─".repeat(SEPARATOR_LENGTH)));
-  console.log(
-    `${chalk.gray(formatColumn("Symbol", COLUMN_WIDTHS.symbol))} ${chalk.gray(formatColumn("Type", COLUMN_WIDTHS.type))} ${chalk.gray(formatColumn("Long", COLUMN_WIDTHS.longQty, "right"))} ${chalk.gray(formatColumn("Short", COLUMN_WIDTHS.shortQty, "right"))} ${chalk.gray(formatColumn("Avg Price", COLUMN_WIDTHS.avgPrice, "right"))} ${chalk.gray(formatColumn("Cur Price", COLUMN_WIDTHS.curPrice, "right"))} ${chalk.gray(formatColumn("Mkt Value", COLUMN_WIDTHS.marketValue, "right"))} ${chalk.gray(formatColumn("Day P/L", COLUMN_WIDTHS.dayPL, "right"))} ${chalk.gray(formatColumn("P/L Open", COLUMN_WIDTHS.plOpen, "right"))} ${chalk.gray(formatColumn("P/L %", COLUMN_WIDTHS.plPct, "right"))}`
-  );
-  console.log(chalk.gray("─".repeat(SEPARATOR_LENGTH)));
 
   const sortedPositions = positions.sort((a, b) =>
     a.instrument.symbol.localeCompare(b.instrument.symbol)
   );
 
+  if (csv) {
+    // Output CSV header
+    console.log(
+      "Symbol,Type,Long Qty,Short Qty,Avg Price,Cur Price,Market Value,Day P/L,P/L Open,P/L %"
+    );
+
+    for (const pos of sortedPositions) {
+      const assetType = pos.instrument.assetType;
+      const isOption = assetType === "OPTION";
+      const contractMultiplier = isOption ? 100 : 1;
+      const posSymbol = isOption ? parseOccSymbol(pos.instrument.symbol) : pos.instrument.symbol;
+      const longQty = pos.longQuantity > 0 ? pos.longQuantity : 0;
+      const shortQty = pos.shortQuantity > 0 ? pos.shortQuantity : 0;
+      const quantity = pos.longQuantity > 0 ? pos.longQuantity : pos.shortQuantity;
+      const curPrice =
+        quantity !== 0 ? Math.abs(pos.marketValue / quantity / contractMultiplier) : 0;
+      const plOpen = pos.longQuantity > 0 ? pos.longOpenProfitLoss : pos.shortOpenProfitLoss;
+      const costBasis = pos.averagePrice * quantity * contractMultiplier;
+      const plPct = costBasis !== 0 ? (plOpen / costBasis) * 100 : 0;
+
+      console.log(
+        [
+          escapeCsv(posSymbol),
+          escapeCsv(assetType),
+          longQty,
+          shortQty,
+          pos.averagePrice.toFixed(2),
+          curPrice.toFixed(2),
+          pos.marketValue.toFixed(2),
+          pos.currentDayProfitLoss.toFixed(2),
+          plOpen.toFixed(2),
+          plPct.toFixed(2),
+        ].join(",")
+      );
+    }
+    return;
+  }
+
+  // Table output (default)
+  const filters: string[] = [];
+  if (symbol) filters.push(symbol.toUpperCase());
+  if (type) filters.push(type.toUpperCase());
+  const filterText = filters.length > 0 ? `: ${filters.join(", ")}` : "";
+  console.log(chalk.bold(`\n Account Positions${filterText}\n`));
+
+  console.log(chalk.gray("-".repeat(SEPARATOR_LENGTH)));
+  console.log(
+    `${chalk.gray(formatColumn("Symbol", COLUMN_WIDTHS.symbol))} ${chalk.gray(formatColumn("Type", COLUMN_WIDTHS.type))} ${chalk.gray(formatColumn("Long", COLUMN_WIDTHS.longQty, "right"))} ${chalk.gray(formatColumn("Short", COLUMN_WIDTHS.shortQty, "right"))} ${chalk.gray(formatColumn("Avg Price", COLUMN_WIDTHS.avgPrice, "right"))} ${chalk.gray(formatColumn("Cur Price", COLUMN_WIDTHS.curPrice, "right"))} ${chalk.gray(formatColumn("Mkt Value", COLUMN_WIDTHS.marketValue, "right"))} ${chalk.gray(formatColumn("Day P/L", COLUMN_WIDTHS.dayPL, "right"))} ${chalk.gray(formatColumn("P/L Open", COLUMN_WIDTHS.plOpen, "right"))} ${chalk.gray(formatColumn("P/L %", COLUMN_WIDTHS.plPct, "right"))}`
+  );
+  console.log(chalk.gray("-".repeat(SEPARATOR_LENGTH)));
+
   for (const pos of sortedPositions) {
     const assetType = pos.instrument.assetType;
     const isOption = assetType === "OPTION";
     const contractMultiplier = isOption ? 100 : 1;
-    const symbol = isOption ? parseOccSymbol(pos.instrument.symbol) : pos.instrument.symbol;
+    const posSymbol = isOption ? parseOccSymbol(pos.instrument.symbol) : pos.instrument.symbol;
     const longQty = pos.longQuantity > 0 ? String(pos.longQuantity) : "-";
     const shortQty = pos.shortQuantity > 0 ? String(pos.shortQuantity) : "-";
     const avgPrice = `$${pos.averagePrice.toFixed(2)}`;
@@ -80,7 +136,7 @@ export async function handlePositions(symbol?: string, type?: string): Promise<v
     const plPct = costBasis !== 0 ? (plOpen / costBasis) * 100 : 0;
     const plPctValue = `${plPct >= 0 ? "+" : ""}${plPct.toFixed(2)}%`;
 
-    const symbolLabel = formatColumn(symbol, COLUMN_WIDTHS.symbol);
+    const symbolLabel = formatColumn(posSymbol, COLUMN_WIDTHS.symbol);
     const typeLabel = formatColumn(assetType, COLUMN_WIDTHS.type);
     const longQtyLabel = formatColumn(longQty, COLUMN_WIDTHS.longQty, "right");
     const shortQtyLabel = formatColumn(shortQty, COLUMN_WIDTHS.shortQty, "right");
