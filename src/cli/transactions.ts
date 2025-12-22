@@ -3,6 +3,7 @@ import { format, isValid, parseISO, startOfYear } from "date-fns";
 import { apiClient } from "./shared.js";
 import type { SchwabTransaction, SchwabTransferItem } from "@huskly/schwab-client";
 import { currencyFormatUsd } from "#src/format.js";
+import { parseOccSymbol } from "#src/helpers.js";
 
 interface TransactionOptions {
   start?: string;
@@ -11,9 +12,10 @@ interface TransactionOptions {
 
 const DATE_FORMAT = "yyyy-MM-dd";
 const COLUMN_WIDTHS = {
+  id: 12,
   date: 18,
   type: 22,
-  symbol: 25,
+  symbol: 22,
   quantity: 8,
   amount: 14,
   status: 12,
@@ -40,7 +42,19 @@ function parseTransactionDate(transaction: SchwabTransaction): Date {
 
 function pickPrimaryTransferItem(items?: SchwabTransferItem[]): SchwabTransferItem | undefined {
   if (!items || items.length === 0) return undefined;
-  return items.find((item) => item.instrument?.symbol) ?? items[0];
+  // Fee items have feeType property and use CURRENCY as instrument
+  // Prefer actual instruments (OPTION, EQUITY, etc.) over CURRENCY items
+  const actualInstrument = items.find(
+    (item) =>
+      item.instrument?.assetType && item.instrument.assetType !== "CURRENCY" && !("feeType" in item)
+  );
+  // Fall back to any non-CURRENCY item, then any item with a symbol
+  const nonCurrencyItem = items.find(
+    (item) => item.instrument?.assetType && item.instrument.assetType !== "CURRENCY"
+  );
+  return (
+    actualInstrument ?? nonCurrencyItem ?? items.find((item) => item.instrument?.symbol) ?? items[0]
+  );
 }
 
 function formatColumn(value: string, width: number, align: "left" | "right" = "left"): string {
@@ -85,7 +99,7 @@ export async function handleTransactions(options: TransactionOptions): Promise<v
 
     console.log(chalk.gray("─".repeat(SEPARATOR_LENGTH)));
     console.log(
-      `${chalk.gray(formatColumn("Date", COLUMN_WIDTHS.date))} ${chalk.gray(formatColumn("Type", COLUMN_WIDTHS.type))} ${chalk.gray(formatColumn("Symbol", COLUMN_WIDTHS.symbol))} ${chalk.gray(formatColumn("Qty", COLUMN_WIDTHS.quantity, "right"))} ${chalk.gray(formatColumn("Amount", COLUMN_WIDTHS.amount, "right"))} ${chalk.gray(formatColumn("Status", COLUMN_WIDTHS.status))} ${chalk.gray(formatColumn("Details", COLUMN_WIDTHS.details))}`
+      `${chalk.gray(formatColumn("ID", COLUMN_WIDTHS.id))} ${chalk.gray(formatColumn("Date", COLUMN_WIDTHS.date))} ${chalk.gray(formatColumn("Type", COLUMN_WIDTHS.type))} ${chalk.gray(formatColumn("Symbol", COLUMN_WIDTHS.symbol))} ${chalk.gray(formatColumn("Qty", COLUMN_WIDTHS.quantity, "right"))} ${chalk.gray(formatColumn("Amount", COLUMN_WIDTHS.amount, "right"))} ${chalk.gray(formatColumn("Status", COLUMN_WIDTHS.status))} ${chalk.gray(formatColumn("Details", COLUMN_WIDTHS.details))}`
     );
     console.log(chalk.gray("─".repeat(SEPARATOR_LENGTH)));
 
@@ -93,11 +107,13 @@ export async function handleTransactions(options: TransactionOptions): Promise<v
       const date = parseTransactionDate(transaction);
       const dateLabel = isValid(date) ? format(date, "yyyy-MM-dd HH:mm") : "-";
       const primaryItem = pickPrimaryTransferItem(transaction.transferItems);
-      const symbol =
+      const rawSymbol =
         primaryItem?.instrument?.symbol ??
         primaryItem?.instrument?.description ??
         transaction.subAccount;
-      const quantity = primaryItem?.quantity ? primaryItem.quantity.toString() : "";
+      const isOption = primaryItem?.instrument?.assetType === "OPTION";
+      const symbol = isOption ? parseOccSymbol(rawSymbol) : rawSymbol;
+      const quantity = primaryItem?.amount ? primaryItem.amount.toString() : "";
       const amount = currencyFormatUsd(transaction.netAmount);
       const detailsSource =
         transaction.description ??
@@ -105,6 +121,7 @@ export async function handleTransactions(options: TransactionOptions): Promise<v
         primaryItem?.transferItemType ??
         "";
       const details = formatColumn(detailsSource, COLUMN_WIDTHS.details);
+      const idLabel = formatColumn(String(transaction.activityId ?? ""), COLUMN_WIDTHS.id);
       const typeLabel = formatColumn(transaction.type, COLUMN_WIDTHS.type);
       const symbolLabel = formatColumn(symbol, COLUMN_WIDTHS.symbol);
       const quantityLabel = formatColumn(quantity, COLUMN_WIDTHS.quantity, "right");
@@ -112,7 +129,7 @@ export async function handleTransactions(options: TransactionOptions): Promise<v
       const statusLabel = formatColumn(transaction.status, COLUMN_WIDTHS.status);
 
       console.log(
-        `${chalk.gray(formatColumn(dateLabel, COLUMN_WIDTHS.date))} ${chalk.white(typeLabel)} ${chalk.cyan(symbolLabel)} ${chalk.white(quantityLabel)} ${chalk.yellow(amountLabel)} ${chalk.white(statusLabel)} ${chalk.white(details)}`
+        `${chalk.gray(idLabel)} ${chalk.gray(formatColumn(dateLabel, COLUMN_WIDTHS.date))} ${chalk.white(typeLabel)} ${chalk.cyan(symbolLabel)} ${chalk.white(quantityLabel)} ${chalk.yellow(amountLabel)} ${chalk.white(statusLabel)} ${chalk.white(details)}`
       );
     }
 

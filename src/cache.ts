@@ -36,7 +36,7 @@ export async function cacheFetch<T>(
 ): Promise<T> {
   const cached = await cacheGet<T>(key);
   if (cached !== null) {
-    logger.debug({ key }, "Cache hit");
+    logger.debug({ key, cached }, "Cache hit");
     return cached;
   }
 
