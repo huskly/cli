@@ -8,6 +8,15 @@ import { parseOccSymbol } from "#src/helpers.js";
 interface TransactionOptions {
   start?: string;
   end?: string;
+  csv?: boolean;
+}
+
+/** Escapes a value for CSV output by wrapping in quotes if it contains special characters. */
+function escapeCsv(value: string): string {
+  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
 }
 
 const DATE_FORMAT = "yyyy-MM-dd";
@@ -71,18 +80,76 @@ export async function handleTransactions(options: TransactionOptions): Promise<v
     throw new Error("Start date must be on or before end date.");
   }
 
+  const api = await apiClient();
+  const histories = await api.fetchTransactionHistory(startDate, endDate);
+
+  if (histories.length === 0) {
+    if (!options.csv) {
+      console.log(chalk.yellow("No Schwab accounts found."));
+    }
+    return;
+  }
+
+  // Collect all transactions from all accounts
+  const allTransactions: { accountNumber: string; transaction: SchwabTransaction }[] = [];
+  for (const history of histories) {
+    for (const transaction of history.transactions) {
+      allTransactions.push({ accountNumber: history.accountNumber, transaction });
+    }
+  }
+
+  // Sort by date descending
+  allTransactions.sort((a, b) => {
+    const aDate = parseTransactionDate(a.transaction).getTime();
+    const bDate = parseTransactionDate(b.transaction).getTime();
+    return bDate - aDate;
+  });
+
+  if (options.csv) {
+    // Output CSV header
+    console.log("Account,ID,Date,Type,Symbol,Quantity,Amount,Status,Details");
+
+    for (const { accountNumber, transaction } of allTransactions) {
+      const date = parseTransactionDate(transaction);
+      const dateLabel = isValid(date) ? format(date, "yyyy-MM-dd HH:mm") : "";
+      const primaryItem = pickPrimaryTransferItem(transaction.transferItems);
+      const rawSymbol =
+        primaryItem?.instrument?.symbol ??
+        primaryItem?.instrument?.description ??
+        transaction.subAccount;
+      const isOption = primaryItem?.instrument?.assetType === "OPTION";
+      const symbol = isOption ? parseOccSymbol(rawSymbol) : rawSymbol;
+      const quantity = primaryItem?.amount ? primaryItem.amount.toString() : "";
+      const amount = transaction.netAmount.toFixed(2);
+      const details =
+        transaction.description ??
+        primaryItem?.instrument?.description ??
+        primaryItem?.transferItemType ??
+        "";
+
+      console.log(
+        [
+          escapeCsv(accountNumber),
+          escapeCsv(String(transaction.activityId)),
+          escapeCsv(dateLabel),
+          escapeCsv(transaction.type),
+          escapeCsv(symbol),
+          quantity,
+          amount,
+          escapeCsv(transaction.status),
+          escapeCsv(details),
+        ].join(",")
+      );
+    }
+    return;
+  }
+
+  // Table output
   console.log(
     chalk.bold(
       `\n📜 Transaction History (${format(startDate, DATE_FORMAT)} to ${format(endDate, DATE_FORMAT)})\n`
     )
   );
-  const api = await apiClient();
-  const histories = await api.fetchTransactionHistory(startDate, endDate);
-
-  if (histories.length === 0) {
-    console.log(chalk.yellow("No Schwab accounts found."));
-    return;
-  }
 
   for (const history of histories) {
     console.log(chalk.bold(`Account ${history.accountNumber}`));
