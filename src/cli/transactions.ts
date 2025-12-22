@@ -121,7 +121,7 @@ export async function handleTransactions(options: TransactionOptions): Promise<v
         primaryItem?.transferItemType ??
         "";
       const details = formatColumn(detailsSource, COLUMN_WIDTHS.details);
-      const idLabel = formatColumn(String(transaction.activityId ?? ""), COLUMN_WIDTHS.id);
+      const idLabel = formatColumn(String(transaction.activityId), COLUMN_WIDTHS.id);
       const typeLabel = formatColumn(transaction.type, COLUMN_WIDTHS.type);
       const symbolLabel = formatColumn(symbol, COLUMN_WIDTHS.symbol);
       const quantityLabel = formatColumn(quantity, COLUMN_WIDTHS.quantity, "right");
