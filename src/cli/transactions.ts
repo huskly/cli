@@ -27,7 +27,7 @@ const COLUMN_WIDTHS = {
   symbol: 22,
   quantity: 8,
   amount: 14,
-  status: 12,
+  fees: 10,
   details: 40,
 } as const;
 const SEPARATOR_LENGTH =
@@ -64,6 +64,18 @@ function pickPrimaryTransferItem(items?: SchwabTransferItem[]): SchwabTransferIt
   return (
     actualInstrument ?? nonCurrencyItem ?? items.find((item) => item.instrument?.symbol) ?? items[0]
   );
+}
+
+function calculateTotalFees(items?: SchwabTransferItem[]): number {
+  if (!items || items.length === 0) return 0;
+  // Fee items are identified by having a feeType property
+  // The fee amount is in the cost field (as a negative value)
+  return items.reduce((total, item) => {
+    if ("feeType" in item && item.cost !== undefined) {
+      return total + Math.abs(item.cost);
+    }
+    return total;
+  }, 0);
 }
 
 function formatColumn(value: string, width: number, align: "left" | "right" = "left"): string {
@@ -107,7 +119,7 @@ export async function handleTransactions(options: TransactionOptions): Promise<v
 
   if (options.csv) {
     // Output CSV header
-    console.log("Account,ID,Date,Type,Symbol,Quantity,Amount,Status,Details");
+    console.log("Account,ID,Date,Type,Symbol,Quantity,Amount,Fees,Details");
 
     for (const { accountNumber, transaction } of allTransactions) {
       const date = parseTransactionDate(transaction);
@@ -121,11 +133,16 @@ export async function handleTransactions(options: TransactionOptions): Promise<v
       const symbol = isOption ? parseOccSymbol(rawSymbol) : rawSymbol;
       const quantity = primaryItem?.amount ? primaryItem.amount.toString() : "";
       const amount = transaction.netAmount.toFixed(2);
-      const details =
+      const fees = calculateTotalFees(transaction.transferItems);
+      const feesStr = fees !== 0 ? fees.toFixed(2) : "";
+      const baseDetails =
         transaction.description ??
         primaryItem?.instrument?.description ??
         primaryItem?.transferItemType ??
         "";
+      // Include status in details if it's not VALID
+      const details =
+        transaction.status !== "VALID" ? `[${transaction.status}] ${baseDetails}` : baseDetails;
 
       console.log(
         [
@@ -136,7 +153,7 @@ export async function handleTransactions(options: TransactionOptions): Promise<v
           escapeCsv(symbol),
           quantity,
           amount,
-          escapeCsv(transaction.status),
+          feesStr,
           escapeCsv(details),
         ].join(",")
       );
@@ -166,7 +183,7 @@ export async function handleTransactions(options: TransactionOptions): Promise<v
 
     console.log(chalk.gray("─".repeat(SEPARATOR_LENGTH)));
     console.log(
-      `${chalk.gray(formatColumn("ID", COLUMN_WIDTHS.id))} ${chalk.gray(formatColumn("Date", COLUMN_WIDTHS.date))} ${chalk.gray(formatColumn("Type", COLUMN_WIDTHS.type))} ${chalk.gray(formatColumn("Symbol", COLUMN_WIDTHS.symbol))} ${chalk.gray(formatColumn("Qty", COLUMN_WIDTHS.quantity, "right"))} ${chalk.gray(formatColumn("Amount", COLUMN_WIDTHS.amount, "right"))} ${chalk.gray(formatColumn("Status", COLUMN_WIDTHS.status))} ${chalk.gray(formatColumn("Details", COLUMN_WIDTHS.details))}`
+      `${chalk.gray(formatColumn("ID", COLUMN_WIDTHS.id))} ${chalk.gray(formatColumn("Date", COLUMN_WIDTHS.date))} ${chalk.gray(formatColumn("Type", COLUMN_WIDTHS.type))} ${chalk.gray(formatColumn("Symbol", COLUMN_WIDTHS.symbol))} ${chalk.gray(formatColumn("Qty", COLUMN_WIDTHS.quantity, "right"))} ${chalk.gray(formatColumn("Amount", COLUMN_WIDTHS.amount, "right"))} ${chalk.gray(formatColumn("Fees", COLUMN_WIDTHS.fees, "right"))} ${chalk.gray(formatColumn("Details", COLUMN_WIDTHS.details))}`
     );
     console.log(chalk.gray("─".repeat(SEPARATOR_LENGTH)));
 
@@ -182,21 +199,26 @@ export async function handleTransactions(options: TransactionOptions): Promise<v
       const symbol = isOption ? parseOccSymbol(rawSymbol) : rawSymbol;
       const quantity = primaryItem?.amount ? primaryItem.amount.toString() : "";
       const amount = currencyFormatUsd(transaction.netAmount);
-      const detailsSource =
+      const fees = calculateTotalFees(transaction.transferItems);
+      const feesStr = fees !== 0 ? currencyFormatUsd(fees) : "";
+      const baseDetails =
         transaction.description ??
         primaryItem?.instrument?.description ??
         primaryItem?.transferItemType ??
         "";
+      // Include status in details if it's not VALID
+      const detailsSource =
+        transaction.status !== "VALID" ? `[${transaction.status}] ${baseDetails}` : baseDetails;
       const details = formatColumn(detailsSource, COLUMN_WIDTHS.details);
       const idLabel = formatColumn(String(transaction.activityId), COLUMN_WIDTHS.id);
       const typeLabel = formatColumn(transaction.type, COLUMN_WIDTHS.type);
       const symbolLabel = formatColumn(symbol, COLUMN_WIDTHS.symbol);
       const quantityLabel = formatColumn(quantity, COLUMN_WIDTHS.quantity, "right");
       const amountLabel = formatColumn(amount, COLUMN_WIDTHS.amount, "right");
-      const statusLabel = formatColumn(transaction.status, COLUMN_WIDTHS.status);
+      const feesLabel = formatColumn(feesStr, COLUMN_WIDTHS.fees, "right");
 
       console.log(
-        `${chalk.gray(idLabel)} ${chalk.gray(formatColumn(dateLabel, COLUMN_WIDTHS.date))} ${chalk.white(typeLabel)} ${chalk.cyan(symbolLabel)} ${chalk.white(quantityLabel)} ${chalk.yellow(amountLabel)} ${chalk.white(statusLabel)} ${chalk.white(details)}`
+        `${chalk.gray(idLabel)} ${chalk.gray(formatColumn(dateLabel, COLUMN_WIDTHS.date))} ${chalk.white(typeLabel)} ${chalk.cyan(symbolLabel)} ${chalk.white(quantityLabel)} ${chalk.yellow(amountLabel)} ${chalk.red(feesLabel)} ${chalk.white(details)}`
       );
     }
 
