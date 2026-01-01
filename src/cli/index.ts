@@ -180,8 +180,9 @@ program
   .description("List account transaction history (defaults to current year)")
   .option("-s, --start <date>", "Start date (YYYY-MM-DD)")
   .option("-e, --end <date>", "End date (YYYY-MM-DD)")
+  .option("-t, --type <type>", "Filter by transaction type (e.g., TRADE, DIVIDEND)")
   .option("--csv", "Output in CSV format instead of table")
-  .action(async (options: { start?: string; end?: string; csv?: boolean }) => {
+  .action(async (options: { start?: string; end?: string; type?: string; csv?: boolean }) => {
     await handleTransactions(options);
   });
 

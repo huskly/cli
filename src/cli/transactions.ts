@@ -9,6 +9,7 @@ interface TransactionOptions {
   start?: string;
   end?: string;
   csv?: boolean;
+  type?: string;
 }
 
 /** Escapes a value for CSV output by wrapping in quotes if it contains special characters. */
@@ -106,6 +107,10 @@ export async function handleTransactions(options: TransactionOptions): Promise<v
   const allTransactions: { accountNumber: string; transaction: SchwabTransaction }[] = [];
   for (const history of histories) {
     for (const transaction of history.transactions) {
+      // Filter by type if specified (case-insensitive)
+      if (options.type && transaction.type.toUpperCase() !== options.type.toUpperCase()) {
+        continue;
+      }
       allTransactions.push({ accountNumber: history.accountNumber, transaction });
     }
   }
@@ -170,11 +175,13 @@ export async function handleTransactions(options: TransactionOptions): Promise<v
 
   for (const history of histories) {
     console.log(chalk.bold(`Account ${history.accountNumber}`));
-    const transactions = [...history.transactions].sort((a, b) => {
-      const aDate = parseTransactionDate(a).getTime();
-      const bDate = parseTransactionDate(b).getTime();
-      return bDate - aDate;
-    });
+    const transactions = [...history.transactions]
+      .filter((t) => !options.type || t.type.toUpperCase() === options.type.toUpperCase())
+      .sort((a, b) => {
+        const aDate = parseTransactionDate(a).getTime();
+        const bDate = parseTransactionDate(b).getTime();
+        return bDate - aDate;
+      });
 
     if (transactions.length === 0) {
       console.log(chalk.yellow("  No transactions in range.\n"));
