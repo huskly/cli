@@ -23,6 +23,9 @@ npm-debug.log*
 .env.local
 .env.*.local
 
+# IBKR OAuth 1.0a private keys / DH params
+*.pem
+
 # Coverage
 coverage/
 

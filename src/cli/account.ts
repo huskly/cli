@@ -1,14 +1,15 @@
 import chalk from "chalk";
-import { apiClient } from "./shared.js";
+import { brokerClient } from "./shared.js";
+import type { BrokerName } from "#src/brokers/brokerClient.js";
 
 function formatCurrency(value: number): string {
   return "$" + value.toLocaleString("en-US", { minimumFractionDigits: 2 });
 }
 
-export async function handleAccount(): Promise<void> {
+export async function handleAccount(broker: BrokerName): Promise<void> {
   console.log(chalk.bold("\n💰 Account Summary\n"));
 
-  const api = await apiClient();
+  const api = await brokerClient(broker);
   const balances = await api.getAccountBalances();
 
   console.log(chalk.gray("─".repeat(50)));

@@ -1,7 +1,4 @@
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
-const keytar = require("keytar") as typeof import("keytar");
+import keytar from "keytar";
 import open from "open";
 import chalk from "chalk";
 import ora from "ora";

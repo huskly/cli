@@ -89,7 +89,7 @@ program
   .command("account")
   .description("Show account equity/net liquidation value")
   .action(async () => {
-    await handleAccount();
+    await handleAccount("schwab");
   });
 
 program
@@ -98,7 +98,7 @@ program
   .argument("[symbol]", "Optional symbol to filter positions", undefined)
   .option("-t, --type <type>", "Filter by asset type (e.g., OPTION, EQUITY)")
   .action(async (symbol: string | undefined, options: { type?: string }) => {
-    await handlePositions(symbol, options.type);
+    await handlePositions("schwab", symbol, options.type);
   });
 
 program

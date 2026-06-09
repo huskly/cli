@@ -12,6 +12,33 @@ export function ensure<T>(value: T | null | undefined, message?: string): T {
   return value;
 }
 
+/**
+ * IBKR asset-class codes -> human-readable type labels.
+ * Mirrors the labels Schwab uses (EQUITY, OPTION, ...) so the shared positions
+ * handler renders both brokers consistently.
+ */
+export const ASSET_CLASS_LABELS: Record<string, string> = {
+  STK: "EQUITY",
+  OPT: "OPTION",
+  FOP: "FUTURES OPTION",
+  FUT: "FUTURE",
+  FUND: "COLLECTIVE_INVESTMENT",
+  BOND: "BOND",
+  WAR: "WARRANT",
+  CASH: "FOREX",
+  CFD: "CFD",
+};
+
+/** Coerce an unknown (string | number | null) into a number, defaulting to 0. */
+export function toNumber(value: unknown): number {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const n = parseFloat(value);
+    return Number.isNaN(n) ? 0 : n;
+  }
+  return 0;
+}
+
 export function ensureFloat(value: unknown, message?: string): number {
   const actualValue = ensure(value, message);
   const num = typeof actualValue === "number" ? actualValue : parseFloat(String(actualValue));

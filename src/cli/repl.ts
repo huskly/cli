@@ -171,13 +171,13 @@ async function executeCommand(input: string): Promise<void> {
       }
 
       case "account":
-        await handleAccount();
+        await handleAccount("schwab");
         break;
 
       case "positions": {
         const symbol = positional[0];
         const type = options["t"] ?? options["type"];
-        await handlePositions(symbol, type);
+        await handlePositions("schwab", symbol, type);
         break;
       }
 
