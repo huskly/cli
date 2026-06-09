@@ -59,6 +59,41 @@ export interface BrokerInstrument {
   fundamental?: BrokerFundamentalInstrument;
 }
 
+export interface BrokerQuoteReference {
+  description?: string;
+  exchange?: string;
+  exchangeName?: string;
+}
+
+export interface BrokerQuoteData {
+  "52WeekHigh"?: number;
+  "52WeekLow"?: number;
+  askPrice?: number;
+  bidPrice?: number;
+  closePrice?: number;
+  highPrice?: number;
+  lowPrice?: number;
+  lastPrice?: number;
+  mark?: number;
+  netChange?: number;
+  netPercentChange?: number;
+  openPrice?: number;
+  totalVolume?: number;
+}
+
+export interface BrokerQuoteFundamental {
+  divYield?: number;
+  eps?: number;
+  peRatio?: number;
+}
+
+export interface BrokerQuote {
+  symbol: string;
+  reference: BrokerQuoteReference;
+  quote: BrokerQuoteData;
+  fundamental?: BrokerQuoteFundamental;
+}
+
 export interface AccountBalances {
   liquidationValue: number;
   cashBalance: number;
@@ -150,6 +185,7 @@ export interface BrokerAccountOrders {
 export interface BrokerClient {
   getAccountBalances(): Promise<AccountBalances>;
   getPositions(symbol?: string): Promise<BrokerPosition[]>;
+  getQuotes(symbols: string[]): Promise<Record<string, BrokerQuote>>;
   searchInstruments(
     symbol: string,
     projection: BrokerInstrumentSearchProjection

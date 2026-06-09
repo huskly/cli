@@ -1,8 +1,8 @@
 import chalk from "chalk";
-import { apiClient } from "./shared.js";
+import { brokerClient } from "./shared.js";
 import { formatNumber, formatVolume } from "../format.js";
 import { ensure } from "#src/helpers.js";
-import type { SchwabQuoteResponse } from "@huskly/schwab-client";
+import type { BrokerName, BrokerQuote } from "#src/brokers/brokerClient.js";
 
 function formatChange(change: number | undefined, percentChange: number | undefined): string {
   if (change === undefined) return "-";
@@ -16,7 +16,7 @@ function getChangeColor(change: number | undefined): typeof chalk {
   return change > 0 ? chalk.green : chalk.red;
 }
 
-function printQuote(quote: SchwabQuoteResponse): void {
+function printQuote(quote: BrokerQuote): void {
   const q = quote.quote;
   const ref = quote.reference;
   const change = q.netChange;
@@ -24,9 +24,9 @@ function printQuote(quote: SchwabQuoteResponse): void {
 
   // Header with symbol and description
   console.log(
-    `${chalk.cyan.bold(quote.symbol)} ${chalk.gray("·")} ${chalk.white(ref.description || "-")}`
+    `${chalk.cyan.bold(quote.symbol)} ${chalk.gray("·")} ${chalk.white(ref.description ?? "-")}`
   );
-  console.log(chalk.gray(`  ${ref.exchangeName || ref.exchange || "-"}`));
+  console.log(chalk.gray(`  ${ref.exchangeName ?? ref.exchange ?? "-"}`));
 
   // Price and change
   const lastPrice = q.mark ?? q.lastPrice;
@@ -43,11 +43,13 @@ function printQuote(quote: SchwabQuoteResponse): void {
   }
 
   // Open/High/Low
-  console.log(
-    `  ${chalk.bold("Open:")} $${formatNumber(q.openPrice)}  ` +
-      `${chalk.bold("High:")} $${formatNumber(q.highPrice)}  ` +
-      `${chalk.bold("Low:")} $${formatNumber(q.lowPrice)}`
-  );
+  if (q.openPrice !== undefined || q.highPrice !== undefined || q.lowPrice !== undefined) {
+    console.log(
+      `  ${chalk.bold("Open:")} $${formatNumber(q.openPrice)}  ` +
+        `${chalk.bold("High:")} $${formatNumber(q.highPrice)}  ` +
+        `${chalk.bold("Low:")} $${formatNumber(q.lowPrice)}`
+    );
+  }
 
   // Previous close
   if (q.closePrice !== undefined) {
@@ -81,15 +83,18 @@ function printQuote(quote: SchwabQuoteResponse): void {
   console.log();
 }
 
-export async function handleQuote(symbols: string[]): Promise<void> {
+export async function handleQuote(broker: BrokerName, symbols: string[]): Promise<void> {
   console.log(chalk.bold("\n📈 Market Quotes\n"));
   console.log(chalk.gray("─".repeat(60)));
-  const api = await apiClient();
+  const api = await brokerClient(broker);
   const quotes = await api.getQuotes(symbols);
 
   for (const symbol of symbols) {
     try {
-      const quote = ensure(quotes[symbol], `No quote data available for ${symbol}`);
+      const quote = ensure(
+        quotes[symbol] ?? quotes[symbol.toUpperCase()],
+        `No quote data available for ${symbol}`
+      );
       printQuote(quote);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

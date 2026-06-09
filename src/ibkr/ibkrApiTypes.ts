@@ -54,6 +54,23 @@ export interface IbkrStockListing {
 
 export type IbkrStocksResponse = Record<string, IbkrStockListing[] | undefined>;
 
+export interface IbkrMarketDataHistoryBar {
+  o?: number;
+  c?: number;
+  h?: number;
+  l?: number;
+  v?: number;
+  t?: number;
+}
+
+export interface IbkrMarketDataHistoryResponse {
+  symbol?: string;
+  text?: string;
+  mdAvailability?: string;
+  volumeFactor?: number;
+  data?: IbkrMarketDataHistoryBar[];
+}
+
 export interface IbkrTransactionsResponse {
   currency?: string;
   from?: number;

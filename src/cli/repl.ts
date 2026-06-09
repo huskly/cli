@@ -100,7 +100,7 @@ async function executeCommand(input: string): Promise<void> {
           console.log(chalk.red("Usage: quote <symbols...>"));
           return;
         }
-        await handleQuote(positional);
+        await handleQuote("schwab", positional);
         break;
 
       case "history": {

@@ -8,6 +8,7 @@ import type {
   BrokerInstrumentSearchProjection,
   BrokerOrdersOptions,
   BrokerPosition,
+  BrokerQuote,
   BrokerTransactionHistory,
 } from "#src/brokers/brokerClient.js";
 
@@ -27,6 +28,10 @@ export class SchwabBrokerAdapter implements BrokerClient {
 
   async getPositions(symbol?: string): Promise<BrokerPosition[]> {
     return this.client.getPositions(symbol);
+  }
+
+  async getQuotes(symbols: string[]): Promise<Record<string, BrokerQuote>> {
+    return this.client.getQuotes(symbols);
   }
 
   async searchInstruments(

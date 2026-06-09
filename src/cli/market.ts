@@ -27,7 +27,7 @@ program
   .description("Get current price quotes for one or more symbols")
   .argument("<symbols...>", "Stock symbols to quote")
   .action(async (symbols: string[]) => {
-    await handleQuote(symbols);
+    await handleQuote("schwab", symbols);
   });
 
 program

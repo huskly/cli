@@ -31,31 +31,30 @@ Use this matrix to track broker parity as IBKR support expands. A checkmark
 means the command supports that broker today; a cross means it is not yet
 implemented for that broker.
 
-| Command | Schwab | IBKR |
-| --- | --- | --- |
-| `quote` | ✓ | ✗ |
-| `search` | ✓ | ✓ |
-| `movers` | ✓ | ✗ |
-| `history` | ✓ | ✗ |
-| `chart` | ✓ | ✗ |
-| `vix` | ✓ | ✗ |
-| `expiries` | ✓ | ✗ |
-| `chain` | ✓ | ✗ |
-| `account` | ✓ | ✓ |
-| `user-preference` | ✓ | ✗ |
-| `positions` | ✓ | ✓ |
-| `transactions` | ✓ | ✓ |
-| `orders` | ✓ | ✓ |
-| `place-order` | ✓ | ✗ |
-| `repl` | ✓ | ✗ |
+| Command           | Schwab | IBKR |
+| ----------------- | ------ | ---- |
+| `quote`           | ✓      | ✓    |
+| `search`          | ✓      | ✓    |
+| `movers`          | ✓      | ✗    |
+| `history`         | ✓      | ✗    |
+| `chart`           | ✓      | ✗    |
+| `vix`             | ✓      | ✗    |
+| `expiries`        | ✓      | ✗    |
+| `chain`           | ✓      | ✗    |
+| `account`         | ✓      | ✓    |
+| `user-preference` | ✓      | ✗    |
+| `positions`       | ✓      | ✓    |
+| `transactions`    | ✓      | ✓    |
+| `orders`          | ✓      | ✓    |
+| `place-order`     | ✓      | ✗    |
+| `repl`            | ✓      | ✗    |
 
-IBKR currently supports the shared **`account`**, **`search`**,
+IBKR currently supports the shared **`account`**, **`quote`**, **`search`**,
 **`positions`**, **`transactions`**, and **`orders`** commands. IBKR `search`
 supports symbol lookup via `symbol-search` / `search`; Schwab-specific regex,
 description, and fundamental projections report a clear error under
-`--broker ibkr`. All other broker commands (`quote`, `chain`, `movers`,
-`place-order`, etc.) are Schwab-only and will report a clear error under
-`--broker ibkr`.
+`--broker ibkr`. All other broker commands (`chain`, `movers`, `place-order`,
+etc.) are Schwab-only and will report a clear error under `--broker ibkr`.
 
 ### IBKR setup
 
