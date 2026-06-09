@@ -1,7 +1,8 @@
 import chalk from "chalk";
-import { apiClient } from "./shared.js";
+import { brokerClient } from "./shared.js";
 import { parseOccSymbol } from "#src/helpers.js";
 import { currencyFormatUsd } from "#src/format.js";
+import type { BrokerName } from "#src/brokers/brokerClient.js";
 
 /** Escapes a value for CSV output by wrapping in quotes if it contains special characters. */
 function escapeCsv(value: string): string {
@@ -35,11 +36,12 @@ function formatColumn(value: string, width: number, align: "left" | "right" = "l
 }
 
 export async function handlePositions(
+  broker: BrokerName,
   symbol?: string,
   type?: string,
   csv?: boolean
 ): Promise<void> {
-  const api = await apiClient();
+  const api = await brokerClient(broker);
   let positions = await api.getPositions(symbol);
 
   // Filter by asset type if specified

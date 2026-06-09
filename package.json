@@ -1,7 +1,7 @@
 {
   "name": "@huskly/cli",
   "version": "1.0.0",
-  "description": "derivatives strategies",
+  "description": "Terminal-based trading tools for Schwab (huskly auth) and IBKR (native OAuth 1.0a)",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -9,10 +9,10 @@
   "author": "Felipe Lima",
   "license": "MIT",
   "imports": {
-    "#src/*.js": "./src/*.ts",
-    "#src/schwab/*.js": "./src/schwab/*.ts",
-    "#src/auth/*.js": "./src/auth/*.ts",
-    "#src/cli/*.js": "./src/cli/*.ts"
+    "#src/*.js": {
+      "tsx": "./src/*.ts",
+      "default": "./dist/*.js"
+    }
   },
   "bin": {
     "huskly-cli": "./dist/cli/index.js",
@@ -54,6 +54,7 @@
     "chalk": "^5.6.2",
     "commander": "^14.0.2",
     "dotenv": "^17.2.3",
+    "ibkr-client": "^1.0.4",
     "ioredis": "^5.8.2",
     "keytar": "^7.9.0",
     "open": "^11.0.0",

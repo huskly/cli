@@ -1,6 +1,8 @@
 # Huskly CLI
 
-A command line interface for interacting with the Schwab Trader API.
+A command line interface for trading APIs. Supports **Schwab** (via
+[huskly.finance](https://huskly.finance) auth) and **Interactive Brokers**
+(via native OAuth 1.0a).
 
 ## Features
 
@@ -9,12 +11,36 @@ A command line interface for interacting with the Schwab Trader API.
 - **Account Management**: View positions, balances, and transaction history
 - **Order Management**: View orders and place simple MARKET/LIMIT orders
 - **Caching**: Redis-backed caching for improved performance
+- **Multi-broker**: Schwab (default) and IBKR via the global `--broker` flag
+
+## Brokers
+
+Select the broker per invocation with the global `--broker` flag (default `schwab`):
+
+```bash
+huskly-cli account                 # Schwab (default)
+huskly-cli --broker ibkr account   # Interactive Brokers
+huskly-cli --broker ibkr positions
+```
+
+IBKR currently supports the shared **`account`** and **`positions`** commands.
+All other commands (quote, chain, movers, orders, place-order, etc.) are Schwab
+-only and will report a clear error under `--broker ibkr`.
+
+### IBKR setup
+
+IBKR uses OAuth 1.0a. Copy `.env.example` to `.env` and fill in the consumer
+key / access token / secret from the IBKR self-service portal, and place the
+PEM key files (`private_signature.pem`, `private_encryption.pem`, `dhparam.pem`)
+in the working directory (or set `IBKR_KEYS_DIR`). See `.env.example` for the
+full list of variables.
 
 ## Requirements
 
 - Node.js >= 20.0.0
-- Redis (for caching)
-- Schwab API credentials (via [huskly.finance](https://huskly.finance))
+- Redis (for Schwab caching)
+- Schwab API credentials (via [huskly.finance](https://huskly.finance)), and/or
+  IBKR OAuth 1.0a credentials for `--broker ibkr`
 
 ## Installation
 

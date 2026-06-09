@@ -17,13 +17,26 @@ import { handleUserPreference } from "./userPreference.js";
 import { handleSearch } from "./search.js";
 import { handleMovers } from "./movers.js";
 import { disconnectCache } from "#src/cache.js";
+import { resolveBroker, requireSchwab } from "./shared.js";
+import type { BrokerName } from "#src/brokers/brokerClient.js";
 
 const program = new Command();
 
 program
   .name("huskly-cli")
-  .description("Terminal-based trading tools powered by Schwab API")
-  .version("1.0.0");
+  .description("Terminal-based trading tools for Schwab (huskly auth) and IBKR (native OAuth)")
+  .version("1.0.0")
+  .option("--broker <name>", "Broker to use: schwab or ibkr", "schwab");
+
+/** The broker selected via the global --broker flag (defaults to schwab). */
+function broker(): BrokerName {
+  return resolveBroker(program.opts<{ broker?: string }>().broker);
+}
+
+/** Resolve the broker and assert the command is Schwab-only. */
+function guardSchwab(command: string): void {
+  requireSchwab(broker(), command);
+}
 
 // Auth subcommand
 const authCmd = new Command("auth")
@@ -67,6 +80,7 @@ program
   .description("Get current price quotes for one or more symbols")
   .argument("<symbols...>", "Stock symbols to quote")
   .action(async (symbols: string[]) => {
+    guardSchwab("quote");
     await handleQuote(symbols);
   });
 
@@ -80,6 +94,7 @@ program
     "symbol-search"
   )
   .action(async (symbol: string, options: { projection: string }) => {
+    guardSchwab("search");
     await handleSearch(symbol, options);
   });
 
@@ -93,6 +108,7 @@ program
   .option("-s, --sort <type>", "Sort by: VOLUME, TRADES, PERCENT_CHANGE_UP, PERCENT_CHANGE_DOWN")
   .option("-f, --frequency <minutes>", "Frequency in minutes: 0, 1, 5, 10, 30, 60 (default: 0)")
   .action(async (index: string, options: { sort?: string; frequency?: string }) => {
+    guardSchwab("movers");
     await handleMovers(index, options);
   });
 
@@ -102,6 +118,7 @@ program
   .argument("<symbol>", "Stock symbol")
   .option("-d, --days <n>", "Number of days of history", "10")
   .action(async (symbol: string, options: { days: string }) => {
+    guardSchwab("history");
     await handleHistory(symbol, parseInt(options.days));
   });
 
@@ -113,6 +130,7 @@ program
   .option("-h, --height <n>", "Chart height in rows", "15")
   .option("-i, --image", "Generate image chart and open in browser")
   .action(async (symbol: string, options: { days: string; height: string; image?: boolean }) => {
+    guardSchwab("chart");
     await handleChart(symbol, parseInt(options.days), parseInt(options.height), options.image);
   });
 
@@ -120,6 +138,7 @@ program
   .command("vix")
   .description("Get current VIX level with sentiment indicator")
   .action(async () => {
+    guardSchwab("vix");
     await handleVix();
   });
 
@@ -131,6 +150,7 @@ program
   .option("-f, --from <date>", "Start date (YYYY-MM-DD)")
   .option("-e, --to <date>", "End date (YYYY-MM-DD)")
   .action(async (symbol: string, options: { type: string; from?: string; to?: string }) => {
+    guardSchwab("expiries");
     await handleExpiries(symbol, options);
   });
 
@@ -147,6 +167,7 @@ program
       expiry: string | undefined,
       options: { around?: string; strikes: string }
     ) => {
+      guardSchwab("chain");
       await handleChain(symbol, expiry, options);
     }
   );
@@ -155,13 +176,14 @@ program
   .command("account")
   .description("Show account equity/net liquidation value")
   .action(async () => {
-    await handleAccount();
+    await handleAccount(broker());
   });
 
 program
   .command("user-preference")
   .description("Show user preferences, streamer info, and account settings")
   .action(async () => {
+    guardSchwab("user-preference");
     await handleUserPreference();
   });
 
@@ -172,7 +194,7 @@ program
   .option("-t, --type <type>", "Filter by asset type (e.g., OPTION, EQUITY)")
   .option("--csv", "Output in CSV format instead of table")
   .action(async (symbol: string | undefined, options: { type?: string; csv?: boolean }) => {
-    await handlePositions(symbol, options.type, options.csv);
+    await handlePositions(broker(), symbol, options.type, options.csv);
   });
 
 program
@@ -183,6 +205,7 @@ program
   .option("-t, --type <type>", "Filter by transaction type (e.g., TRADE, DIVIDEND)")
   .option("--csv", "Output in CSV format instead of table")
   .action(async (options: { start?: string; end?: string; type?: string; csv?: boolean }) => {
+    guardSchwab("transactions");
     await handleTransactions(options);
   });
 
@@ -194,6 +217,7 @@ program
   .option("-s, --status <status>", "Filter by order status (FILLED, WORKING, CANCELED, etc.)")
   .option("-m, --max-results <n>", "Maximum number of orders to retrieve")
   .action(async (options: { from?: string; to?: string; status?: string; maxResults?: string }) => {
+    guardSchwab("orders");
     await handleOrders(options as Parameters<typeof handleOrders>[0]);
   });
 
@@ -214,6 +238,7 @@ program
       instruction: string,
       options: { type: string; price?: string; session?: string; duration?: string }
     ) => {
+      guardSchwab("place-order");
       await handlePlaceOrder(symbol, quantity, instruction, options);
     }
   );
@@ -222,6 +247,7 @@ program
   .command("repl")
   .description("Start an interactive REPL to run multiple commands")
   .action(() => {
+    guardSchwab("repl");
     handleRepl();
   });
 
