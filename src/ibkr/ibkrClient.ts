@@ -374,6 +374,7 @@ export class IbkrClient implements BrokerClient {
       order.average_price,
       order.averagePrice
     );
+    const stopPrice = this.firstPositiveNumber(order.stopPrice);
 
     const orderId = order.order_id ?? order.orderId;
     const enteredTime = this.parseOrderTime(order)?.toISOString();
@@ -388,6 +389,7 @@ export class IbkrClient implements BrokerClient {
       ...(filledQuantity !== undefined ? { filledQuantity } : {}),
       ...(remainingQuantity !== undefined ? { remainingQuantity } : {}),
       ...(price !== undefined ? { price } : {}),
+      ...(stopPrice !== undefined ? { stopPrice } : {}),
       orderLegCollection: [this.normalizeOrderLeg(order, symbol)],
     };
   }
