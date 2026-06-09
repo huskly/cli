@@ -118,7 +118,7 @@ program
   .option("-s, --status <status>", "Filter by order status (FILLED, WORKING, CANCELED, etc.)")
   .option("-m, --max-results <n>", "Maximum number of orders to retrieve")
   .action(async (options: { from?: string; to?: string; status?: string; maxResults?: string }) => {
-    await handleOrders(options as Parameters<typeof handleOrders>[0]);
+    await handleOrders("schwab", options);
   });
 
 program

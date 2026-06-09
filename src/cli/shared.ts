@@ -26,8 +26,8 @@ export async function apiClient(): Promise<CachedSchwabClient> {
 
 /**
  * Resolve a normalized {@link BrokerClient} for the shared commands
- * (`account`, `positions`). Schwab goes through the cached client; IBKR uses
- * its native OAuth 1.0a handshake and runs uncached.
+ * (`account`, `positions`, `transactions`, `orders`). Schwab goes through the
+ * cached client; IBKR uses its native OAuth 1.0a handshake and runs uncached.
  */
 export async function brokerClient(broker: BrokerName): Promise<BrokerClient> {
   if (broker === "ibkr") {

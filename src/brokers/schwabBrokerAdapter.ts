@@ -1,7 +1,10 @@
 import type { CachedSchwabClient } from "#src/cachedSchwabClient.js";
+import type { SchwabOrderStatus } from "@huskly/schwab-client";
 import type {
   AccountBalances,
+  BrokerAccountOrders,
   BrokerClient,
+  BrokerOrdersOptions,
   BrokerPosition,
   BrokerTransactionHistory,
 } from "#src/brokers/brokerClient.js";
@@ -29,5 +32,24 @@ export class SchwabBrokerAdapter implements BrokerClient {
     endDate: Date
   ): Promise<BrokerTransactionHistory[]> {
     return this.client.fetchTransactionHistory(startDate, endDate);
+  }
+
+  async fetchOrders(options: BrokerOrdersOptions): Promise<BrokerAccountOrders[]> {
+    const fetchOptions: Parameters<CachedSchwabClient["fetchOrders"]>[0] = {
+      fromEnteredTime: options.fromEnteredTime,
+      toEnteredTime: options.toEnteredTime,
+    };
+    if (options.maxResults !== undefined) {
+      fetchOptions.maxResults = options.maxResults;
+    }
+    if (options.status !== undefined) {
+      fetchOptions.status = options.status as SchwabOrderStatus;
+    }
+
+    const orders = await this.client.fetchOrders(fetchOptions);
+    return orders.map((account) => ({
+      accountNumber: account.accountNumber,
+      orders: account.orders,
+    }));
   }
 }

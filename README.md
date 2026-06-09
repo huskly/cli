@@ -22,12 +22,13 @@ huskly-cli account                 # Schwab (default)
 huskly-cli --broker ibkr account   # Interactive Brokers
 huskly-cli --broker ibkr positions
 huskly-cli --broker ibkr transactions
+huskly-cli --broker ibkr orders
 ```
 
 IBKR currently supports the shared **`account`**, **`positions`**, and
-**`transactions`** commands. All other commands (quote, chain, movers, orders,
-place-order, etc.) are Schwab-only and will report a clear error under
-`--broker ibkr`.
+**`transactions`**, and **`orders`** commands. All other commands (quote,
+chain, movers, place-order, etc.) are Schwab-only and will report a clear error
+under `--broker ibkr`.
 
 ### IBKR setup
 
@@ -258,6 +259,7 @@ List account orders with optional filtering.
 
 ```bash
 huskly-cli orders
+huskly-cli --broker ibkr orders
 huskly-cli orders --from 2024-01-01 --to 2024-12-31
 huskly-cli orders --status FILLED
 huskly-cli orders --max-results 10
@@ -269,6 +271,9 @@ Options:
 - `-t, --to <date>` - To entered time (YYYY-MM-DD, defaults to today)
 - `-s, --status <status>` - Filter by order status (FILLED, WORKING, CANCELED, etc.)
 - `-m, --max-results <n>` - Maximum number of orders to retrieve
+
+IBKR orders are sourced from the live `/iserver/account/orders` endpoint, then
+filtered locally by date and maximum result count.
 
 #### place-order - Place an Order
 

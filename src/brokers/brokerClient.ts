@@ -1,8 +1,9 @@
 /**
  * Broker-neutral domain types shared across the CLI.
  *
- * Command handlers for the shared commands (`account`, `positions`) render these
- * normalized shapes and never touch raw broker JSON. Both the Schwab path
+ * Command handlers for the shared commands (`account`, `positions`,
+ * `transactions`, `orders`) render these normalized shapes and never touch raw
+ * broker JSON. Both the Schwab path
  * (via {@link SchwabBrokerAdapter}) and the IBKR path (via `IbkrClient`)
  * implement {@link BrokerClient}, so a single set of handlers serves either
  * broker. The field names mirror `@huskly/schwab-client`'s `getAccountBalances`
@@ -61,6 +62,39 @@ export interface BrokerTransactionHistory {
   transactions: BrokerTransaction[];
 }
 
+export interface BrokerOrderLeg {
+  instrument?: {
+    symbol?: string;
+  };
+  instruction?: string;
+}
+
+export interface BrokerOrder {
+  orderId?: string | number;
+  enteredTime?: string;
+  status?: string;
+  orderType?: string;
+  complexOrderStrategyType?: string;
+  quantity?: number;
+  filledQuantity?: number;
+  remainingQuantity?: number;
+  price?: number;
+  stopPrice?: number;
+  orderLegCollection?: BrokerOrderLeg[];
+}
+
+export interface BrokerOrdersOptions {
+  fromEnteredTime: Date;
+  toEnteredTime: Date;
+  status?: string;
+  maxResults?: number;
+}
+
+export interface BrokerAccountOrders {
+  accountNumber: string;
+  orders: BrokerOrder[];
+}
+
 /**
  * The contract every broker client satisfies for the shared commands. Kept
  * intentionally small; broker-specific commands continue to use the full Schwab
@@ -70,4 +104,5 @@ export interface BrokerClient {
   getAccountBalances(): Promise<AccountBalances>;
   getPositions(symbol?: string): Promise<BrokerPosition[]>;
   fetchTransactionHistory(startDate: Date, endDate: Date): Promise<BrokerTransactionHistory[]>;
+  fetchOrders(options: BrokerOrdersOptions): Promise<BrokerAccountOrders[]>;
 }

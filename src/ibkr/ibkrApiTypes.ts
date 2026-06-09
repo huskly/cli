@@ -61,6 +61,69 @@ export interface IbkrTransaction {
   desc?: string;
 }
 
+export interface IbkrLiveOrdersResponse {
+  orders?: IbkrLiveOrder[];
+  snapshot?: boolean;
+}
+
+export interface IbkrBrokerageAccountsResponse {
+  accounts?: string[];
+  selectedAccount?: string;
+}
+
+export interface IbkrSwitchAccountResponse {
+  set?: boolean;
+  acctId?: string;
+}
+
+export interface IbkrLiveOrder {
+  account?: string;
+  acct?: string;
+  orderId?: number | string;
+  order_id?: number | string;
+  conid?: number;
+  ticker?: string;
+  symbol?: string;
+  description1?: string;
+  contractDescription1?: string;
+  contract_description_1?: string;
+  companyName?: string;
+  company_name?: string;
+  side?: string;
+  orderType?: string;
+  order_type?: string;
+  orderStatus?: string;
+  order_status?: string;
+  status?: string;
+  orderStatusDescription?: string;
+  order_status_description?: string;
+  totalSize?: string | number;
+  total_size?: string | number;
+  size?: string | number;
+  cumFill?: string | number;
+  cum_fill?: string | number;
+  filledQuantity?: string | number;
+  remainingQuantity?: string | number;
+  sizeAndFills?: string;
+  size_and_fills?: string;
+  avgPrice?: string | number;
+  averagePrice?: string | number;
+  average_price?: string | number;
+  price?: string | number;
+  limitPrice?: string | number;
+  stopPrice?: string | number;
+  tif?: string;
+  orderDescription?: string;
+  order_description?: string;
+  orderDesc?: string;
+  orderDescriptionWithContract?: string;
+  order_description_with_contract?: string;
+  lastExecutionTime?: string;
+  lastExecutionTime_r?: number;
+  orderTime?: string;
+  order_time?: string;
+}
+
 /** A row from `iserver/marketdata/snapshot`. Fields are numbered strings. */
 export type IbkrMarketDataSnapshot = Record<string, string | number | undefined> & {
   conid?: number;

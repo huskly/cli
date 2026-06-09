@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Huskly CLI is a TypeScript command-line interface for trading tools. It supports two brokers, selected via the global `--broker` flag (default `schwab`):
 
 - **Schwab** (`--broker schwab`) — the Charles Schwab API via huskly.finance auth. Full command set (market data, account, orders).
-- **IBKR** (`--broker ibkr`) — Interactive Brokers Web API via native OAuth 1.0a. Currently the shared `account`, `positions`, and `transactions` commands; other commands are Schwab-only and guarded.
+- **IBKR** (`--broker ibkr`) — Interactive Brokers Web API via native OAuth 1.0a. Currently the shared `account`, `positions`, `transactions`, and `orders` commands; other commands are Schwab-only and guarded.
 
 ## Build & Development Commands
 
@@ -38,7 +38,7 @@ npm run check          # lint + format:check + typecheck
 
 ### Core Modules
 - **`src/cli/`** - Command handlers using Commander.js. Each command is an async `handleX` function.
-- **`src/brokers/`** - Broker-neutral `BrokerClient` interface (`brokerClient.ts`) used by the shared `account`/`positions`/`transactions` handlers, plus `SchwabBrokerAdapter` mapping the Schwab client onto it.
+- **`src/brokers/`** - Broker-neutral `BrokerClient` interface (`brokerClient.ts`) used by the shared `account`/`positions`/`transactions`/`orders` handlers, plus `SchwabBrokerAdapter` mapping the Schwab client onto it.
 - **`src/ibkr/`** - IBKR Web API client (OAuth 1.0a via the `ibkr-client` package), emitting Schwab-shaped balances/positions/transactions. Config from env vars + PEM files (`oauthConfig.ts`).
 - **`src/auth/`** - OAuth 2.0 Device Authorization flow via huskly.finance, credentials stored in OS keychain via `keytar`
 - **`src/cache.ts`** - Redis caching layer with per-operation TTLs (Schwab only)
@@ -46,7 +46,7 @@ npm run check          # lint + format:check + typecheck
 
 ### API Client Pattern
 ```typescript
-// Shared commands (account, positions, transactions) — broker-aware, pass the resolved broker:
+// Shared commands (account, positions, transactions, orders) — broker-aware, pass the resolved broker:
 import { brokerClient } from "#src/cli/shared.js";
 const api = await brokerClient(broker); // BrokerClient (Schwab adapter or IbkrClient)
 
