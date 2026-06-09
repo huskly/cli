@@ -101,8 +101,11 @@ export class IbkrClient implements BrokerClient {
   async getPositions(symbol?: string): Promise<BrokerPosition[]> {
     const accountId = await this.getAccountId();
     const rows = await this.fetchAllPositions(accountId);
-    const dayPnl = await this.fetchDayPnl(rows.map((p) => String(p.conid)).filter(Boolean));
-
+    const conids = rows
+      .map((p) => p.conid)
+      .filter((conid): conid is number => conid !== undefined)
+      .map(String);
+    const dayPnl = await this.fetchDayPnl(conids);
     let positions = rows.map((p) => this.normalizePosition(p, dayPnl));
     if (symbol) {
       const upper = symbol.toUpperCase();
