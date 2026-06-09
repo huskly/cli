@@ -196,12 +196,15 @@ export class IbkrClient implements BrokerClient {
         )
         .map((snapshot) => [snapshot.conid, snapshot])
     );
+    const histories = await Promise.all(
+      resolvedContracts.map((contract) => this.fetchQuoteHistory(contract.conid))
+    );
     const quotes: Record<string, BrokerQuote> = {};
 
-    for (const contract of resolvedContracts) {
+    for (const [index, contract] of resolvedContracts.entries()) {
       const snapshot = snapshotByConid.get(contract.conid);
       if (snapshot === undefined) continue;
-      const history = await this.fetchQuoteHistory(contract.conid);
+      const history = histories[index];
       const quote = this.normalizeQuote(contract, snapshot, history);
       quotes[contract.requestedSymbol] = quote;
       quotes[contract.symbol] = quote;

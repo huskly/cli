@@ -145,8 +145,8 @@ program
 program
   .command("repl")
   .description("Start an interactive REPL to run multiple commands")
-  .action(() => {
-    handleRepl();
+  .action(async () => {
+    await handleRepl("schwab");
   });
 
 program

@@ -23,6 +23,7 @@ huskly-cli --broker ibkr account   # Interactive Brokers
 huskly-cli --broker ibkr positions
 huskly-cli --broker ibkr transactions
 huskly-cli --broker ibkr orders
+huskly-cli --broker ibkr repl
 ```
 
 ### Broker command support
@@ -47,12 +48,12 @@ implemented for that broker.
 | `transactions`    | ✓      | ✓    |
 | `orders`          | ✓      | ✓    |
 | `place-order`     | ✓      | ✗    |
-| `repl`            | ✓      | ✗    |
+| `repl`            | ✓      | ✓    |
 
 IBKR currently supports the shared **`account`**, **`quote`**, **`search`**,
-**`positions`**, **`transactions`**, and **`orders`** commands. IBKR `search`
-supports symbol lookup via `symbol-search` / `search`; Schwab-specific regex,
-description, and fundamental projections report a clear error under
+**`positions`**, **`transactions`**, **`orders`**, and **`repl`** commands. IBKR
+`search` supports symbol lookup via `symbol-search` / `search`; Schwab-specific
+regex, description, and fundamental projections report a clear error under
 `--broker ibkr`. All other broker commands (`chain`, `movers`, `place-order`,
 etc.) are Schwab-only and will report a clear error under `--broker ibkr`.
 
@@ -340,6 +341,7 @@ Start an interactive REPL to run multiple commands without re-authenticating.
 
 ```bash
 huskly-cli repl
+huskly-cli --broker ibkr repl
 ```
 
 ## Project Structure

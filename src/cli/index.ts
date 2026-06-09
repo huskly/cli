@@ -242,9 +242,8 @@ program
 program
   .command("repl")
   .description("Start an interactive REPL to run multiple commands")
-  .action(() => {
-    guardSchwab("repl");
-    handleRepl();
+  .action(async () => {
+    await handleRepl(broker());
   });
 
 program

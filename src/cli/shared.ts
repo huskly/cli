@@ -1,6 +1,7 @@
 import { HusklyDeviceAuth } from "#src/auth/husklyDeviceAuth.js";
 import { ensure } from "#src/helpers.js";
 import { SchwabClient } from "@huskly/schwab-client";
+import { CachedIbkrClient } from "#src/cachedIbkrClient.js";
 import { CachedSchwabClient } from "#src/cachedSchwabClient.js";
 import type { BrokerClient, BrokerName } from "#src/brokers/brokerClient.js";
 import { SchwabBrokerAdapter } from "#src/brokers/schwabBrokerAdapter.js";
@@ -9,6 +10,8 @@ import { buildOauthConfig } from "#src/ibkr/oauthConfig.js";
 import * as asciichart from "asciichart";
 
 export { asciichart };
+
+const brokerClientPromises = new Map<BrokerName, Promise<BrokerClient>>();
 
 /**
  * The full Schwab client used by Schwab-only commands (quote, chain, movers,
@@ -27,15 +30,26 @@ export async function apiClient(): Promise<CachedSchwabClient> {
 /**
  * Resolve a normalized {@link BrokerClient} for the shared commands
  * (`account`, `positions`, `transactions`, `orders`). Schwab goes through the
- * cached client; IBKR uses its native OAuth 1.0a handshake and runs uncached.
+ * cached client; IBKR uses its native OAuth 1.0a handshake behind a lazy cache
+ * wrapper so repeated read commands can avoid session startup entirely.
  */
 export async function brokerClient(broker: BrokerName): Promise<BrokerClient> {
-  if (broker === "ibkr") {
-    const client = new IbkrClient(buildOauthConfig());
-    await client.init();
-    return client;
-  }
-  return new SchwabBrokerAdapter(await apiClient());
+  const existing = brokerClientPromises.get(broker);
+  if (existing !== undefined) return existing;
+
+  const promise =
+    broker === "ibkr"
+      ? Promise.resolve(
+          new CachedIbkrClient(async () => {
+            const client = new IbkrClient(buildOauthConfig());
+            await client.init();
+            return client;
+          })
+        )
+      : apiClient().then((client) => new SchwabBrokerAdapter(client));
+
+  brokerClientPromises.set(broker, promise);
+  return promise;
 }
 
 /** Resolve the broker from a Commander option, validating the value. */
