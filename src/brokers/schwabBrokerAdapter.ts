@@ -4,6 +4,8 @@ import type {
   AccountBalances,
   BrokerAccountOrders,
   BrokerClient,
+  BrokerInstrument,
+  BrokerInstrumentSearchProjection,
   BrokerOrdersOptions,
   BrokerPosition,
   BrokerTransactionHistory,
@@ -25,6 +27,13 @@ export class SchwabBrokerAdapter implements BrokerClient {
 
   async getPositions(symbol?: string): Promise<BrokerPosition[]> {
     return this.client.getPositions(symbol);
+  }
+
+  async searchInstruments(
+    symbol: string,
+    projection: BrokerInstrumentSearchProjection
+  ): Promise<BrokerInstrument[]> {
+    return this.client.searchInstruments(symbol, projection);
   }
 
   async fetchTransactionHistory(

@@ -12,6 +12,53 @@
 
 export type BrokerName = "ibkr" | "schwab";
 
+export type BrokerInstrumentSearchProjection =
+  | "symbol-search"
+  | "symbol-regex"
+  | "desc-search"
+  | "desc-regex"
+  | "search"
+  | "fundamental";
+
+export interface BrokerFundamentalInstrument {
+  peRatio?: number;
+  pegRatio?: number;
+  pbRatio?: number;
+  prRatio?: number;
+  pcfRatio?: number;
+  marketCap?: number;
+  sharesOutstanding?: number;
+  marketCapFloat?: number;
+  eps?: number;
+  epsTTM?: number;
+  epsChangePercentTTM?: number;
+  dividendYield?: number;
+  dividendAmount?: number;
+  dividendPayAmount?: number;
+  dividendFreq?: number;
+  high52?: number;
+  low52?: number;
+  grossMarginTTM?: number;
+  operatingMarginTTM?: number;
+  netProfitMarginTTM?: number;
+  returnOnEquity?: number;
+  returnOnAssets?: number;
+  returnOnInvestment?: number;
+  beta?: number;
+  shortIntToFloat?: number;
+  shortIntDayToCover?: number;
+}
+
+export interface BrokerInstrument {
+  cusip?: string;
+  brokerId?: string;
+  symbol?: string;
+  description?: string;
+  exchange?: string;
+  assetType?: string;
+  fundamental?: BrokerFundamentalInstrument;
+}
+
 export interface AccountBalances {
   liquidationValue: number;
   cashBalance: number;
@@ -103,6 +150,10 @@ export interface BrokerAccountOrders {
 export interface BrokerClient {
   getAccountBalances(): Promise<AccountBalances>;
   getPositions(symbol?: string): Promise<BrokerPosition[]>;
+  searchInstruments(
+    symbol: string,
+    projection: BrokerInstrumentSearchProjection
+  ): Promise<BrokerInstrument[]>;
   fetchTransactionHistory(startDate: Date, endDate: Date): Promise<BrokerTransactionHistory[]>;
   fetchOrders(options: BrokerOrdersOptions): Promise<BrokerAccountOrders[]>;
 }

@@ -34,7 +34,7 @@ implemented for that broker.
 | Command | Schwab | IBKR |
 | --- | --- | --- |
 | `quote` | ✓ | ✗ |
-| `search` | ✓ | ✗ |
+| `search` | ✓ | ✓ |
 | `movers` | ✓ | ✗ |
 | `history` | ✓ | ✗ |
 | `chart` | ✓ | ✗ |
@@ -49,10 +49,13 @@ implemented for that broker.
 | `place-order` | ✓ | ✗ |
 | `repl` | ✓ | ✗ |
 
-IBKR currently supports the shared **`account`**, **`positions`**,
-**`transactions`**, and **`orders`** commands. All other broker commands
-(`quote`, `chain`, `movers`, `place-order`, etc.) are Schwab-only and will
-report a clear error under `--broker ibkr`.
+IBKR currently supports the shared **`account`**, **`search`**,
+**`positions`**, **`transactions`**, and **`orders`** commands. IBKR `search`
+supports symbol lookup via `symbol-search` / `search`; Schwab-specific regex,
+description, and fundamental projections report a clear error under
+`--broker ibkr`. All other broker commands (`quote`, `chain`, `movers`,
+`place-order`, etc.) are Schwab-only and will report a clear error under
+`--broker ibkr`.
 
 ### IBKR setup
 

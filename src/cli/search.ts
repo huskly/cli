@@ -1,13 +1,14 @@
 import chalk from "chalk";
-import { apiClient } from "./shared.js";
+import { brokerClient } from "./shared.js";
 import { formatNumber, formatLargeNumber } from "../format.js";
 import type {
-  SchwabInstrumentSearchProjection,
-  SchwabInstrumentResponse,
-  SchwabFundamentalInstrument,
-} from "@huskly/schwab-client";
+  BrokerFundamentalInstrument,
+  BrokerInstrument,
+  BrokerInstrumentSearchProjection,
+  BrokerName,
+} from "#src/brokers/brokerClient.js";
 
-const VALID_PROJECTIONS: SchwabInstrumentSearchProjection[] = [
+const VALID_PROJECTIONS: BrokerInstrumentSearchProjection[] = [
   "symbol-search",
   "symbol-regex",
   "desc-search",
@@ -15,8 +16,9 @@ const VALID_PROJECTIONS: SchwabInstrumentSearchProjection[] = [
   "search",
   "fundamental",
 ];
+const IBKR_PROJECTIONS: BrokerInstrumentSearchProjection[] = ["symbol-search", "search"];
 
-function printBasicInstrument(instrument: SchwabInstrumentResponse): void {
+function printBasicInstrument(instrument: BrokerInstrument): void {
   console.log(
     `  ${chalk.cyan.bold(instrument.symbol ?? "-")}  ${chalk.white(instrument.description ?? "-")}`
   );
@@ -24,12 +26,13 @@ function printBasicInstrument(instrument: SchwabInstrumentResponse): void {
   if (instrument.exchange) details.push(`Exchange: ${instrument.exchange}`);
   if (instrument.assetType) details.push(`Type: ${instrument.assetType}`);
   if (instrument.cusip) details.push(`CUSIP: ${instrument.cusip}`);
+  if (instrument.brokerId) details.push(`ID: ${instrument.brokerId}`);
   if (details.length > 0) {
     console.log(`    ${chalk.gray(details.join("  |  "))}`);
   }
 }
 
-function printFundamentalData(f: SchwabFundamentalInstrument): void {
+function printFundamentalData(f: BrokerFundamentalInstrument): void {
   console.log(chalk.bold("    Fundamentals:"));
 
   // Valuation metrics
@@ -119,8 +122,8 @@ function printFundamentalData(f: SchwabFundamentalInstrument): void {
 }
 
 function printInstrument(
-  instrument: SchwabInstrumentResponse,
-  projection: SchwabInstrumentSearchProjection
+  instrument: BrokerInstrument,
+  projection: BrokerInstrumentSearchProjection
 ): void {
   printBasicInstrument(instrument);
 
@@ -136,8 +139,12 @@ export interface SearchOptions {
   projection: string;
 }
 
-export async function handleSearch(symbol: string, options: SearchOptions): Promise<void> {
-  const projection = options.projection as SchwabInstrumentSearchProjection;
+export async function handleSearch(
+  broker: BrokerName,
+  symbol: string,
+  options: SearchOptions
+): Promise<void> {
+  const projection = options.projection as BrokerInstrumentSearchProjection;
 
   if (!VALID_PROJECTIONS.includes(projection)) {
     console.error(
@@ -147,10 +154,20 @@ export async function handleSearch(symbol: string, options: SearchOptions): Prom
     process.exit(1);
   }
 
+  if (broker === "ibkr" && !IBKR_PROJECTIONS.includes(projection)) {
+    throw new Error(
+      `IBKR search currently supports only symbol-search/search projections (got '${projection}').`
+    );
+  }
+
   console.log(chalk.bold("\nInstrument Search\n"));
-  console.log(chalk.gray(`Searching for "${symbol}" using ${projection} projection...\n`));
+  console.log(
+    chalk.gray(
+      `Searching ${broker.toUpperCase()} for "${symbol}" using ${projection} projection...\n`
+    )
+  );
   console.log(chalk.gray("-".repeat(60)));
-  const api = await apiClient();
+  const api = await brokerClient(broker);
   const instruments = await api.searchInstruments(symbol, projection);
 
   if (instruments.length === 0) {

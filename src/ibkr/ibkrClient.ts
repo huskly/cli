@@ -5,6 +5,8 @@ import type {
   AccountBalances,
   BrokerAccountOrders,
   BrokerClient,
+  BrokerInstrument,
+  BrokerInstrumentSearchProjection,
   BrokerOrder,
   BrokerOrderLeg,
   BrokerOrdersOptions,
@@ -23,6 +25,9 @@ import type {
   IbkrPortfolioSummary,
   IbkrPosition,
   IbkrSwitchAccountResponse,
+  IbkrStockContract,
+  IbkrStockListing,
+  IbkrStocksResponse,
   IbkrTransaction,
   IbkrTransactionsResponse,
 } from "#src/ibkr/ibkrApiTypes.js";
@@ -139,6 +144,27 @@ export class IbkrClient implements BrokerClient {
       positions = positions.filter((p) => p.instrument.symbol.toUpperCase().includes(upper));
     }
     return positions;
+  }
+
+  async searchInstruments(
+    symbol: string,
+    projection: BrokerInstrumentSearchProjection
+  ): Promise<BrokerInstrument[]> {
+    if (projection !== "symbol-search" && projection !== "search") {
+      throw new Error(
+        `IBKR search currently supports only symbol-search/search projections (got '${projection}').`
+      );
+    }
+
+    const query = symbol.trim().toUpperCase();
+    if (!query) return [];
+
+    const response = await this.req<IbkrStocksResponse>({
+      path: "trsrv/stocks",
+      params: { symbols: query },
+    });
+
+    return (response[query] ?? []).flatMap((listing) => this.normalizeStockListing(query, listing));
   }
 
   async fetchTransactionHistory(
@@ -291,6 +317,38 @@ export class IbkrClient implements BrokerClient {
       // shared handler (which reads long/short open P/L separately) renders it.
       longOpenProfitLoss: qty > 0 ? openPnl : 0,
       shortOpenProfitLoss: qty < 0 ? openPnl : 0,
+    };
+  }
+
+  private normalizeStockListing(symbol: string, listing: IbkrStockListing): BrokerInstrument[] {
+    const assetType = listing.assetClass === "STK" ? "EQUITY" : listing.assetClass;
+    const contracts = listing.contracts ?? [];
+    if (!contracts.length) {
+      return [
+        {
+          symbol,
+          ...(listing.name !== undefined ? { description: listing.name } : {}),
+          ...(assetType !== undefined ? { assetType } : {}),
+        },
+      ];
+    }
+
+    return contracts.map((contract) => this.normalizeStockContract(symbol, listing, contract));
+  }
+
+  private normalizeStockContract(
+    symbol: string,
+    listing: IbkrStockListing,
+    contract: IbkrStockContract
+  ): BrokerInstrument {
+    const assetType = listing.assetClass === "STK" ? "EQUITY" : listing.assetClass;
+
+    return {
+      symbol,
+      ...(listing.name !== undefined ? { description: listing.name } : {}),
+      ...(contract.exchange !== undefined ? { exchange: contract.exchange } : {}),
+      ...(assetType !== undefined ? { assetType } : {}),
+      ...(contract.conid !== undefined ? { brokerId: String(contract.conid) } : {}),
     };
   }
 

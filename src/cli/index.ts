@@ -94,8 +94,7 @@ program
     "symbol-search"
   )
   .action(async (symbol: string, options: { projection: string }) => {
-    guardSchwab("search");
-    await handleSearch(symbol, options);
+    await handleSearch(broker(), symbol, options);
   });
 
 program

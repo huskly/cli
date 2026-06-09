@@ -39,6 +39,21 @@ export interface IbkrPosition {
   unrealizedPnl?: number;
 }
 
+export interface IbkrStockContract {
+  conid?: number;
+  exchange?: string;
+  isUS?: boolean;
+}
+
+export interface IbkrStockListing {
+  name?: string;
+  chineseName?: string | null;
+  assetClass?: string;
+  contracts?: IbkrStockContract[];
+}
+
+export type IbkrStocksResponse = Record<string, IbkrStockListing[] | undefined>;
+
 export interface IbkrTransactionsResponse {
   currency?: string;
   from?: number;
