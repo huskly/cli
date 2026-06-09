@@ -1,5 +1,10 @@
 import type { CachedSchwabClient } from "#src/cachedSchwabClient.js";
-import type { AccountBalances, BrokerClient, BrokerPosition } from "#src/brokers/brokerClient.js";
+import type {
+  AccountBalances,
+  BrokerClient,
+  BrokerPosition,
+  BrokerTransactionHistory,
+} from "#src/brokers/brokerClient.js";
 
 /**
  * Adapts {@link CachedSchwabClient} to the broker-neutral {@link BrokerClient}.
@@ -17,5 +22,12 @@ export class SchwabBrokerAdapter implements BrokerClient {
 
   async getPositions(symbol?: string): Promise<BrokerPosition[]> {
     return this.client.getPositions(symbol);
+  }
+
+  async fetchTransactionHistory(
+    startDate: Date,
+    endDate: Date
+  ): Promise<BrokerTransactionHistory[]> {
+    return this.client.fetchTransactionHistory(startDate, endDate);
   }
 }

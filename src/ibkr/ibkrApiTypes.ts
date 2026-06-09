@@ -39,6 +39,28 @@ export interface IbkrPosition {
   unrealizedPnl?: number;
 }
 
+export interface IbkrTransactionsResponse {
+  currency?: string;
+  from?: number;
+  to?: number;
+  includesRealTime?: boolean;
+  transactions?: IbkrTransaction[];
+}
+
+export interface IbkrTransaction {
+  date?: string;
+  rawDate?: string;
+  cur?: string;
+  fxRate?: number;
+  pr?: number;
+  qty?: number;
+  acctid?: string;
+  amt?: number;
+  conid?: number;
+  type?: string;
+  desc?: string;
+}
+
 /** A row from `iserver/marketdata/snapshot`. Fields are numbered strings. */
 export type IbkrMarketDataSnapshot = Record<string, string | number | undefined> & {
   conid?: number;

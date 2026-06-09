@@ -1,9 +1,13 @@
 import chalk from "chalk";
-import { format, isValid, parseISO, startOfYear } from "date-fns";
-import { apiClient } from "./shared.js";
-import type { SchwabTransaction, SchwabTransferItem } from "@huskly/schwab-client";
+import { endOfDay, format, isValid, parseISO, startOfYear } from "date-fns";
+import { brokerClient } from "./shared.js";
 import { currencyFormatUsd } from "#src/format.js";
 import { parseOccSymbol } from "#src/helpers.js";
+import type {
+  BrokerName,
+  BrokerTransaction,
+  BrokerTransferItem,
+} from "#src/brokers/brokerClient.js";
 
 interface TransactionOptions {
   start?: string;
@@ -44,19 +48,19 @@ function parseDateInput(value: string, label: string): Date {
   return parsed;
 }
 
-function parseTransactionDate(transaction: SchwabTransaction): Date {
+function parseTransactionDate(transaction: BrokerTransaction): Date {
   const dateStr = transaction.time;
   const parsed = dateStr ? new Date(dateStr) : new Date(NaN);
   return parsed;
 }
 
-function pickPrimaryTransferItem(items?: SchwabTransferItem[]): SchwabTransferItem | undefined {
+function pickPrimaryTransferItem(items?: BrokerTransferItem[]): BrokerTransferItem | undefined {
   if (!items || items.length === 0) return undefined;
   // Fee items have feeType property and use CURRENCY as instrument
   // Prefer actual instruments (OPTION, EQUITY, etc.) over CURRENCY items
   const actualInstrument = items.find(
     (item) =>
-      item.instrument?.assetType && item.instrument.assetType !== "CURRENCY" && !("feeType" in item)
+      item.instrument?.assetType && item.instrument.assetType !== "CURRENCY" && !item.feeType
   );
   // Fall back to any non-CURRENCY item, then any item with a symbol
   const nonCurrencyItem = items.find(
@@ -67,12 +71,12 @@ function pickPrimaryTransferItem(items?: SchwabTransferItem[]): SchwabTransferIt
   );
 }
 
-function calculateTotalFees(items?: SchwabTransferItem[]): number {
+function calculateTotalFees(items?: BrokerTransferItem[]): number {
   if (!items || items.length === 0) return 0;
   // Fee items are identified by having a feeType property
   // The fee amount is in the cost field (as a negative value)
   return items.reduce((total, item) => {
-    if ("feeType" in item && item.cost !== undefined) {
+    if (item.feeType && item.cost !== undefined) {
       return total + Math.abs(item.cost);
     }
     return total;
@@ -84,27 +88,30 @@ function formatColumn(value: string, width: number, align: "left" | "right" = "l
   return align === "right" ? truncated.padStart(width) : truncated.padEnd(width);
 }
 
-export async function handleTransactions(options: TransactionOptions): Promise<void> {
+export async function handleTransactions(
+  broker: BrokerName,
+  options: TransactionOptions
+): Promise<void> {
   const now = new Date();
   const startDate = options.start ? parseDateInput(options.start, "start") : startOfYear(now);
-  const endDate = options.end ? parseDateInput(options.end, "end") : now;
+  const endDate = options.end ? endOfDay(parseDateInput(options.end, "end")) : now;
 
   if (startDate > endDate) {
     throw new Error("Start date must be on or before end date.");
   }
 
-  const api = await apiClient();
+  const api = await brokerClient(broker);
   const histories = await api.fetchTransactionHistory(startDate, endDate);
 
   if (histories.length === 0) {
     if (!options.csv) {
-      console.log(chalk.yellow("No Schwab accounts found."));
+      console.log(chalk.yellow("No accounts found."));
     }
     return;
   }
 
   // Collect all transactions from all accounts
-  const allTransactions: { accountNumber: string; transaction: SchwabTransaction }[] = [];
+  const allTransactions: { accountNumber: string; transaction: BrokerTransaction }[] = [];
   for (const history of histories) {
     for (const transaction of history.transactions) {
       // Filter by type if specified (case-insensitive)
@@ -133,7 +140,8 @@ export async function handleTransactions(options: TransactionOptions): Promise<v
       const rawSymbol =
         primaryItem?.instrument?.symbol ??
         primaryItem?.instrument?.description ??
-        transaction.subAccount;
+        transaction.subAccount ??
+        "";
       const isOption = primaryItem?.instrument?.assetType === "OPTION";
       const symbol = isOption ? parseOccSymbol(rawSymbol) : rawSymbol;
       const quantity = primaryItem?.amount ? primaryItem.amount.toString() : "";
@@ -201,7 +209,8 @@ export async function handleTransactions(options: TransactionOptions): Promise<v
       const rawSymbol =
         primaryItem?.instrument?.symbol ??
         primaryItem?.instrument?.description ??
-        transaction.subAccount;
+        transaction.subAccount ??
+        "";
       const isOption = primaryItem?.instrument?.assetType === "OPTION";
       const symbol = isOption ? parseOccSymbol(rawSymbol) : rawSymbol;
       const quantity = primaryItem?.amount ? primaryItem.amount.toString() : "";

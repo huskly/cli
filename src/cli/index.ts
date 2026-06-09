@@ -205,8 +205,7 @@ program
   .option("-t, --type <type>", "Filter by transaction type (e.g., TRADE, DIVIDEND)")
   .option("--csv", "Output in CSV format instead of table")
   .action(async (options: { start?: string; end?: string; type?: string; csv?: boolean }) => {
-    guardSchwab("transactions");
-    await handleTransactions(options);
+    await handleTransactions(broker(), options);
   });
 
 program

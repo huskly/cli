@@ -21,11 +21,13 @@ Select the broker per invocation with the global `--broker` flag (default `schwa
 huskly-cli account                 # Schwab (default)
 huskly-cli --broker ibkr account   # Interactive Brokers
 huskly-cli --broker ibkr positions
+huskly-cli --broker ibkr transactions
 ```
 
-IBKR currently supports the shared **`account`** and **`positions`** commands.
-All other commands (quote, chain, movers, orders, place-order, etc.) are Schwab
--only and will report a clear error under `--broker ibkr`.
+IBKR currently supports the shared **`account`**, **`positions`**, and
+**`transactions`** commands. All other commands (quote, chain, movers, orders,
+place-order, etc.) are Schwab-only and will report a clear error under
+`--broker ibkr`.
 
 ### IBKR setup
 
@@ -233,12 +235,20 @@ List account transaction history.
 ```bash
 huskly-cli transactions
 huskly-cli transactions --start 2024-01-01 --end 2024-12-31
+huskly-cli --broker ibkr transactions
 ```
 
 Options:
 
 - `-s, --start <date>` - Start date (YYYY-MM-DD, defaults to start of year)
 - `-e, --end <date>` - End date (YYYY-MM-DD, defaults to today)
+- `-t, --type <type>` - Filter by transaction type (e.g., TRADE, DIVIDEND, BUY, SELL)
+- `--csv` - Output in CSV format instead of table
+
+IBKR transaction history is sourced from the Web API PortfolioAnalyst
+`/pa/transactions` endpoint, which requires one contract id per request. The CLI
+queries the contract ids present in current IBKR positions, then filters the
+results to the requested date range.
 
 ### Order Commands
 

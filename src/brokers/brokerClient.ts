@@ -33,12 +33,41 @@ export interface BrokerPosition {
   shortOpenProfitLoss: number;
 }
 
+export interface BrokerTransferItem {
+  instrument?: {
+    assetType?: string;
+    symbol?: string;
+    description?: string;
+  };
+  amount?: number;
+  cost?: number;
+  transferItemType?: string;
+  feeType?: string;
+}
+
+export interface BrokerTransaction {
+  activityId: string | number;
+  time: string;
+  type: string;
+  status: string;
+  subAccount?: string;
+  description?: string;
+  netAmount: number;
+  transferItems?: BrokerTransferItem[];
+}
+
+export interface BrokerTransactionHistory {
+  accountNumber: string;
+  transactions: BrokerTransaction[];
+}
+
 /**
  * The contract every broker client satisfies for the shared commands. Kept
- * intentionally small (account + positions); broker-specific commands continue
- * to use the full Schwab client directly.
+ * intentionally small; broker-specific commands continue to use the full Schwab
+ * client directly.
  */
 export interface BrokerClient {
   getAccountBalances(): Promise<AccountBalances>;
   getPositions(symbol?: string): Promise<BrokerPosition[]>;
+  fetchTransactionHistory(startDate: Date, endDate: Date): Promise<BrokerTransactionHistory[]>;
 }

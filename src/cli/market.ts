@@ -107,7 +107,7 @@ program
   .option("-s, --start <date>", "Start date (YYYY-MM-DD)")
   .option("-e, --end <date>", "End date (YYYY-MM-DD)")
   .action(async (options: { start?: string; end?: string }) => {
-    await handleTransactions(options);
+    await handleTransactions("schwab", options);
   });
 
 program
