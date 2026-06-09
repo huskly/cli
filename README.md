@@ -25,10 +25,34 @@ huskly-cli --broker ibkr transactions
 huskly-cli --broker ibkr orders
 ```
 
-IBKR currently supports the shared **`account`**, **`positions`**, and
-**`transactions`**, and **`orders`** commands. All other commands (quote,
-chain, movers, place-order, etc.) are Schwab-only and will report a clear error
-under `--broker ibkr`.
+### Broker command support
+
+Use this matrix to track broker parity as IBKR support expands. A checkmark
+means the command supports that broker today; a cross means it is not yet
+implemented for that broker.
+
+| Command | Schwab | IBKR |
+| --- | --- | --- |
+| `quote` | ✓ | ✗ |
+| `search` | ✓ | ✗ |
+| `movers` | ✓ | ✗ |
+| `history` | ✓ | ✗ |
+| `chart` | ✓ | ✗ |
+| `vix` | ✓ | ✗ |
+| `expiries` | ✓ | ✗ |
+| `chain` | ✓ | ✗ |
+| `account` | ✓ | ✓ |
+| `user-preference` | ✓ | ✗ |
+| `positions` | ✓ | ✓ |
+| `transactions` | ✓ | ✓ |
+| `orders` | ✓ | ✓ |
+| `place-order` | ✓ | ✗ |
+| `repl` | ✓ | ✗ |
+
+IBKR currently supports the shared **`account`**, **`positions`**,
+**`transactions`**, and **`orders`** commands. All other broker commands
+(`quote`, `chain`, `movers`, `place-order`, etc.) are Schwab-only and will
+report a clear error under `--broker ibkr`.
 
 ### IBKR setup
 
