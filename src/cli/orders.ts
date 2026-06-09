@@ -1,13 +1,13 @@
 import chalk from "chalk";
 import { format, isValid, parseISO, subDays } from "date-fns";
-import { apiClient } from "./shared.js";
-import type { SchwabOrder, SchwabOrderStatus } from "@huskly/schwab-client";
+import { brokerClient } from "./shared.js";
+import type { BrokerName, BrokerOrder, BrokerOrdersOptions } from "#src/brokers/brokerClient.js";
 import { currencyFormatUsd } from "#src/format.js";
 
 interface OrdersOptions {
   from?: string;
   to?: string;
-  status?: SchwabOrderStatus;
+  status?: string;
   maxResults?: string;
 }
 
@@ -35,7 +35,7 @@ function parseDateInput(value: string, label: string): Date {
   return parsed;
 }
 
-function parseOrderDate(order: SchwabOrder): Date {
+function parseOrderDate(order: BrokerOrder): Date {
   const dateStr = order.enteredTime;
   const parsed = dateStr ? new Date(dateStr) : new Date(NaN);
   return parsed;
@@ -46,17 +46,21 @@ function formatColumn(value: string, width: number, align: "left" | "right" = "l
   return align === "right" ? truncated.padStart(width) : truncated.padEnd(width);
 }
 
-function getStatusColor(status: SchwabOrderStatus | undefined): (text: string) => string {
+function getStatusColor(status: string | undefined): (text: string) => string {
   switch (status) {
     case "FILLED":
       return chalk.green;
     case "WORKING":
     case "QUEUED":
     case "PENDING_ACTIVATION":
+    case "PENDING_SUBMIT":
+    case "PRE_SUBMITTED":
+    case "SUBMITTED":
     case "ACCEPTED":
       return chalk.cyan;
     case "REJECTED":
     case "CANCELED":
+    case "CANCELLED":
     case "EXPIRED":
       return chalk.red;
     case "PENDING_CANCEL":
@@ -68,7 +72,7 @@ function getStatusColor(status: SchwabOrderStatus | undefined): (text: string) =
   }
 }
 
-function getOrderSymbol(order: SchwabOrder): string {
+function getOrderSymbol(order: BrokerOrder): string {
   const legs = order.orderLegCollection;
   if (!legs || legs.length === 0) return "-";
 
@@ -85,7 +89,7 @@ function getOrderSymbol(order: SchwabOrder): string {
   return `${uniqueSymbols[0] ?? "-"} +${String(legs.length - 1)}`;
 }
 
-function getOrderInstruction(order: SchwabOrder): string {
+function getOrderInstruction(order: BrokerOrder): string {
   const legs = order.orderLegCollection;
   if (!legs || legs.length === 0) return "-";
 
@@ -97,7 +101,7 @@ function getOrderInstruction(order: SchwabOrder): string {
   return order.complexOrderStrategyType ?? "MULTI-LEG";
 }
 
-function getOrderPrice(order: SchwabOrder): string {
+function getOrderPrice(order: BrokerOrder): string {
   if (order.price !== undefined) {
     return currencyFormatUsd(order.price);
   }
@@ -107,7 +111,7 @@ function getOrderPrice(order: SchwabOrder): string {
   return "-";
 }
 
-export async function handleOrders(options: OrdersOptions): Promise<void> {
+export async function handleOrders(broker: BrokerName, options: OrdersOptions): Promise<void> {
   const now = new Date();
   // Default to last 30 days if no dates provided
   const toDate = options.to ? parseDateInput(options.to, "to") : now;
@@ -121,7 +125,7 @@ export async function handleOrders(options: OrdersOptions): Promise<void> {
     chalk.bold(`\n📋 Orders (${format(fromDate, DATE_FORMAT)} to ${format(toDate, DATE_FORMAT)})\n`)
   );
 
-  const fetchOptions: Parameters<typeof api.fetchOrders>[0] = {
+  const fetchOptions: BrokerOrdersOptions = {
     fromEnteredTime: fromDate,
     toEnteredTime: toDate,
   };
@@ -129,14 +133,14 @@ export async function handleOrders(options: OrdersOptions): Promise<void> {
     fetchOptions.maxResults = parseInt(options.maxResults, 10);
   }
   if (options.status) {
-    fetchOptions.status = options.status;
+    fetchOptions.status = options.status.toUpperCase();
   }
 
-  const api = await apiClient();
+  const api = await brokerClient(broker);
   const accountOrders = await api.fetchOrders(fetchOptions);
 
   if (accountOrders.length === 0) {
-    console.log(chalk.yellow("No Schwab accounts found."));
+    console.log(chalk.yellow(`No ${broker.toUpperCase()} accounts found.`));
     return;
   }
 
