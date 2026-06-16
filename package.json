@@ -46,7 +46,7 @@
     "prettier": "^3.4.2",
     "tsx": "^4.19.2",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.49.0"
+    "typescript-eslint": "^8.61.1"
   },
   "dependencies": {
     "@huskly/schwab-client": "^0.1.0",
