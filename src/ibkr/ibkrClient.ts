@@ -163,6 +163,7 @@ export class IbkrClient implements BrokerClient {
       .map((p) => p.conid)
       .filter((conid): conid is number => conid !== undefined)
       .map(String);
+    await this.prepareBrokerageAccount(accountId);
     const dayPnl = await this.fetchDayPnl(conids);
     let positions = rows.map((p) => this.normalizePosition(p, dayPnl));
     if (symbol) {
