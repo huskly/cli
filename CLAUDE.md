@@ -34,7 +34,8 @@ npm run check          # lint + format:check + typecheck
 ### Entry Points
 - `src/index.ts` → delegates to `src/cli/index.ts` (main CLI)
 - `src/auth/cli.ts` → auth subcommand (login/logout/status)
-- Binaries: `huskly-cli` and `huskly-cli-auth`
+- `src/mcp/server.ts` → MCP server exposing market data as tools (stdio transport)
+- Binaries: `huskly-cli`, `huskly-cli-auth`, `huskly-cli-mcp`
 
 ### Core Modules
 - **`src/cli/`** - Command handlers using Commander.js. Each command is an async `handleX` function.
@@ -43,6 +44,7 @@ npm run check          # lint + format:check + typecheck
 - **`src/auth/`** - OAuth 2.0 Device Authorization flow via huskly.finance, credentials stored in OS keychain via `keytar`
 - **`src/cache.ts`** - Redis caching layer with per-operation TTLs (Schwab only)
 - **`src/cachedSchwabClient.ts`** - Decorator wrapping `SchwabClient` with Redis caching
+- **`src/mcp/`** - MCP server (`@modelcontextprotocol/sdk`, stdio transport) wrapping `src/cli/shared.ts` directly (no CLI subprocess) as read-only market-data tools: `get_quote`, `search_symbol` (broker-agnostic, default `schwab`), and `get_price_history`/`get_movers`/`get_vix_level`/`get_option_chain`/`get_option_expiries` (Schwab-only, no broker param). See `src/mcp/defaultBroker.ts` for the `HUSKLY_MCP_DEFAULT_BROKER` resolution and `src/mcp/toolResult.ts` for the shared error-to-`isError`-result wrapping.
 
 ### API Client Pattern
 ```typescript
@@ -76,6 +78,7 @@ import { cache } from "#src/cache.js";
 
 - `LOG_LEVEL` - Pino log level (trace, debug, info, warn, error). Default: info
 - `REDIS_URL` - Redis connection URL. Default: redis://localhost:6379
+- `HUSKLY_MCP_DEFAULT_BROKER` - Default broker (`schwab`/`ibkr`) for the MCP server's broker-agnostic tools when a call omits `broker`. Default: schwab
 
 ### IBKR (`--broker ibkr`) only
 - `IBIND_OAUTH1A_CONSUMER_KEY`, `IBIND_OAUTH1A_ACCESS_TOKEN`, `IBIND_OAUTH1A_ACCESS_TOKEN_SECRET` - required OAuth 1.0a credentials

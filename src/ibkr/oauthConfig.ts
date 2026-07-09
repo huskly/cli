@@ -37,7 +37,9 @@ const REQUIRED_ENV = [
 ] as const;
 
 export function buildOauthConfig(): IbkrOauth1Config {
-  loadEnv();
+  // dotenv v17 logs an "injected env" banner to stdout by default; the MCP
+  // server's stdio transport requires stdout to carry nothing but JSON-RPC.
+  loadEnv({ quiet: true });
 
   const missing = REQUIRED_ENV.filter((name) => !process.env[name]);
   if (missing.length > 0) {
