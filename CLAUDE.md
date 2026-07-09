@@ -45,7 +45,9 @@ npm run check          # lint + format:check + typecheck + test
 - **`src/auth/`** - OAuth 2.0 Device Authorization flow via huskly.finance, credentials stored in OS keychain via `keytar`
 - **`src/cache.ts`** - Redis caching layer with per-operation TTLs (Schwab only)
 - **`src/cachedSchwabClient.ts`** - Decorator wrapping `SchwabClient` with Redis caching
+- **`src/orders/`** - Shared order-construction/validation helpers (`orderValidation.ts`, `buildOptionOrderRequest.ts`) used by both `src/cli/placeOrder.ts`/`placeOptionOrder.ts` and the `place_option_order` MCP tool, to avoid duplicating validation logic across entry points
 - **`src/mcp/`** - MCP server (`@modelcontextprotocol/sdk`, stdio transport) wrapping `src/cli/shared.ts` directly (no CLI subprocess) as read-only market-data and account tools: `get_quote`, `search_symbol`, `get_positions` (broker-agnostic, default `schwab`), and `get_price_history`/`get_movers`/`get_vix_level`/`get_option_chain`/`get_option_expiries` (Schwab-only, no broker param). See `src/mcp/defaultBroker.ts` for the `HUSKLY_MCP_DEFAULT_BROKER` resolution and `src/mcp/toolResult.ts` for the shared error-to-`isError`-result wrapping.
+  - `place_option_order` is the one **write** tool (Schwab-only, single-leg orders only): it requires `confirm: true` to actually submit — omitted/`false` returns a preview (contract, instruction, estimated credit/debit) without calling the broker. Shares its OCC-symbol building (`buildOccOptionSymbol` in `src/helpers.ts`) and order-request/validation logic (`src/orders/`) with the CLI's `place-option-order` command.
 
 ### API Client Pattern
 ```typescript

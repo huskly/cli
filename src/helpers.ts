@@ -41,8 +41,9 @@ export function toNumber(value: unknown): number {
 
 export function ensureFloat(value: unknown, message?: string): number {
   const actualValue = ensure(value, message);
-  const num = typeof actualValue === "number" ? actualValue : parseFloat(String(actualValue));
-  if (isNaN(num) || num <= 0) {
+  const trimmed = String(actualValue).trim();
+  const num = typeof actualValue === "number" ? actualValue : Number(trimmed);
+  if (trimmed === "" || !Number.isFinite(num) || num <= 0) {
     throw new Error(`Invalid float value "${String(actualValue)}". Must be a positive number.`);
   }
   return num;
@@ -92,4 +93,28 @@ export function parseOccSymbol(occSymbol: string): string {
   const strikeFormatted = strike % 1 === 0 ? String(strike) : strike.toFixed(2);
 
   return `${root} ${monthAbbrev} ${String(day)} ${String(year)} ${strikeFormatted} ${optionType}`;
+}
+
+/**
+ * Builds a Schwab OCC-format option symbol, the inverse of parseOccSymbol.
+ * Format: ROOT(6 chars, space-padded) + YYMMDD + C/P + Strike(8 digits, 3 implied decimals)
+ * Example: ("AAPL", 2025-12-19, "CALL", 195) -> "AAPL  251219C00195000"
+ */
+export function buildOccOptionSymbol(
+  underlying: string,
+  expiry: Date,
+  putCall: "CALL" | "PUT",
+  strike: number
+): string {
+  const root = underlying.toUpperCase();
+  if (root.length > 6) {
+    throw new Error(`Underlying symbol "${underlying}" exceeds the 6-character OCC root limit.`);
+  }
+  const yy = String(expiry.getFullYear() % 100).padStart(2, "0");
+  const mm = String(expiry.getMonth() + 1).padStart(2, "0");
+  const dd = String(expiry.getDate()).padStart(2, "0");
+  const optionType = putCall === "CALL" ? "C" : "P";
+  const strikeStr = String(Math.round(strike * 1000)).padStart(8, "0");
+
+  return `${root.padEnd(6)}${yy}${mm}${dd}${optionType}${strikeStr}`;
 }

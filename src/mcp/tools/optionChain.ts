@@ -10,7 +10,7 @@ export function registerGetOptionChainTool(server: McpServer): void {
     {
       title: "Get an option chain",
       description:
-        "Get calls and puts (bid/ask/mid/delta) for a symbol at a given expiration date, optionally filtered around a strike price. Always uses Schwab. Omit expiry to use the nearest upcoming expiration.",
+        "Get calls and puts (symbol/bid/ask/mid/delta) for a symbol at a given expiration date, optionally filtered around a strike price. Always uses Schwab. Omit expiry to use the nearest upcoming expiration. The returned symbol/strike/expiry/putCall are the exact inputs place_option_order needs.",
       inputSchema: {
         symbol: z.string().describe("Stock ticker symbol"),
         expiry: z
@@ -87,6 +87,7 @@ export function registerGetOptionChainTool(server: McpServer): void {
           expiry: format(expiry, "yyyy-MM-dd"),
           currentPrice,
           options: filtered.map((o) => ({
+            symbol: o.symbol,
             strike: o.strike,
             type: o.isCall ? "CALL" : "PUT",
             bid: o.bid,
