@@ -24,9 +24,10 @@ npm run lint:fix       # ESLint with auto-fix
 npm run format         # Prettier format
 npm run format:check   # Check formatting
 npm run typecheck      # TypeScript type checking only
+npm run test           # Run tests (node:test, *.test.ts files co-located with source)
 
 # Full check (run before commits)
-npm run check          # lint + format:check + typecheck
+npm run check          # lint + format:check + typecheck + test
 ```
 
 ## Architecture

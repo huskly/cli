@@ -77,6 +77,17 @@ const QUOTE_FIELDS = [
   "7762", // Unformatted volume
 ].join(",");
 
+/**
+ * IBKR's contractDesc for options embeds the underlying OCC symbol in
+ * brackets, e.g. "STRC   JUL2026 95 P [STRC  260717P00095000 100]". Extract
+ * just the OCC code so parseOccSymbol formats IBKR options the same way it
+ * already formats Schwab's (which are OCC symbols natively).
+ */
+export function extractOccSymbol(contractDesc: string): string | undefined {
+  const match = /\[([A-Z]+\s*\d{6}[CP]\d{8})\s+\d+\]\s*$/.exec(contractDesc);
+  return match?.[1];
+}
+
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const DAY_MS = 24 * 60 * 60 * 1000;
 const IBKR_STATUS_FILTERS: Record<string, string> = {
@@ -371,9 +382,12 @@ export class IbkrClient implements BrokerClient {
     const qty = p.position ?? 0;
     const assetClass = p.assetClass ?? "";
     const openPnl = toNumber(p.unrealizedPnl);
+    const contractDesc = p.contractDesc ?? String(p.conid ?? "-");
+    const symbol =
+      assetClass === "OPT" ? (extractOccSymbol(contractDesc) ?? contractDesc) : contractDesc;
     return {
       instrument: {
-        symbol: p.contractDesc ?? String(p.conid ?? "-"),
+        symbol,
         assetType: ASSET_CLASS_LABELS[assetClass] ?? (assetClass || "-"),
       },
       longQuantity: qty > 0 ? qty : 0,

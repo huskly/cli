@@ -34,6 +34,14 @@ export default tseslint.config(
     },
   },
   {
+    files: ["**/*.test.ts"],
+    rules: {
+      // node:test's describe/it return promises that the test runner tracks
+      // internally; the runner, not the caller, is responsible for awaiting them.
+      "@typescript-eslint/no-floating-promises": "off",
+    },
+  },
+  {
     ignores: ["dist/**", "node_modules/**", "eslint.config.js"],
   }
 );
