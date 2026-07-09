@@ -345,14 +345,19 @@ huskly-cli repl
 huskly-cli --broker ibkr repl
 ```
 
-## Using with Claude Code (MCP server)
+## Using with Claude Code or Codex (MCP server)
 
-`huskly-cli-mcp` exposes read-only market-data and account operations as MCP
+`huskly-cli-mcp` exposes market-data and account operations as MCP
 tools — `get_quote`, `search_symbol`, `get_positions`, `get_price_history`,
-`get_movers`, `get_vix_level`, `get_option_chain`, and `get_option_expiries`
+`get_movers`, `get_vix_level`, `get_option_chain`, `get_option_expiries`, and
+`place_option_order`
 — so Claude can answer questions like "what's the MSFT price now", "what's
 the AAPL last 12 months price history", or "what are my current positions"
 with live data.
+
+`place_option_order` is the only write-capable MCP tool. It is Schwab-only and
+requires `confirm: true` to submit a real live order; when `confirm` is omitted
+or `false`, it returns a preview without calling the broker.
 
 It communicates over stdio and reuses the same Schwab/IBKR auth as the CLI, so
 authenticate first (`huskly-cli auth login` for Schwab, and/or set the IBKR
@@ -376,6 +381,16 @@ claude mcp add huskly-cli-mcp -- huskly-cli-mcp
 # To default to IBKR instead of Schwab:
 claude mcp add huskly-cli-mcp -e HUSKLY_MCP_DEFAULT_BROKER=ibkr -- huskly-cli-mcp
 ```
+
+Register it with Codex:
+
+```bash
+codex mcp add huskly-cli-mcp -- node /path/to/huskly-cli/dist/mcp/server.js
+```
+
+If Codex will launch the server outside this repository, set the MCP server
+`cwd` to the repository path so local `.env` and IBKR PEM files resolve the same
+way they do for the CLI.
 
 The server is long-lived (same as `huskly-cli repl`), so a broker client — and
 the access token/session it holds — is created once and reused across tool

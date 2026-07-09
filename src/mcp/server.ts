@@ -25,7 +25,12 @@ async function main(): Promise<void> {
   registerPlaceOptionOrderTool(server);
 
   const transport = new StdioServerTransport();
+  const closed = new Promise<void>((resolve) => {
+    transport.onclose = resolve;
+  });
   await server.connect(transport);
+  process.stdin.resume();
+  await closed;
 }
 
 main().catch((error: unknown) => {
