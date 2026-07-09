@@ -9,6 +9,7 @@ import { registerGetMoversTool } from "#src/mcp/tools/movers.js";
 import { registerGetVixLevelTool } from "#src/mcp/tools/vix.js";
 import { registerGetOptionChainTool } from "#src/mcp/tools/optionChain.js";
 import { registerGetOptionExpiriesTool } from "#src/mcp/tools/optionExpiries.js";
+import { registerPlaceOptionOrderTool } from "#src/mcp/tools/placeOptionOrder.js";
 
 async function main(): Promise<void> {
   const server = new McpServer({ name: "huskly-cli-mcp", version: "1.0.0" });
@@ -21,6 +22,7 @@ async function main(): Promise<void> {
   registerGetVixLevelTool(server);
   registerGetOptionChainTool(server);
   registerGetOptionExpiriesTool(server);
+  registerPlaceOptionOrderTool(server);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

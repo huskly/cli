@@ -1,0 +1,29 @@
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { buildOccOptionSymbol, parseOccSymbol } from "./helpers.js";
+
+describe("buildOccOptionSymbol", () => {
+  it("builds a call symbol", () => {
+    const symbol = buildOccOptionSymbol("MSTR", new Date(2026, 7, 21), "CALL", 135);
+    assert.equal(symbol, "MSTR  260821C00135000");
+  });
+
+  it("builds a put symbol", () => {
+    const symbol = buildOccOptionSymbol("AAPL", new Date(2025, 11, 19), "PUT", 195);
+    assert.equal(symbol, "AAPL  251219P00195000");
+  });
+
+  it("round-trips through parseOccSymbol", () => {
+    const symbol = buildOccOptionSymbol("AAPL", new Date(2025, 11, 19), "CALL", 195);
+    assert.equal(parseOccSymbol(symbol), "AAPL Dec 19 2025 195 C");
+  });
+
+  it("handles fractional strikes and short roots", () => {
+    const symbol = buildOccOptionSymbol("SPX", new Date(2026, 0, 2), "PUT", 4500.5);
+    assert.equal(symbol, "SPX   260102P04500500");
+  });
+
+  it("throws for underlyings longer than the 6-character OCC root", () => {
+    assert.throws(() => buildOccOptionSymbol("TOOLONGSYM", new Date(2026, 7, 21), "CALL", 100));
+  });
+});

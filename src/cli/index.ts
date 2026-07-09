@@ -12,6 +12,7 @@ import { handlePositions } from "./positions.js";
 import { handleTransactions } from "./transactions.js";
 import { handleOrders } from "./orders.js";
 import { handlePlaceOrder } from "./placeOrder.js";
+import { handlePlaceOptionOrder } from "./placeOptionOrder.js";
 import { handleRepl } from "./repl.js";
 import { handleUserPreference } from "./userPreference.js";
 import { handleSearch } from "./search.js";
@@ -236,6 +237,37 @@ program
     ) => {
       guardSchwab("place-order");
       await handlePlaceOrder(symbol, quantity, instruction, options);
+    }
+  );
+
+program
+  .command("place-option-order")
+  .description("Place a single-leg MARKET or LIMIT order for an option contract")
+  .argument("<symbol>", "Underlying stock symbol")
+  .argument("<expiry>", "Expiration date (YYYY-MM-DD)")
+  .argument("<strike>", "Strike price")
+  .argument("<putCall>", "Option type: CALL or PUT")
+  .argument("<quantity>", "Number of contracts")
+  .argument(
+    "<instruction>",
+    "Order instruction: BUY_TO_OPEN, SELL_TO_OPEN, BUY_TO_CLOSE, SELL_TO_CLOSE"
+  )
+  .option("-t, --type <type>", "Order type: MARKET or LIMIT", "LIMIT")
+  .option("-p, --price <price>", "Limit price per contract (required for LIMIT orders)")
+  .option("-s, --session <session>", "Trading session: NORMAL, AM, PM, SEAMLESS", "NORMAL")
+  .option("-d, --duration <duration>", "Order duration: DAY, GOOD_TILL_CANCEL, etc.", "DAY")
+  .action(
+    async (
+      symbol: string,
+      expiry: string,
+      strike: string,
+      putCall: string,
+      quantity: string,
+      instruction: string,
+      options: { type: string; price?: string; session?: string; duration?: string }
+    ) => {
+      guardSchwab("place-option-order");
+      await handlePlaceOptionOrder(symbol, expiry, strike, putCall, quantity, instruction, options);
     }
   );
 

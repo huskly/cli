@@ -93,3 +93,27 @@ export function parseOccSymbol(occSymbol: string): string {
 
   return `${root} ${monthAbbrev} ${String(day)} ${String(year)} ${strikeFormatted} ${optionType}`;
 }
+
+/**
+ * Builds a Schwab OCC-format option symbol, the inverse of parseOccSymbol.
+ * Format: ROOT(6 chars, space-padded) + YYMMDD + C/P + Strike(8 digits, 3 implied decimals)
+ * Example: ("AAPL", 2025-12-19, "CALL", 195) -> "AAPL  251219C00195000"
+ */
+export function buildOccOptionSymbol(
+  underlying: string,
+  expiry: Date,
+  putCall: "CALL" | "PUT",
+  strike: number
+): string {
+  const root = underlying.toUpperCase();
+  if (root.length > 6) {
+    throw new Error(`Underlying symbol "${underlying}" exceeds the 6-character OCC root limit.`);
+  }
+  const yy = String(expiry.getFullYear() % 100).padStart(2, "0");
+  const mm = String(expiry.getMonth() + 1).padStart(2, "0");
+  const dd = String(expiry.getDate()).padStart(2, "0");
+  const optionType = putCall === "CALL" ? "C" : "P";
+  const strikeStr = String(Math.round(strike * 1000)).padStart(8, "0");
+
+  return `${root.padEnd(6)}${yy}${mm}${dd}${optionType}${strikeStr}`;
+}
