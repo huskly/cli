@@ -12,6 +12,7 @@ A command line interface for trading APIs. Supports **Schwab** (via
 - **Order Management**: View orders and place simple MARKET/LIMIT orders
 - **Caching**: Redis-backed caching for improved performance
 - **Multi-broker**: Schwab (default) and IBKR via the global `--broker` flag
+- **MCP server**: `huskly-cli-mcp` exposes market data as MCP tools for Claude
 
 ## Brokers
 
@@ -344,12 +345,49 @@ huskly-cli repl
 huskly-cli --broker ibkr repl
 ```
 
+## Using with Claude Code (MCP server)
+
+`huskly-cli-mcp` exposes read-only market-data operations as MCP tools —
+`get_quote`, `search_symbol`, `get_price_history`, `get_movers`,
+`get_vix_level`, `get_option_chain`, and `get_option_expiries` — so Claude can
+answer questions like "what's the MSFT price now" or "what's the AAPL last 12
+months price history" with live data.
+
+It communicates over stdio and reuses the same Schwab/IBKR auth as the CLI, so
+authenticate first (`huskly-cli auth login` for Schwab, and/or set the IBKR
+env vars — see [IBKR setup](#ibkr-setup)) before registering it.
+
+`get_quote` and `search_symbol` work with either broker (`schwab` by default,
+overridable per-call or via `HUSKLY_MCP_DEFAULT_BROKER`); the rest
+(`get_price_history`, `get_movers`, `get_vix_level`, `get_option_chain`,
+`get_option_expiries`) always use Schwab, since IBKR doesn't expose that data
+today.
+
+Register it with Claude Code:
+
+```bash
+# After `npm run build`, from this repo:
+claude mcp add huskly-cli-mcp -- node /path/to/huskly-cli/dist/mcp/server.js
+
+# Or, once published/linked so `huskly-cli-mcp` is on PATH:
+claude mcp add huskly-cli-mcp -- huskly-cli-mcp
+
+# To default to IBKR instead of Schwab:
+claude mcp add huskly-cli-mcp -e HUSKLY_MCP_DEFAULT_BROKER=ibkr -- huskly-cli-mcp
+```
+
+The server is long-lived (same as `huskly-cli repl`), so a broker client — and
+the access token/session it holds — is created once and reused across tool
+calls. If a Schwab or IBKR session expires or is revoked mid-session, restart
+the MCP server (e.g. via `claude mcp` reconnect) to force re-authentication.
+
 ## Project Structure
 
 ```
 src/
 ├── auth/           # Authentication (huskly.finance device auth)
 ├── cli/            # CLI commands
+├── mcp/            # MCP server (huskly-cli-mcp) exposing market data as tools
 ├── schwab/         # Schwab API integration
 ├── types.ts        # TypeScript type definitions
 ├── cache.ts        # Redis caching layer
@@ -362,6 +400,7 @@ src/
 
 - `LOG_LEVEL` - Set logging level (trace, debug, info, warn, error)
 - `REDIS_URL` - Redis connection URL (defaults to localhost:6379)
+- `HUSKLY_MCP_DEFAULT_BROKER` - Default broker (`schwab` or `ibkr`) for the MCP server's broker-agnostic tools when a call omits `broker` (defaults to `schwab`; an invalid value logs a warning to stderr and falls back to `schwab` rather than failing startup)
 
 ## License
 
