@@ -347,21 +347,22 @@ huskly-cli --broker ibkr repl
 
 ## Using with Claude Code (MCP server)
 
-`huskly-cli-mcp` exposes read-only market-data operations as MCP tools —
-`get_quote`, `search_symbol`, `get_price_history`, `get_movers`,
-`get_vix_level`, `get_option_chain`, and `get_option_expiries` — so Claude can
-answer questions like "what's the MSFT price now" or "what's the AAPL last 12
-months price history" with live data.
+`huskly-cli-mcp` exposes read-only market-data and account operations as MCP
+tools — `get_quote`, `search_symbol`, `get_positions`, `get_price_history`,
+`get_movers`, `get_vix_level`, `get_option_chain`, and `get_option_expiries`
+— so Claude can answer questions like "what's the MSFT price now", "what's
+the AAPL last 12 months price history", or "what are my current positions"
+with live data.
 
 It communicates over stdio and reuses the same Schwab/IBKR auth as the CLI, so
 authenticate first (`huskly-cli auth login` for Schwab, and/or set the IBKR
 env vars — see [IBKR setup](#ibkr-setup)) before registering it.
 
-`get_quote` and `search_symbol` work with either broker (`schwab` by default,
-overridable per-call or via `HUSKLY_MCP_DEFAULT_BROKER`); the rest
-(`get_price_history`, `get_movers`, `get_vix_level`, `get_option_chain`,
-`get_option_expiries`) always use Schwab, since IBKR doesn't expose that data
-today.
+`get_quote`, `search_symbol`, and `get_positions` work with either broker
+(`schwab` by default, overridable per-call or via `HUSKLY_MCP_DEFAULT_BROKER`);
+the rest (`get_price_history`, `get_movers`, `get_vix_level`,
+`get_option_chain`, `get_option_expiries`) always use Schwab, since IBKR
+doesn't expose that data today.
 
 Register it with Claude Code:
 
@@ -387,7 +388,7 @@ the MCP server (e.g. via `claude mcp` reconnect) to force re-authentication.
 src/
 ├── auth/           # Authentication (huskly.finance device auth)
 ├── cli/            # CLI commands
-├── mcp/            # MCP server (huskly-cli-mcp) exposing market data as tools
+├── mcp/            # MCP server (huskly-cli-mcp) exposing market data and account positions as tools
 ├── schwab/         # Schwab API integration
 ├── types.ts        # TypeScript type definitions
 ├── cache.ts        # Redis caching layer

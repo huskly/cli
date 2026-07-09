@@ -2,6 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { registerGetQuoteTool } from "#src/mcp/tools/quote.js";
+import { registerGetPositionsTool } from "#src/mcp/tools/positions.js";
 import { registerSearchSymbolTool } from "#src/mcp/tools/searchSymbol.js";
 import { registerGetPriceHistoryTool } from "#src/mcp/tools/priceHistory.js";
 import { registerGetMoversTool } from "#src/mcp/tools/movers.js";
@@ -13,6 +14,7 @@ async function main(): Promise<void> {
   const server = new McpServer({ name: "huskly-cli-mcp", version: "1.0.0" });
 
   registerGetQuoteTool(server);
+  registerGetPositionsTool(server);
   registerSearchSymbolTool(server);
   registerGetPriceHistoryTool(server);
   registerGetMoversTool(server);

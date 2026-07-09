@@ -34,7 +34,7 @@ npm run check          # lint + format:check + typecheck
 ### Entry Points
 - `src/index.ts` → delegates to `src/cli/index.ts` (main CLI)
 - `src/auth/cli.ts` → auth subcommand (login/logout/status)
-- `src/mcp/server.ts` → MCP server exposing market data as tools (stdio transport)
+- `src/mcp/server.ts` → MCP server exposing market data and account positions as tools (stdio transport)
 - Binaries: `huskly-cli`, `huskly-cli-auth`, `huskly-cli-mcp`
 
 ### Core Modules
@@ -44,7 +44,7 @@ npm run check          # lint + format:check + typecheck
 - **`src/auth/`** - OAuth 2.0 Device Authorization flow via huskly.finance, credentials stored in OS keychain via `keytar`
 - **`src/cache.ts`** - Redis caching layer with per-operation TTLs (Schwab only)
 - **`src/cachedSchwabClient.ts`** - Decorator wrapping `SchwabClient` with Redis caching
-- **`src/mcp/`** - MCP server (`@modelcontextprotocol/sdk`, stdio transport) wrapping `src/cli/shared.ts` directly (no CLI subprocess) as read-only market-data tools: `get_quote`, `search_symbol` (broker-agnostic, default `schwab`), and `get_price_history`/`get_movers`/`get_vix_level`/`get_option_chain`/`get_option_expiries` (Schwab-only, no broker param). See `src/mcp/defaultBroker.ts` for the `HUSKLY_MCP_DEFAULT_BROKER` resolution and `src/mcp/toolResult.ts` for the shared error-to-`isError`-result wrapping.
+- **`src/mcp/`** - MCP server (`@modelcontextprotocol/sdk`, stdio transport) wrapping `src/cli/shared.ts` directly (no CLI subprocess) as read-only market-data and account tools: `get_quote`, `search_symbol`, `get_positions` (broker-agnostic, default `schwab`), and `get_price_history`/`get_movers`/`get_vix_level`/`get_option_chain`/`get_option_expiries` (Schwab-only, no broker param). See `src/mcp/defaultBroker.ts` for the `HUSKLY_MCP_DEFAULT_BROKER` resolution and `src/mcp/toolResult.ts` for the shared error-to-`isError`-result wrapping.
 
 ### API Client Pattern
 ```typescript
