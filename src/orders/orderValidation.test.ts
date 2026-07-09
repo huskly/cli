@@ -28,10 +28,19 @@ describe("validateInstruction", () => {
 describe("validateOrderType", () => {
   it("accepts a known order type case-insensitively", () => {
     assert.equal(validateOrderType("limit"), "LIMIT");
+    assert.equal(validateOrderType("market"), "MARKET");
   });
 
   it("rejects an unknown order type", () => {
     assert.throws(() => validateOrderType("BOGUS"));
+  });
+
+  it("rejects Schwab order types outside the CLI's supported set", () => {
+    // STOP/STOP_LIMIT/etc. are valid SchwabOrderType values but neither place-order nor
+    // place-option-order constructs the extra fields (stopPrice, stopPriceLinkBasis, ...)
+    // they require, so the CLI only advertises and accepts MARKET/LIMIT.
+    assert.throws(() => validateOrderType("STOP"));
+    assert.throws(() => validateOrderType("NET_CREDIT"));
   });
 });
 
@@ -44,6 +53,12 @@ describe("validateQuantity", () => {
     assert.throws(() => validateQuantity("0"));
     assert.throws(() => validateQuantity("-3"));
     assert.throws(() => validateQuantity("abc"));
+  });
+
+  it("rejects decimal and trailing-garbage quantities instead of truncating them", () => {
+    assert.throws(() => validateQuantity("1.9"));
+    assert.throws(() => validateQuantity("7contracts"));
+    assert.throws(() => validateQuantity("10abc"));
   });
 });
 
@@ -59,5 +74,12 @@ describe("validatePrice", () => {
 
   it("returns undefined for MARKET orders", () => {
     assert.equal(validatePrice(undefined, "MARKET"), undefined);
+  });
+
+  it("rejects trailing-garbage and comma-formatted prices instead of truncating them", () => {
+    assert.throws(() => validatePrice("2.30abc", "LIMIT"));
+    assert.throws(() => validatePrice("1,000", "LIMIT"));
+    assert.throws(() => validatePrice("", "LIMIT"));
+    assert.throws(() => validatePrice("   ", "LIMIT"));
   });
 });

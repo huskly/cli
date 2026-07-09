@@ -41,8 +41,9 @@ export function toNumber(value: unknown): number {
 
 export function ensureFloat(value: unknown, message?: string): number {
   const actualValue = ensure(value, message);
-  const num = typeof actualValue === "number" ? actualValue : parseFloat(String(actualValue));
-  if (isNaN(num) || num <= 0) {
+  const trimmed = String(actualValue).trim();
+  const num = typeof actualValue === "number" ? actualValue : Number(trimmed);
+  if (trimmed === "" || !Number.isFinite(num) || num <= 0) {
     throw new Error(`Invalid float value "${String(actualValue)}". Must be a positive number.`);
   }
   return num;

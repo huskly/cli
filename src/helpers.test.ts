@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildOccOptionSymbol, parseOccSymbol } from "./helpers.js";
+import { buildOccOptionSymbol, ensureFloat, parseOccSymbol } from "./helpers.js";
 
 describe("buildOccOptionSymbol", () => {
   it("builds a call symbol", () => {
@@ -25,5 +25,29 @@ describe("buildOccOptionSymbol", () => {
 
   it("throws for underlyings longer than the 6-character OCC root", () => {
     assert.throws(() => buildOccOptionSymbol("TOOLONGSYM", new Date(2026, 7, 21), "CALL", 100));
+  });
+});
+
+describe("ensureFloat", () => {
+  it("accepts a well-formed positive decimal string", () => {
+    assert.equal(ensureFloat("2.30"), 2.3);
+  });
+
+  it("rejects trailing-garbage strings instead of truncating them (parseFloat pitfall)", () => {
+    assert.throws(() => ensureFloat("2.30oops"));
+  });
+
+  it("rejects comma-formatted numbers instead of truncating them (parseFloat pitfall)", () => {
+    assert.throws(() => ensureFloat("1,000"));
+  });
+
+  it("rejects empty and whitespace-only strings (parseFloat('') is NaN but Number('') is 0)", () => {
+    assert.throws(() => ensureFloat(""));
+    assert.throws(() => ensureFloat("   "));
+  });
+
+  it("rejects zero and negative values", () => {
+    assert.throws(() => ensureFloat("0"));
+    assert.throws(() => ensureFloat("-5"));
   });
 });
