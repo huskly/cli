@@ -13,12 +13,7 @@
 export type BrokerName = "ibkr" | "schwab";
 
 export type BrokerInstrumentSearchProjection =
-  | "symbol-search"
-  | "symbol-regex"
-  | "desc-search"
-  | "desc-regex"
-  | "search"
-  | "fundamental";
+  "symbol-search" | "symbol-regex" | "desc-search" | "desc-regex" | "search" | "fundamental";
 
 export interface BrokerFundamentalInstrument {
   peRatio?: number;
