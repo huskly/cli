@@ -31,7 +31,14 @@ export class SchwabBrokerAdapter implements BrokerClient {
   }
 
   async getQuotes(symbols: string[]): Promise<Record<string, BrokerQuote>> {
-    return this.client.getQuotes(symbols);
+    const raw = await this.client.getQuotes(symbols);
+    const result: Record<string, BrokerQuote> = {};
+    for (const [key, value] of Object.entries(raw)) {
+      if (value !== undefined) {
+        result[key] = value;
+      }
+    }
+    return result;
   }
 
   async searchInstruments(
