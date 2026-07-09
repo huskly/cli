@@ -400,7 +400,7 @@ src/
 
 - `LOG_LEVEL` - Set logging level (trace, debug, info, warn, error)
 - `REDIS_URL` - Redis connection URL (defaults to localhost:6379)
-- `HUSKLY_MCP_DEFAULT_BROKER` - Default broker (`schwab` or `ibkr`) for the MCP server's broker-agnostic tools when a call omits `broker` (defaults to `schwab`)
+- `HUSKLY_MCP_DEFAULT_BROKER` - Default broker (`schwab` or `ibkr`) for the MCP server's broker-agnostic tools when a call omits `broker` (defaults to `schwab`; an invalid value logs a warning to stderr and falls back to `schwab` rather than failing startup)
 
 ## License
 

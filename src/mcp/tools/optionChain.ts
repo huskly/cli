@@ -54,6 +54,10 @@ export function registerGetOptionChainTool(server: McpServer): void {
           api.getQuotes([symbol]),
         ]);
 
+        if (chain.length === 0) {
+          throw new Error(`No options found for ${symbol} ${format(expiry, "yyyy-MM-dd")}`);
+        }
+
         const quoteData = quotes[symbol];
         const currentPrice = quoteData?.quote.mark ?? quoteData?.quote.lastPrice;
         const aroundStrike = around ?? currentPrice;
