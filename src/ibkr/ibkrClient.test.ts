@@ -1,7 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { extractOccSymbol } from "#src/ibkr/ibkrClient.js";
+import { IbkrClient } from "#src/ibkr/ibkrClient.js";
 import { parseOccSymbol } from "#src/helpers.js";
+import type { IbkrLiveOrdersResponse } from "#src/ibkr/ibkrApiTypes.js";
 
 describe("extractOccSymbol", () => {
   it("extracts the OCC symbol from a put contractDesc", () => {
@@ -31,5 +33,45 @@ describe("extractOccSymbol", () => {
 
   it("returns undefined for a malformed bracket contents", () => {
     assert.equal(extractOccSymbol("SOME DESC [not an occ symbol 100]"), undefined);
+  });
+});
+
+describe("IbkrClient.fetchOrders", () => {
+  it("treats all active IBKR statuses as WORKING", async () => {
+    const client = Object.create(IbkrClient.prototype) as IbkrClient;
+    let requestParams: Record<string, string | boolean> | undefined;
+    Reflect.set(client, "getAccountId", () => Promise.resolve("test-account"));
+    Reflect.set(client, "prepareBrokerageAccount", () => Promise.resolve());
+    Reflect.set(
+      client,
+      "req",
+      (request: { params?: Record<string, string | boolean> }): Promise<IbkrLiveOrdersResponse> => {
+        requestParams = request.params;
+        return Promise.resolve({
+          orders: [
+            { account: "test-account", orderId: 1, status: "ApiPending" },
+            { account: "test-account", orderId: 2, status: "PendingSubmit" },
+            { account: "test-account", orderId: 3, status: "PreSubmitted" },
+            { account: "test-account", orderId: 4, status: "Submitted" },
+            { account: "test-account", orderId: 5, status: "PendingCancel" },
+            { account: "test-account", orderId: 6, status: "Filled" },
+            { account: "test-account", orderId: 7, status: "Cancelled" },
+            { account: "test-account", orderId: 8, status: "Inactive" },
+          ],
+        });
+      }
+    );
+
+    const result = await client.fetchOrders({
+      fromEnteredTime: new Date("2026-01-01T00:00:00Z"),
+      toEnteredTime: new Date("2026-12-31T23:59:59Z"),
+      status: "WORKING",
+    });
+
+    assert.deepEqual(requestParams, {});
+    assert.deepEqual(
+      result[0]?.orders.map(({ orderId }) => orderId),
+      [1, 2, 3, 4, 5]
+    );
   });
 });

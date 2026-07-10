@@ -1,10 +1,23 @@
 import { cacheFetch, cacheGet, cacheSet } from "#src/cache.js";
 import type {
+  BrokerAccountOrders,
   BrokerClient,
   BrokerInstrumentSearchProjection,
   BrokerOrdersOptions,
   BrokerQuote,
 } from "#src/brokers/brokerClient.js";
+
+interface OrdersCache {
+  get(key: string): Promise<BrokerAccountOrders[] | null>;
+  set(key: string, value: BrokerAccountOrders[], ttl: number): Promise<void>;
+}
+
+const redisOrdersCache: OrdersCache = {
+  get: (key) => cacheGet<BrokerAccountOrders[]>(key),
+  set: async (key, value, ttl) => {
+    await cacheSet(key, value, ttl);
+  },
+};
 
 const CACHE_TTL = {
   QUOTES: 60,
@@ -25,7 +38,10 @@ const CACHE_TTL = {
 export class CachedIbkrClient implements BrokerClient {
   private clientPromise?: Promise<BrokerClient>;
 
-  constructor(private readonly createClient: () => Promise<BrokerClient>) {}
+  constructor(
+    private readonly createClient: () => Promise<BrokerClient>,
+    private readonly ordersCache: OrdersCache = redisOrdersCache
+  ) {}
 
   async getAccountBalances() {
     return cacheFetch(
@@ -102,11 +118,15 @@ export class CachedIbkrClient implements BrokerClient {
     const toStr = options.toEnteredTime.toISOString().split("T")[0] ?? "";
     const statusKey = options.status ?? "all";
     const maxKey = options.maxResults !== undefined ? String(options.maxResults) : "default";
-    return cacheFetch(
-      `ibkr:orders:${fromStr}:${toStr}:${statusKey}:${maxKey}`,
-      () => this.client().then((client) => client.fetchOrders(options)),
-      CACHE_TTL.ORDERS
-    );
+    const key = `ibkr:orders:${fromStr}:${toStr}:${statusKey}:${maxKey}`;
+    const cached = await this.ordersCache.get(key);
+    if (cached !== null) return cached;
+
+    const accountOrders = await this.client().then((client) => client.fetchOrders(options));
+    if (accountOrders.some(({ orders }) => orders.length > 0)) {
+      await this.ordersCache.set(key, accountOrders, CACHE_TTL.ORDERS);
+    }
+    return accountOrders;
   }
 
   private client(): Promise<BrokerClient> {

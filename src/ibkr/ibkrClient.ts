@@ -98,8 +98,14 @@ const IBKR_STATUS_FILTERS: Record<string, string> = {
   PENDING_SUBMIT: "pending_submit",
   PRE_SUBMITTED: "pre_submitted",
   SUBMITTED: "submitted",
-  WORKING: "submitted",
 };
+const IBKR_WORKING_STATUSES = new Set([
+  "API_PENDING",
+  "PENDING_SUBMIT",
+  "PRE_SUBMITTED",
+  "SUBMITTED",
+  "PENDING_CANCEL",
+]);
 
 /**
  * Typed IBKR Web API client implementing the broker-neutral {@link BrokerClient}.
@@ -293,7 +299,7 @@ export class IbkrClient implements BrokerClient {
     await this.prepareBrokerageAccount(accountId);
 
     const params: Record<string, string | boolean> = {};
-    if (options.status) {
+    if (options.status && options.status.toUpperCase() !== "WORKING") {
       params["filters"] = this.ibkrStatusFilter(options.status);
     }
 
@@ -305,6 +311,7 @@ export class IbkrClient implements BrokerClient {
     let orders = (response.orders ?? [])
       .filter((order) => this.orderBelongsToAccount(order, accountId))
       .map((order) => this.normalizeOrder(order))
+      .filter((order) => this.orderMatchesStatus(order, options.status))
       .filter((order) =>
         this.orderInDateRange(order, options.fromEnteredTime, options.toEnteredTime)
       )
@@ -729,6 +736,15 @@ export class IbkrClient implements BrokerClient {
   private ibkrStatusFilter(status: string): string {
     const normalized = status.toUpperCase();
     return IBKR_STATUS_FILTERS[normalized] ?? normalized.toLowerCase();
+  }
+
+  private orderMatchesStatus(order: BrokerOrder, requestedStatus: string | undefined): boolean {
+    if (!requestedStatus) return true;
+    const normalizedStatus = this.normalizeOrderStatus(requestedStatus);
+    if (normalizedStatus === "WORKING") {
+      return order.status !== undefined && IBKR_WORKING_STATUSES.has(order.status);
+    }
+    return order.status === normalizedStatus;
   }
 
   private orderBelongsToAccount(order: IbkrLiveOrder, accountId: string): boolean {
