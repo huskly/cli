@@ -221,10 +221,10 @@
   resolved "https://registry.yarnpkg.com/@humanwhocodes/retry/-/retry-0.4.3.tgz#c2b9d2e374ee62c586d3adbea87199b1d7a7a6ba"
   integrity sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ==
 
-"@huskly/schwab-client@^0.3.2":
-  version "0.3.2"
-  resolved "https://registry.yarnpkg.com/@huskly/schwab-client/-/schwab-client-0.3.2.tgz#46421e978dd035c58c02d9096f1572899739ee0d"
-  integrity sha512-SIsWPhg3tDKb8Kq1rDZqLwX+NW2CXr7utowlTQ5xrSXDO07uSryRW/AjWzWg1GJtirSGhfanyP8YB2o2MY1szA==
+"@huskly/schwab-client@^0.4.0":
+  version "0.4.0"
+  resolved "https://registry.yarnpkg.com/@huskly/schwab-client/-/schwab-client-0.4.0.tgz#7000bc57d234c78a9419bea2ed1f2b72e2ba40ac"
+  integrity sha512-WpfdqchMvfzaus/rFTM8LJr04JOWiM4iGkhG/nKPpuOzzGxhtbDH3GGcaed2lDdVeB0ag4XYuAg8RzUAprgQfQ==
   dependencies:
     date-fns "^4.1.0"
 
