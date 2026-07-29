@@ -44,6 +44,9 @@ implemented for that broker.
 | `vix`             | ✓      | ✗    |
 | `expiries`        | ✓      | ✗    |
 | `chain`           | ✓      | ✗    |
+| `option resolve`  | ✗      | ✓    |
+| `option chain`    | ✗      | ✓    |
+| `spread quote`    | ✗      | ✓    |
 | `account`         | ✓      | ✓    |
 | `user-preference` | ✓      | ✗    |
 | `positions`       | ✓      | ✓    |
@@ -53,7 +56,8 @@ implemented for that broker.
 | `repl`            | ✓      | ✓    |
 
 IBKR currently supports the shared **`account`**, **`quote`**, **`search`**,
-**`positions`**, **`transactions`**, **`orders`**, and **`repl`** commands. IBKR
+**`positions`**, **`transactions`**, **`orders`**, and **`repl`** commands plus
+read-only **`option resolve`**, **`option chain`**, and **`spread quote`** research. IBKR
 `search` supports symbol lookup via `symbol-search` / `search`; Schwab-specific
 regex, description, and fundamental projections report a clear error under
 `--broker ibkr`. All other broker commands (`chain`, `movers`, `place-order`,
@@ -87,8 +91,10 @@ Market-data availability remains explicit (`live`, `delayed`, `frozen`,
 `frozen-delayed`, or `unavailable`), and missing prices, activity, or Greeks stay
 nullable. Discovery cannot reach preview or order-write endpoints.
 
-User-facing `option` and `spread` commands are added by the next epic stage; the
-existing `expiries` and `chain` commands remain Schwab-only until then.
+The broker-neutral research service powers the user-facing `option` and `spread`
+commands. Its current production adapter is IBKR; Schwab remains unsupported until
+it can supply the exact trading-class/exchange identity without guessing. The
+existing top-level `expiries` and `chain` commands remain unchanged and Schwab-only.
 
 ## Requirements
 
@@ -261,6 +267,46 @@ Options:
 
 - `-a, --around <strike>` - Filter strikes around this price (defaults to last price)
 - `-s, --strikes <count>` - Number of strikes to show above/below center (default: 10)
+
+#### option - Exact Derivative Research
+
+Resolve one exact contract or quote a series without collapsing trading class,
+exchange, asset class, or multiplier. Every exploratory command supports `--json`.
+
+```bash
+huskly-cli option resolve NQ --broker ibkr \
+  --asset FOP --expiry 2026-08-21 --class QN3 --exchange CME --json
+
+huskly-cli option chain NDX --broker ibkr \
+  --asset OPT --expiry 2026-08-20 --class NDXP --exchange SMART --right PUT \
+  --around 26600 --strikes 4
+```
+
+For futures options, the reference quote is the actual underlying futures contract
+reported by IBKR, not a guessed spot/index proxy. For example, the NQ `QN3` option
+series can reference the September NQ future.
+
+#### spread quote - Vertical Spread Research
+
+Analyze call/put debit or credit verticals from exact individual-leg markets.
+Amounts include contract multiplier and quantity.
+
+```bash
+huskly-cli spread quote put-credit NQ --broker ibkr \
+  --asset FOP --expiry 2026-08-21 --class QN3 --exchange CME \
+  --long 26400 --short 26600 --quantity 1 --limit 39 --json
+
+huskly-cli spread quote put-credit NDX --broker ibkr \
+  --asset OPT --expiry 2026-08-20 --class NDXP --exchange SMART \
+  --long 26400 --short 26600
+```
+
+The natural and midpoint scenarios are synthetic values computed from individual
+leg quotes. They are not a broker combo NBBO, executable preview, or order quote.
+The result includes maximum profit/loss, breakeven, return on risk, net delta, an
+expiration payoff table, and an explicit settlement/residual-exposure warning.
+Derivative research calls bypass the Redis read cache; each DTO retains the broker
+quote timestamp and live/delayed/frozen/unavailable availability state.
 
 ### Account Commands
 

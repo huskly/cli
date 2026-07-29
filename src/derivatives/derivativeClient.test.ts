@@ -8,6 +8,7 @@ const fakeClient: DerivativeDiscoveryClient = {
   getContracts: () => Promise.resolve([]),
   resolveContract: () => Promise.reject(new Error("not used")),
   getChain: () => Promise.resolve([]),
+  getReferenceQuote: () => Promise.reject(new Error("not used")),
 };
 
 void test("capability resolver initializes IBKR once and rejects unsupported brokers explicitly", async () => {

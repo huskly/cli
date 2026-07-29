@@ -20,6 +20,7 @@ import { handleMovers } from "./movers.js";
 import { disconnectCache } from "#src/cache.js";
 import { resolveBroker, requireSchwab } from "./shared.js";
 import type { BrokerName } from "#src/brokers/brokerClient.js";
+import { addDerivativeCommands } from "./derivatives.js";
 
 const program = new Command();
 
@@ -30,8 +31,8 @@ program
   .option("--broker <name>", "Broker to use: schwab or ibkr", "schwab");
 
 /** The broker selected via the global --broker flag (defaults to schwab). */
-function broker(): BrokerName {
-  return resolveBroker(program.opts<{ broker?: string }>().broker);
+function broker(override?: string): BrokerName {
+  return resolveBroker(override ?? program.opts<{ broker?: string }>().broker);
 }
 
 /** Resolve the broker and assert the command is Schwab-only. */
@@ -170,6 +171,8 @@ program
       await handleChain(symbol, expiry, options);
     }
   );
+
+addDerivativeCommands(program, broker);
 
 program
   .command("account")

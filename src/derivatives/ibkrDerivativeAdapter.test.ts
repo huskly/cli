@@ -20,6 +20,17 @@ function fakeApi(overrides: Partial<IbkrDerivativeDiscoveryApi> = {}): IbkrDeriv
         multiplier: 20,
       }),
     getDerivativeChain: () => Promise.resolve([]),
+    getDerivativeReferenceQuote: () =>
+      Promise.resolve({
+        conid: 770561204,
+        symbol: "NQ",
+        availability: "live",
+        timestamp: null,
+        bid: 27865,
+        ask: 27866.5,
+        last: 27865.5,
+        mark: 27864.25,
+      }),
     ...overrides,
   };
 }
