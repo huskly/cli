@@ -1,6 +1,7 @@
 import { IbkrClient, buildOauthConfig } from "@huskly/ibkr-client";
 import type { BrokerName } from "#src/brokers/brokerClient.js";
 import type { DerivativeDiscoveryClient } from "./derivativeDiscovery.js";
+import type { DerivativePreviewClient } from "./derivativePreview.js";
 import { IbkrDerivativeAdapter } from "./ibkrDerivativeAdapter.js";
 
 export interface DerivativeDiscoveryFactories {
@@ -35,4 +36,12 @@ const resolveDerivativeDiscovery = createDerivativeDiscoveryResolver({
 /** Resolve a reusable broker-specific derivative discovery capability. */
 export function derivativeDiscoveryClient(broker: BrokerName): Promise<DerivativeDiscoveryClient> {
   return resolveDerivativeDiscovery(broker);
+}
+
+/** Resolve the explicit What-If capability; unsupported brokers fail closed. */
+export async function derivativePreviewClient(
+  broker: BrokerName
+): Promise<DerivativePreviewClient> {
+  return (await resolveDerivativeDiscovery(broker)) as DerivativeDiscoveryClient &
+    DerivativePreviewClient;
 }

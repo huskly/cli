@@ -1,6 +1,9 @@
 import { Command } from "commander";
 import type { BrokerName } from "#src/brokers/brokerClient.js";
-import { derivativeDiscoveryClient } from "#src/derivatives/derivativeClient.js";
+import {
+  derivativeDiscoveryClient,
+  derivativePreviewClient,
+} from "#src/derivatives/derivativeClient.js";
 import type {
   DerivativeAssetClass,
   DerivativeRight,
@@ -12,6 +15,12 @@ import {
   type VerticalSpreadResearch,
 } from "#src/derivatives/derivativeResearch.js";
 import type { VerticalSpreadKind } from "#src/derivatives/verticalSpread.js";
+import type { TradingDiagnostics } from "#src/derivatives/derivativePreview.js";
+import {
+  DerivativePreviewService,
+  maskAccountId,
+  type SpreadPreviewDto,
+} from "#src/derivatives/derivativePreviewService.js";
 
 interface SeriesOptions {
   asset: string;
@@ -33,6 +42,14 @@ interface SpreadOptions extends SeriesOptions {
   short: string;
   quantity: string;
   limit?: string;
+}
+
+interface PreviewOptions extends SpreadOptions {
+  account?: string;
+  credit?: string;
+  debit?: string;
+  session: string;
+  tif: string;
 }
 
 interface ResolveOptions extends SeriesOptions {
@@ -63,6 +80,28 @@ function spreadKind(value: string): VerticalSpreadKind {
     throw new Error(`Invalid vertical kind '${value}'. Expected one of: ${kinds.join(", ")}.`);
   }
   return normalized as VerticalSpreadKind;
+}
+
+function accountId(value: string | undefined): string {
+  const account = value ?? process.env["IBKR_ACCOUNT_ID"];
+  if (!account?.trim()) throw new Error("An exact --account or IBKR_ACCOUNT_ID is required.");
+  return account;
+}
+
+function tif(value: string): "DAY" | "GTC" {
+  const normalized = value.toUpperCase();
+  if (normalized !== "DAY" && normalized !== "GTC") {
+    throw new Error(`Invalid TIF '${value}'. Expected DAY or GTC.`);
+  }
+  return normalized;
+}
+
+function session(value: string): "REGULAR" | "OVERNIGHT" {
+  const normalized = value.toUpperCase();
+  if (normalized !== "REGULAR" && normalized !== "OVERNIGHT") {
+    throw new Error(`Invalid session '${value}'. Expected REGULAR or OVERNIGHT.`);
+  }
+  return normalized;
 }
 
 function number(value: string, name: string): number {
@@ -183,12 +222,46 @@ export function renderVerticalSpread(result: VerticalSpreadResearch): string {
   return lines.join("\n");
 }
 
+function renderTradingDiagnostics(result: TradingDiagnostics): string {
+  return [
+    `Account: ${result.accountId}  Environment: ${result.environment}`,
+    `Authenticated: ${String(result.authenticated)}  Competing session: ${String(result.competingSession)}`,
+    `Selected account matches: ${String(result.selectedAccountId === result.accountId)}`,
+    `Market data: ${result.marketDataAvailable === null ? "unknown" : String(result.marketDataAvailable)}`,
+    `Advisory asset permissions: ${result.advisoryAssetPermissions.join(", ") || "unknown"}`,
+    "Permission metadata is diagnostic only; an explicit What-If is authoritative.",
+  ].join("\n");
+}
+
+function renderSpreadPreview(result: SpreadPreviewDto): string {
+  return [
+    `Preview ${result.previewId}`,
+    `Account: ${result.account.maskedId}  Environment: ${result.account.environment}`,
+    `Expires: ${result.expiresAt}`,
+    `${result.order.kind} x${String(result.order.quantity)} ${result.order.priceEffect.toLowerCase()} ${String(result.order.limit)}`,
+    `Initial margin change: ${formatPrice(result.whatIf.initialMargin?.change ?? null)}`,
+    `Maintenance margin change: ${formatPrice(result.whatIf.maintenanceMargin?.change ?? null)}`,
+    `Commission/fees: ${formatPrice(result.whatIf.commission)}`,
+    `Warnings: ${result.whatIf.warnings.join(" | ") || "none"}`,
+    `Rejections: ${result.whatIf.rejectionReasons.join(" | ") || "none"}`,
+    "NO ORDER WAS SUBMITTED.",
+  ].join("\n");
+}
+
 function output<T>(value: T, json: boolean | undefined, render: (result: T) => string): void {
   console.log(json === true ? JSON.stringify(value, null, 2) : render(value));
 }
 
 async function service(broker: BrokerName): Promise<DerivativeResearchService> {
   return new DerivativeResearchService(await derivativeDiscoveryClient(broker));
+}
+
+async function previewService(broker: BrokerName): Promise<DerivativePreviewService> {
+  const [discovery, preview] = await Promise.all([
+    derivativeDiscoveryClient(broker),
+    derivativePreviewClient(broker),
+  ]);
+  return new DerivativePreviewService(discovery, preview);
 }
 
 /** Register broker-neutral derivative research commands without changing legacy chain commands. */
@@ -264,5 +337,69 @@ export function addDerivativeCommands(
     });
     output(result, options.json, renderVerticalSpread);
   });
+
+  seriesOptions(
+    spread
+      .command("preview")
+      .description("Run an explicit non-submitting vertical What-If")
+      .argument("<kind>", "call-debit, call-credit, put-debit, or put-credit")
+      .argument("<underlying>", "Underlying symbol")
+      .requiredOption("--long <strike>", "Long-leg strike")
+      .requiredOption("--short <strike>", "Short-leg strike")
+      .option("--account <id>", "Exact account ID; defaults to IBKR_ACCOUNT_ID")
+      .option("--credit <price>", "Positive net credit")
+      .option("--debit <price>", "Positive net debit")
+      .option("--quantity <count>", "Number of spreads", "1")
+      .option("--tif <value>", "DAY or GTC", "DAY")
+      .option("--session <value>", "REGULAR or OVERNIGHT", "REGULAR")
+  ).action(async (kindValue: string, underlying: string, options: PreviewOptions) => {
+    if ((options.credit === undefined) === (options.debit === undefined)) {
+      throw new Error("Provide exactly one of --credit or --debit.");
+    }
+    const quantity = integer(options.quantity, "Quantity");
+    if (quantity === 0) throw new Error("Quantity must be greater than zero.");
+    const priceEffect = options.credit !== undefined ? "CREDIT" : "DEBIT";
+    const limitValue = options.credit ?? options.debit;
+    if (limitValue === undefined) throw new Error("A credit or debit is required.");
+    const result = await (
+      await previewService(broker(options.broker))
+    ).previewVertical({
+      ...seriesRequest(underlying, options),
+      accountId: accountId(options.account),
+      kind: spreadKind(kindValue),
+      longStrike: number(options.long, "long strike"),
+      shortStrike: number(options.short, "short strike"),
+      quantity,
+      priceEffect,
+      limit: number(limitValue, priceEffect.toLowerCase()),
+      tif: tif(options.tif),
+      session: session(options.session),
+    });
+    output(result, options.json, renderSpreadPreview);
+  });
   program.addCommand(spread);
+
+  const brokerCommand = new Command("broker").description("Broker diagnostics");
+  brokerCommand
+    .command("doctor")
+    .description("Run read-only broker trading diagnostics")
+    .option("--broker <name>", "Broker to use: schwab or ibkr", "ibkr")
+    .option("--account <id>", "Exact account ID; defaults to IBKR_ACCOUNT_ID")
+    .option("--trading", "Include trading-session and advisory permission diagnostics")
+    .option("--json", "Emit a stable JSON DTO")
+    .action(
+      async (options: { broker: string; account?: string; trading?: boolean; json?: boolean }) => {
+        const result = await (
+          await previewService(broker(options.broker))
+        ).getTradingDiagnostics(accountId(options.account));
+        const safeResult: TradingDiagnostics = {
+          ...result,
+          accountId: maskAccountId(result.accountId),
+          selectedAccountId:
+            result.selectedAccountId === null ? null : maskAccountId(result.selectedAccountId),
+        };
+        output(safeResult, options.json, renderTradingDiagnostics);
+      }
+    );
+  program.addCommand(brokerCommand);
 }

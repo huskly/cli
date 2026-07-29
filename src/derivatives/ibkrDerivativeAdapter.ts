@@ -10,6 +10,12 @@ import type {
   DerivativeReferenceQuote,
   DerivativeRight,
 } from "./derivativeDiscovery.js";
+import type {
+  DerivativeComboPreviewRequest,
+  DerivativeComboPreviewResult,
+  DerivativePreviewClient,
+  TradingDiagnostics,
+} from "./derivativePreview.js";
 
 type IbkrOptionRight = "C" | "P";
 
@@ -86,6 +92,19 @@ export interface IbkrDerivativeDiscoveryApi {
   getDerivativeReferenceQuote(
     contract: IbkrDerivativeContract
   ): Promise<IbkrDerivativeReferenceQuote>;
+  getTradingDiagnostics(accountId: string): Promise<TradingDiagnostics>;
+  previewDerivativeCombo(request: {
+    accountId: string;
+    legs: [
+      { contract: IbkrDerivativeContract; ratio: 1 | -1 },
+      { contract: IbkrDerivativeContract; ratio: 1 | -1 },
+    ];
+    quantity: number;
+    priceEffect: "CREDIT" | "DEBIT";
+    limit: number;
+    tif: "DAY" | "GTC";
+    session: "REGULAR" | "OVERNIGHT";
+  }): Promise<DerivativeComboPreviewResult>;
 }
 
 function toIbkrRight(right: DerivativeRight): IbkrOptionRight {
@@ -187,7 +206,7 @@ function ibkrContract(contract: DerivativeContract): IbkrDerivativeContract {
 }
 
 /** Maps broker-local conids and C/P codes into the CLI's durable semantic model. */
-export class IbkrDerivativeAdapter implements DerivativeDiscoveryClient {
+export class IbkrDerivativeAdapter implements DerivativeDiscoveryClient, DerivativePreviewClient {
   constructor(private readonly client: IbkrDerivativeDiscoveryApi) {}
 
   async getExpiries(request: DerivativeExpiryRequest): Promise<DerivativeExpiry[]> {
@@ -226,5 +245,24 @@ export class IbkrDerivativeAdapter implements DerivativeDiscoveryClient {
       last: quote.last,
       mark: quote.mark,
     };
+  }
+
+  getTradingDiagnostics(accountId: string): Promise<TradingDiagnostics> {
+    return this.client.getTradingDiagnostics(accountId);
+  }
+
+  previewDerivativeCombo(
+    request: DerivativeComboPreviewRequest
+  ): Promise<DerivativeComboPreviewResult> {
+    return this.client.previewDerivativeCombo({
+      ...request,
+      legs: request.legs.map(({ contract, ratio }) => ({
+        contract: ibkrContract(contract),
+        ratio,
+      })) as [
+        { contract: IbkrDerivativeContract; ratio: 1 | -1 },
+        { contract: IbkrDerivativeContract; ratio: 1 | -1 },
+      ],
+    });
   }
 }
