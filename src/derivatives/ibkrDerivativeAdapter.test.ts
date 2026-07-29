@@ -42,6 +42,10 @@ function fakeApi(overrides: Partial<IbkrDerivativeDiscoveryApi> = {}): IbkrDeriv
         advisoryAssetPermissions: ["OPT"],
       }),
     previewDerivativeCombo: () => Promise.reject(new Error("not used")),
+    submitDerivativeCombo: () => Promise.reject(new Error("not used")),
+    acknowledgeOrderWarning: () => Promise.reject(new Error("not used")),
+    getDerivativeOrderStatus: () => Promise.reject(new Error("not used")),
+    cancelDerivativeOrder: () => Promise.reject(new Error("not used")),
     ...overrides,
   };
 }

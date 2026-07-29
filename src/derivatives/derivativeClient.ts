@@ -2,6 +2,7 @@ import { IbkrClient, buildOauthConfig } from "@huskly/ibkr-client";
 import type { BrokerName } from "#src/brokers/brokerClient.js";
 import type { DerivativeDiscoveryClient } from "./derivativeDiscovery.js";
 import type { DerivativePreviewClient } from "./derivativePreview.js";
+import type { DerivativeExecutionClient } from "./derivativeExecution.js";
 import { IbkrDerivativeAdapter } from "./ibkrDerivativeAdapter.js";
 
 export interface DerivativeDiscoveryFactories {
@@ -44,4 +45,12 @@ export async function derivativePreviewClient(
 ): Promise<DerivativePreviewClient> {
   return (await resolveDerivativeDiscovery(broker)) as DerivativeDiscoveryClient &
     DerivativePreviewClient;
+}
+
+/** Resolve the guarded live-execution capability; unsupported brokers fail closed. */
+export async function derivativeExecutionClient(
+  broker: BrokerName
+): Promise<DerivativeExecutionClient> {
+  return (await resolveDerivativeDiscovery(broker)) as DerivativeDiscoveryClient &
+    DerivativeExecutionClient;
 }

@@ -48,6 +48,8 @@ implemented for that broker.
 | `option chain`    | ✗      | ✓    |
 | `spread quote`    | ✗      | ✓    |
 | `spread preview`  | ✗      | ✓    |
+| `spread submit`   | ✗      | ✓    |
+| `order show/watch/cancel` | ✗ | ✓ |
 | `broker doctor`   | ✗      | ✓    |
 | `account`         | ✓      | ✓    |
 | `user-preference` | ✓      | ✗    |
@@ -59,7 +61,8 @@ implemented for that broker.
 
 IBKR currently supports the shared **`account`**, **`quote`**, **`search`**,
 **`positions`**, **`transactions`**, **`orders`**, and **`repl`** commands plus
-read-only **`option resolve`**, **`option chain`**, and **`spread quote`** research. IBKR
+exact-series **`option resolve`**, **`option chain`**, **`spread quote`**, guarded
+**`spread preview`/`spread submit`**, and derivative **`order`** lifecycle commands. IBKR
 `search` supports symbol lookup via `symbol-search` / `search`; Schwab-specific
 regex, description, and fundamental projections report a clear error under
 `--broker ibkr`. All other broker commands (`chain`, `movers`, `place-order`,
@@ -326,7 +329,39 @@ The output masks the account, identifies live versus paper, includes exact legs,
 margin, commissions/fees, warnings and rejections, and states `submitted: false`.
 Its preview ID binds the account/environment, exact contracts, quantity, limit,
 TIF, session, timestamp, and normalized What-If result and expires after five minutes.
-Unknown or incomplete What-If results fail closed.
+The owner-readable preview file stores only a one-way account digest and masked DTO so a
+separate CLI invocation can submit it without persisting the full account ID. Unknown or
+incomplete What-If results fail closed.
+
+#### spread submit and order - Guarded IBKR Execution
+
+Submit only the exact unexpired preview that was reviewed. Futures and futures-option writes
+also require the operator identity used for CME audit metadata.
+
+```bash
+export HUSKLY_EXT_OPERATOR=felipecsl
+huskly-cli spread submit <preview-id> --broker ibkr --account U1234567 --confirm --json
+
+# A known broker warning must be acknowledged explicitly; unknown warnings stop the flow.
+huskly-cli spread acknowledge <preview-id> <reply-id> \
+  --broker ibkr --account U1234567 --confirm --json
+
+huskly-cli order show <order-id> --broker ibkr --account U1234567 --json
+huskly-cli order watch <order-id> --broker ibkr --account U1234567 --json
+huskly-cli order cancel <order-id> --broker ibkr --account U1234567 \
+  --operator felipecsl --confirm --json
+```
+
+Before placement the workflow verifies the exact account/session and environment, rejects
+expired previews or contract drift, and submits one atomic combo with a unique client order ID.
+After placement and cancellation it reads fresh broker state and verifies the legs, signed
+ratios, quantity, signed limit, and client order identity against the reviewed preview. Partial
+fills remain visible; cancellation succeeds only after the broker reaches `CANCELED`.
+
+Paper accounts are allowed by default. Live execution fails closed unless both
+`HUSKLY_ENABLE_LIVE_EXECUTION=true` and an exact comma-separated
+`HUSKLY_LIVE_ACCOUNT_ALLOWLIST` include the requested account. Execution state persists only an
+account digest and masked preview DTO, never the full account identifier.
 
 #### broker doctor - Trading Diagnostics
 
@@ -448,17 +483,21 @@ huskly-cli --broker ibkr repl
 
 ## Using with Claude Code or Codex (MCP server)
 
-`huskly-cli-mcp` exposes market-data and account operations as MCP
+`huskly-cli-mcp` exposes market-data, account, and guarded derivative operations as MCP
 tools — `get_quote`, `search_symbol`, `get_positions`, `get_price_history`,
 `get_movers`, `get_vix_level`, `get_option_chain`, `get_option_expiries`, and
-`place_option_order`
+`place_option_order`, plus `get_derivative_chain`, `quote_option_spread`,
+`preview_option_spread_order`, `submit_option_spread_order`,
+`acknowledge_order_warning`, `get_order_status`, and `cancel_order`
 — so Claude can answer questions like "what's the MSFT price now", "what's
 the AAPL last 12 months price history", or "what are my current positions"
 with live data.
 
-`place_option_order` is the only write-capable MCP tool. It is Schwab-only and
+`place_option_order` is Schwab-only and
 requires `confirm: true` to submit a real live order; when `confirm` is omitted
-or `false`, it returns a preview without calling the broker.
+or `false`, it returns a preview without calling the broker. The IBKR derivative tools reuse the
+same exact-preview and lifecycle services as the CLI. Submission, warning acknowledgment, and
+cancellation require `confirm: true`; unknown warning IDs and unguarded order IDs fail closed.
 
 It communicates over stdio and reuses the same Schwab/IBKR auth as the CLI, so
 authenticate first (`huskly-cli auth login` for Schwab, and/or set the IBKR
@@ -518,6 +557,10 @@ src/
 - `LOG_LEVEL` - Set logging level (trace, debug, info, warn, error)
 - `REDIS_URL` - Redis connection URL (defaults to localhost:6379)
 - `HUSKLY_MCP_DEFAULT_BROKER` - Default broker (`schwab` or `ibkr`) for the MCP server's broker-agnostic tools when a call omits `broker` (defaults to `schwab`; an invalid value logs a warning to stderr and falls back to `schwab` rather than failing startup)
+- `HUSKLY_EXT_OPERATOR` - CME operator identity used by derivative submit/cancel CLI commands when `--operator` is omitted
+- `HUSKLY_ENABLE_LIVE_EXECUTION` - Must be exactly `true` to permit live derivative execution
+- `HUSKLY_LIVE_ACCOUNT_ALLOWLIST` - Comma-separated exact account IDs permitted for live derivative execution
+- `HUSKLY_PREVIEW_DIR` / `HUSKLY_EXECUTION_DIR` - Optional owner-readable workflow-state directories
 
 ## License
 

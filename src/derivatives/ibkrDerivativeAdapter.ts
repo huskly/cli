@@ -16,6 +16,12 @@ import type {
   DerivativePreviewClient,
   TradingDiagnostics,
 } from "./derivativePreview.js";
+import type {
+  DerivativeComboExecutionRequest,
+  DerivativeExecutionClient,
+  DerivativeOrderLifecycle,
+  DerivativeOrderSubmissionResult,
+} from "./derivativeExecution.js";
 
 type IbkrOptionRight = "C" | "P";
 
@@ -105,6 +111,32 @@ export interface IbkrDerivativeDiscoveryApi {
     tif: "DAY" | "GTC";
     session: "REGULAR" | "OVERNIGHT";
   }): Promise<DerivativeComboPreviewResult>;
+  submitDerivativeCombo(request: {
+    accountId: string;
+    legs: [
+      { contract: IbkrDerivativeContract; ratio: 1 | -1 },
+      { contract: IbkrDerivativeContract; ratio: 1 | -1 },
+    ];
+    quantity: number;
+    priceEffect: "CREDIT" | "DEBIT";
+    limit: number;
+    tif: "DAY" | "GTC";
+    session: "REGULAR" | "OVERNIGHT";
+    clientOrderId: string;
+    extOperator: string;
+    manualIndicator: boolean;
+  }): Promise<DerivativeOrderSubmissionResult>;
+  acknowledgeOrderWarning(input: {
+    replyId: string;
+    confirmed: true;
+  }): Promise<DerivativeOrderSubmissionResult>;
+  getDerivativeOrderStatus(accountId: string, orderId: string): Promise<DerivativeOrderLifecycle>;
+  cancelDerivativeOrder(input: {
+    accountId: string;
+    orderId: string;
+    extOperator: string;
+    manualIndicator: boolean;
+  }): Promise<void>;
 }
 
 function toIbkrRight(right: DerivativeRight): IbkrOptionRight {
@@ -206,7 +238,9 @@ function ibkrContract(contract: DerivativeContract): IbkrDerivativeContract {
 }
 
 /** Maps broker-local conids and C/P codes into the CLI's durable semantic model. */
-export class IbkrDerivativeAdapter implements DerivativeDiscoveryClient, DerivativePreviewClient {
+export class IbkrDerivativeAdapter
+  implements DerivativeDiscoveryClient, DerivativePreviewClient, DerivativeExecutionClient
+{
   constructor(private readonly client: IbkrDerivativeDiscoveryApi) {}
 
   async getExpiries(request: DerivativeExpiryRequest): Promise<DerivativeExpiry[]> {
@@ -264,5 +298,40 @@ export class IbkrDerivativeAdapter implements DerivativeDiscoveryClient, Derivat
         { contract: IbkrDerivativeContract; ratio: 1 | -1 },
       ],
     });
+  }
+
+  submitDerivativeCombo(
+    request: DerivativeComboExecutionRequest
+  ): Promise<DerivativeOrderSubmissionResult> {
+    return this.client.submitDerivativeCombo({
+      ...request,
+      legs: request.legs.map(({ contract, ratio }) => ({
+        contract: ibkrContract(contract),
+        ratio,
+      })) as [
+        { contract: IbkrDerivativeContract; ratio: 1 | -1 },
+        { contract: IbkrDerivativeContract; ratio: 1 | -1 },
+      ],
+    });
+  }
+
+  acknowledgeOrderWarning(input: {
+    replyId: string;
+    confirmed: true;
+  }): Promise<DerivativeOrderSubmissionResult> {
+    return this.client.acknowledgeOrderWarning(input);
+  }
+
+  getDerivativeOrderStatus(accountId: string, orderId: string): Promise<DerivativeOrderLifecycle> {
+    return this.client.getDerivativeOrderStatus(accountId, orderId);
+  }
+
+  cancelDerivativeOrder(input: {
+    accountId: string;
+    orderId: string;
+    extOperator: string;
+    manualIndicator: boolean;
+  }): Promise<void> {
+    return this.client.cancelDerivativeOrder(input);
   }
 }

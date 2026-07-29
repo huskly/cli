@@ -14,7 +14,7 @@ export interface TradingDiagnostics {
 
 export interface DerivativeComboPreviewRequest {
   accountId: string;
-  legs: [
+  legs: readonly [
     { contract: DerivativeContract; ratio: 1 | -1 },
     { contract: DerivativeContract; ratio: 1 | -1 },
   ];
