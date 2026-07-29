@@ -1,9 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { DerivativeContract, DerivativeDiscoveryClient } from "./derivativeDiscovery.js";
 import type { DerivativePreviewClient } from "./derivativePreview.js";
 import {
   DerivativePreviewService,
+  FilePreviewStore,
   maskAccountId,
   type PreviewVerticalRequest,
 } from "./derivativePreviewService.js";
@@ -90,7 +94,10 @@ void test("preview DTO masks the account and binds exact economic terms", async 
   assert.equal(first.order.legs[0].contract.identity.strike, 26400);
   assert.notEqual(first.previewId, changed.previewId);
   assert.equal(
-    service.validatePreview(first.previewId, { accountId: "U1234567", environment: "paper" }),
+    await service.validatePreview(first.previewId, {
+      accountId: "U1234567",
+      environment: "paper",
+    }),
     first
   );
 });
@@ -99,12 +106,12 @@ void test("preview validation rejects account/environment mismatch and expiry", 
   let now = new Date("2026-07-29T12:00:00.000Z");
   const service = new DerivativePreviewService(discovery, preview, () => now, 60_000);
   const result = await service.previewVertical(request());
-  assert.throws(
+  await assert.rejects(
     () => service.validatePreview(result.previewId, { accountId: "U999", environment: "paper" }),
     /account or environment/
   );
   now = new Date("2026-07-29T12:01:00.000Z");
-  assert.throws(
+  await assert.rejects(
     () =>
       service.validatePreview(result.previewId, {
         accountId: "U1234567",
@@ -112,6 +119,42 @@ void test("preview validation rejects account/environment mismatch and expiry", 
       }),
     /expired/
   );
+});
+
+void test("file preview store supports separate processes without persisting full account IDs", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "huskly-preview-test-"));
+  try {
+    const now = new Date("2026-07-29T12:00:00.000Z");
+    const writer = new DerivativePreviewService(
+      discovery,
+      preview,
+      () => now,
+      60_000,
+      new FilePreviewStore(directory)
+    );
+    const result = await writer.previewVertical(request());
+    const reader = new DerivativePreviewService(
+      discovery,
+      preview,
+      () => now,
+      60_000,
+      new FilePreviewStore(directory)
+    );
+    assert.equal(
+      (
+        await reader.validatePreview(result.previewId, {
+          accountId: "U1234567",
+          environment: "paper",
+        })
+      ).previewId,
+      result.previewId
+    );
+    const [filename] = await readdir(directory);
+    assert.ok(filename);
+    assert.doesNotMatch(await readFile(join(directory, filename), "utf8"), /U1234567/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 void test("account masking covers short paper fixtures", () => {

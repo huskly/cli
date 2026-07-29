@@ -2,6 +2,7 @@ import { Command } from "commander";
 import type { BrokerName } from "#src/brokers/brokerClient.js";
 import {
   derivativeDiscoveryClient,
+  derivativeExecutionClient,
   derivativePreviewClient,
 } from "#src/derivatives/derivativeClient.js";
 import type {
@@ -18,9 +19,16 @@ import type { VerticalSpreadKind } from "#src/derivatives/verticalSpread.js";
 import type { TradingDiagnostics } from "#src/derivatives/derivativePreview.js";
 import {
   DerivativePreviewService,
+  FilePreviewStore,
   maskAccountId,
   type SpreadPreviewDto,
 } from "#src/derivatives/derivativePreviewService.js";
+import {
+  DerivativeExecutionService,
+  FileExecutionStateStore,
+  type OrderLifecycleDto,
+  type SubmissionDto,
+} from "#src/derivatives/derivativeExecutionService.js";
 
 interface SeriesOptions {
   asset: string;
@@ -57,6 +65,19 @@ interface ResolveOptions extends SeriesOptions {
   strike?: string;
 }
 
+interface ExecutionOptions {
+  account?: string;
+  broker?: string;
+  confirm?: boolean;
+  json?: boolean;
+  operator?: string;
+}
+
+interface WatchOptions extends ExecutionOptions {
+  poll: string;
+  timeout: string;
+}
+
 function assetClass(value: string): DerivativeAssetClass {
   const normalized = value.toUpperCase();
   if (normalized !== "OPT" && normalized !== "FOP") {
@@ -86,6 +107,19 @@ function accountId(value: string | undefined): string {
   const account = value ?? process.env["IBKR_ACCOUNT_ID"];
   if (!account?.trim()) throw new Error("An exact --account or IBKR_ACCOUNT_ID is required.");
   return account;
+}
+
+function operator(value: string | undefined): string {
+  const result = value ?? process.env["HUSKLY_EXT_OPERATOR"];
+  if (!result?.trim()) {
+    throw new Error("An exact --operator or HUSKLY_EXT_OPERATOR is required.");
+  }
+  return result;
+}
+
+function confirmed(value: boolean | undefined): true {
+  if (value !== true) throw new Error("This operation requires --confirm.");
+  return true;
 }
 
 function tif(value: string): "DAY" | "GTC" {
@@ -248,6 +282,38 @@ function renderSpreadPreview(result: SpreadPreviewDto): string {
   ].join("\n");
 }
 
+function renderSubmission(result: SubmissionDto): string {
+  const lines = [
+    `Submission: ${result.state}`,
+    `Preview: ${result.previewId}`,
+    `Account: ${result.account.maskedId}  Environment: ${result.account.environment}`,
+  ];
+  if (result.orderId !== undefined) lines.push(`Order: ${result.orderId}`);
+  if (result.clientOrderId !== undefined) lines.push(`Client order: ${result.clientOrderId}`);
+  if (result.status !== undefined) lines.push(`Verified status: ${result.status}`);
+  if (result.updatedAt !== undefined) lines.push(`Updated: ${result.updatedAt ?? "unknown"}`);
+  for (const warning of result.warnings) {
+    lines.push(
+      `Warning ${warning.replyId} (${warning.known ? "known" : "UNKNOWN"}): ${warning.messages.join(" | ")}`
+    );
+  }
+  if (result.rejectionReasons.length > 0) {
+    lines.push(`Rejected: ${result.rejectionReasons.join(" | ")}`);
+  }
+  return lines.join("\n");
+}
+
+function renderOrderLifecycle(result: OrderLifecycleDto): string {
+  return [
+    `Order ${result.orderId}: ${result.status}`,
+    `Account: ${result.account.maskedId}  Environment: ${result.account.environment}`,
+    `Quantity: ${String(result.filledQuantity)}/${String(result.quantity)}  Remaining: ${String(result.remainingQuantity)}`,
+    `Limit: ${formatPrice(result.limitPrice)}  Average fill: ${formatPrice(result.averagePrice)}`,
+    `Commission/fees: ${formatPrice(result.commissionAndFees)}`,
+    `Verified against preview: ${String(result.verifiedAgainstPreview)}`,
+  ].join("\n");
+}
+
 function output<T>(value: T, json: boolean | undefined, render: (result: T) => string): void {
   console.log(json === true ? JSON.stringify(value, null, 2) : render(value));
 }
@@ -261,7 +327,35 @@ async function previewService(broker: BrokerName): Promise<DerivativePreviewServ
     derivativeDiscoveryClient(broker),
     derivativePreviewClient(broker),
   ]);
-  return new DerivativePreviewService(discovery, preview);
+  return new DerivativePreviewService(
+    discovery,
+    preview,
+    () => new Date(),
+    5 * 60 * 1000,
+    new FilePreviewStore()
+  );
+}
+
+async function executionService(broker: BrokerName): Promise<DerivativeExecutionService> {
+  const [discovery, preview, execution] = await Promise.all([
+    derivativeDiscoveryClient(broker),
+    derivativePreviewClient(broker),
+    derivativeExecutionClient(broker),
+  ]);
+  const previews = new DerivativePreviewService(
+    discovery,
+    preview,
+    () => new Date(),
+    5 * 60 * 1000,
+    new FilePreviewStore()
+  );
+  return new DerivativeExecutionService(
+    discovery,
+    preview,
+    execution,
+    previews,
+    new FileExecutionStateStore()
+  );
 }
 
 /** Register broker-neutral derivative research commands without changing legacy chain commands. */
@@ -377,7 +471,111 @@ export function addDerivativeCommands(
     });
     output(result, options.json, renderSpreadPreview);
   });
+
+  spread
+    .command("submit")
+    .description("Submit the exact, unexpired reviewed preview")
+    .argument("<preview-id>", "Exact preview ID")
+    .option("--broker <name>", "Broker to use", "ibkr")
+    .option("--account <id>", "Exact account ID; defaults to IBKR_ACCOUNT_ID")
+    .option("--operator <name>", "CME operator identity; defaults to HUSKLY_EXT_OPERATOR")
+    .option("--confirm", "Confirm this order submission")
+    .option("--json", "Emit a stable JSON DTO")
+    .action(async (previewId: string, options: ExecutionOptions) => {
+      const confirm = confirmed(options.confirm);
+      const extOperator = operator(options.operator);
+      const result = await (
+        await executionService(broker(options.broker))
+      ).submit({
+        previewId,
+        accountId: accountId(options.account),
+        operator: extOperator,
+        confirm,
+      });
+      output(result, options.json, renderSubmission);
+    });
+
+  spread
+    .command("acknowledge")
+    .description("Acknowledge one known broker warning for the exact preview")
+    .argument("<preview-id>", "Exact preview ID")
+    .argument("<reply-id>", "Exact broker warning reply ID")
+    .option("--broker <name>", "Broker to use", "ibkr")
+    .option("--account <id>", "Exact account ID; defaults to IBKR_ACCOUNT_ID")
+    .option("--confirm", "Confirm this warning acknowledgment")
+    .option("--json", "Emit a stable JSON DTO")
+    .action(async (previewId: string, replyId: string, options: ExecutionOptions) => {
+      const confirm = confirmed(options.confirm);
+      const result = await (
+        await executionService(broker(options.broker))
+      ).acknowledgeWarning({
+        previewId,
+        replyId,
+        accountId: accountId(options.account),
+        confirm,
+      });
+      output(result, options.json, renderSubmission);
+    });
   program.addCommand(spread);
+
+  const order = new Command("order").description("Inspect or cancel guarded derivative orders");
+  order
+    .command("show")
+    .argument("<order-id>", "Broker order ID")
+    .option("--broker <name>", "Broker to use", "ibkr")
+    .option("--account <id>", "Exact account ID; defaults to IBKR_ACCOUNT_ID")
+    .option("--json", "Emit a stable JSON DTO")
+    .action(async (orderId: string, options: ExecutionOptions) => {
+      const result = await (
+        await executionService(broker(options.broker))
+      ).getStatus(orderId, accountId(options.account));
+      output(result, options.json, renderOrderLifecycle);
+    });
+  order
+    .command("watch")
+    .argument("<order-id>", "Broker order ID")
+    .option("--broker <name>", "Broker to use", "ibkr")
+    .option("--account <id>", "Exact account ID; defaults to IBKR_ACCOUNT_ID")
+    .option("--timeout <seconds>", "Maximum watch duration", "300")
+    .option("--poll <seconds>", "Polling interval", "2")
+    .option("--json", "Emit a stable JSON DTO")
+    .action(async (orderId: string, options: WatchOptions) => {
+      const result = await (
+        await executionService(broker(options.broker))
+      ).watch({
+        orderId,
+        accountId: accountId(options.account),
+        timeoutMs: number(options.timeout, "timeout") * 1000,
+        pollMs: number(options.poll, "poll") * 1000,
+      });
+      output(result, options.json, renderOrderLifecycle);
+    });
+  order
+    .command("cancel")
+    .argument("<order-id>", "Broker order ID")
+    .option("--broker <name>", "Broker to use", "ibkr")
+    .option("--account <id>", "Exact account ID; defaults to IBKR_ACCOUNT_ID")
+    .option("--operator <name>", "CME operator identity; defaults to HUSKLY_EXT_OPERATOR")
+    .option("--confirm", "Confirm cancellation")
+    .option("--timeout <seconds>", "Maximum verification duration", "300")
+    .option("--poll <seconds>", "Polling interval", "2")
+    .option("--json", "Emit a stable JSON DTO")
+    .action(async (orderId: string, options: WatchOptions) => {
+      const confirm = confirmed(options.confirm);
+      const extOperator = operator(options.operator);
+      const result = await (
+        await executionService(broker(options.broker))
+      ).cancel({
+        orderId,
+        accountId: accountId(options.account),
+        operator: extOperator,
+        confirm,
+        timeoutMs: number(options.timeout, "timeout") * 1000,
+        pollMs: number(options.poll, "poll") * 1000,
+      });
+      output(result, options.json, renderOrderLifecycle);
+    });
+  program.addCommand(order);
 
   const brokerCommand = new Command("broker").description("Broker diagnostics");
   brokerCommand
