@@ -51,7 +51,7 @@
     "typescript-eslint": "^8.61.1"
   },
   "dependencies": {
-    "@huskly/ibkr-client": "^0.9.0",
+    "@huskly/ibkr-client": "^0.10.0",
     "@huskly/schwab-client": "^0.6.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "asciichart": "^1.5.25",
