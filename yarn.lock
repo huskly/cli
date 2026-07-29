@@ -229,10 +229,10 @@
     dotenv "^17.2.3"
     ibkr-client "^1.0.4"
 
-"@huskly/schwab-client@^0.3.2":
-  version "0.3.2"
-  resolved "https://registry.yarnpkg.com/@huskly/schwab-client/-/schwab-client-0.3.2.tgz#46421e978dd035c58c02d9096f1572899739ee0d"
-  integrity sha512-SIsWPhg3tDKb8Kq1rDZqLwX+NW2CXr7utowlTQ5xrSXDO07uSryRW/AjWzWg1GJtirSGhfanyP8YB2o2MY1szA==
+"@huskly/schwab-client@^0.6.0":
+  version "0.6.0"
+  resolved "https://registry.yarnpkg.com/@huskly/schwab-client/-/schwab-client-0.6.0.tgz#967378c70417adcaeb6ea18f2de6b7b80992d929"
+  integrity sha512-hj9XajZTGiXjl1LnvwRES3I7G2pCVeK/C4GLIQRZAfjcyesaGqw55SDyb7X/d91Yfu5l33KklaEx5o7uRkxKrQ==
   dependencies:
     date-fns "^4.1.0"
 
