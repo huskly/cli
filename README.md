@@ -47,6 +47,8 @@ implemented for that broker.
 | `option resolve`  | ✗      | ✓    |
 | `option chain`    | ✗      | ✓    |
 | `spread quote`    | ✗      | ✓    |
+| `spread preview`  | ✗      | ✓    |
+| `broker doctor`   | ✗      | ✓    |
 | `account`         | ✓      | ✓    |
 | `user-preference` | ✓      | ✗    |
 | `positions`       | ✓      | ✓    |
@@ -307,6 +309,35 @@ The result includes maximum profit/loss, breakeven, return on risk, net delta, a
 expiration payoff table, and an explicit settlement/residual-exposure warning.
 Derivative research calls bypass the Redis read cache; each DTO retains the broker
 quote timestamp and live/delayed/frozen/unavailable availability state.
+
+#### spread preview - Explicit IBKR What-If
+
+Preview one atomic vertical without submitting it. An exact account is mandatory,
+either through `--account` or `IBKR_ACCOUNT_ID`. User-facing credits and debits are
+always positive; IBKR's signed combo-price encoding stays inside the broker adapter.
+
+```bash
+huskly-cli spread preview put-credit NQ --broker ibkr \
+  --account U1234567 --asset FOP --expiry 2026-08-21 --class QN3 \
+  --exchange CME --short 26600 --long 26400 --quantity 1 --credit 39 --json
+```
+
+The output masks the account, identifies live versus paper, includes exact legs,
+margin, commissions/fees, warnings and rejections, and states `submitted: false`.
+Its preview ID binds the account/environment, exact contracts, quantity, limit,
+TIF, session, timestamp, and normalized What-If result and expires after five minutes.
+Unknown or incomplete What-If results fail closed.
+
+#### broker doctor - Trading Diagnostics
+
+```bash
+huskly-cli broker doctor --broker ibkr --account U1234567 --trading --json
+```
+
+This command is read-only. It reports masked account/environment identity,
+authentication and competing-session state, market-data access, and advisory asset
+permissions. Permission metadata is diagnostic only; an explicit What-If response is
+the authoritative pre-submission gate.
 
 ### Account Commands
 

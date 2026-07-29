@@ -31,6 +31,17 @@ function fakeApi(overrides: Partial<IbkrDerivativeDiscoveryApi> = {}): IbkrDeriv
         last: 27865.5,
         mark: 27864.25,
       }),
+    getTradingDiagnostics: () =>
+      Promise.resolve({
+        accountId: "U123",
+        selectedAccountId: "U123",
+        environment: "paper",
+        authenticated: true,
+        competingSession: false,
+        marketDataAvailable: true,
+        advisoryAssetPermissions: ["OPT"],
+      }),
+    previewDerivativeCombo: () => Promise.reject(new Error("not used")),
     ...overrides,
   };
 }
@@ -207,5 +218,67 @@ void test("IBKR adapter rejects malformed broker-local contract references", asy
         right: "PUT",
       }),
     /invalid broker-local derivative contract reference/
+  );
+});
+
+void test("IBKR adapter keeps combo conids behind the explicit preview boundary", async () => {
+  let received: unknown;
+  const adapter = new IbkrDerivativeAdapter(
+    fakeApi({
+      previewDerivativeCombo: (request) => {
+        received = request;
+        return Promise.resolve({
+          accountId: request.accountId,
+          environment: "paper",
+          accepted: true,
+          submitted: false,
+          commission: 2.5,
+          initialMargin: { current: 10_000, change: 3220, after: 13_220 },
+          maintenanceMargin: { current: 9000, change: 3000, after: 12_000 },
+          warnings: [],
+          rejectionReasons: [],
+          advisoryAssetPermissions: ["STK"],
+        });
+      },
+    })
+  );
+  const longContract = {
+    identity: {
+      assetClass: "FOP" as const,
+      underlying: "NQ",
+      expiration: "2026-08-21",
+      strike: 26400,
+      right: "PUT" as const,
+      tradingClass: "QN3",
+      exchange: "CME",
+      multiplier: 20,
+    },
+    brokerReference: { broker: "ibkr" as const, contractId: "892767804" },
+  };
+  const shortContract = {
+    ...longContract,
+    identity: { ...longContract.identity, strike: 26600 },
+    brokerReference: { broker: "ibkr" as const, contractId: "892767774" },
+  };
+  await adapter.previewDerivativeCombo({
+    accountId: "U123",
+    legs: [
+      { contract: longContract, ratio: 1 },
+      { contract: shortContract, ratio: -1 },
+    ],
+    quantity: 1,
+    priceEffect: "CREDIT",
+    limit: 39,
+    tif: "DAY",
+    session: "REGULAR",
+  });
+  assert.deepEqual(
+    (received as { legs: { contract: { conid: number }; ratio: number }[] }).legs.map(
+      ({ contract, ratio }) => [contract.conid, ratio]
+    ),
+    [
+      [892767804, 1],
+      [892767774, -1],
+    ]
   );
 });
