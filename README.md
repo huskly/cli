@@ -71,6 +71,25 @@ All IBKR transport, OAuth, endpoint response normalization, instrument search,
 transactions, and order behavior lives in `@huskly/ibkr-client`. This project
 keeps only the shared CLI presentation adapter and Redis read cache.
 
+### Derivative identity boundary
+
+The read-only derivative foundation uses a separate `DerivativeDiscoveryClient`
+capability instead of widening the account-oriented `BrokerClient`. Its normalized
+identity includes asset class (`OPT` or `FOP`), underlying, expiration, strike,
+right, trading class, exchange, multiplier, and optional settlement/exercise
+metadata. That identity distinguishes contracts such as NDX and NDXP even when
+their underlying, expiration, and strike match.
+
+IBKR conids are converted by `IbkrDerivativeAdapter` into an opaque
+`brokerReference`. This reference is useful for an immediate broker request but
+is not durable identity and must not be persisted in place of the semantic fields.
+Market-data availability remains explicit (`live`, `delayed`, `frozen`,
+`frozen-delayed`, or `unavailable`), and missing prices, activity, or Greeks stay
+nullable. Discovery cannot reach preview or order-write endpoints.
+
+User-facing `option` and `spread` commands are added by the next epic stage; the
+existing `expiries` and `chain` commands remain Schwab-only until then.
+
 ## Requirements
 
 - Node.js >= 20.0.0
