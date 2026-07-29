@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { DerivativeQuote, DerivativeRight } from "./derivativeDiscovery.js";
-import { buildVerticalSpread, type VerticalSpreadKind } from "./verticalSpread.js";
+import type { DerivativeQuote, DerivativeRight } from "#src/derivatives/derivativeDiscovery.js";
+import { buildVerticalSpread, type VerticalSpreadKind } from "#src/derivatives/verticalSpread.js";
 
 interface QuoteInput {
   strike: number;

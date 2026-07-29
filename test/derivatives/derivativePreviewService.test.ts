@@ -3,14 +3,17 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { DerivativeContract, DerivativeDiscoveryClient } from "./derivativeDiscovery.js";
-import type { DerivativePreviewClient } from "./derivativePreview.js";
+import type {
+  DerivativeContract,
+  DerivativeDiscoveryClient,
+} from "#src/derivatives/derivativeDiscovery.js";
+import type { DerivativePreviewClient } from "#src/derivatives/derivativePreview.js";
 import {
   DerivativePreviewService,
   FilePreviewStore,
   maskAccountId,
   type PreviewVerticalRequest,
-} from "./derivativePreviewService.js";
+} from "#src/derivatives/derivativePreviewService.js";
 
 function contract(strike: number): DerivativeContract {
   return {

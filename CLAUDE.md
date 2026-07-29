@@ -24,7 +24,7 @@ npm run lint:fix       # ESLint with auto-fix
 npm run format         # Prettier format
 npm run format:check   # Check formatting
 npm run typecheck      # TypeScript type checking only
-npm run test           # Run tests (node:test, *.test.ts files co-located with source)
+npm run test           # Run tests (node:test, test/**/*.test.ts mirroring src/)
 
 # Full check (run before commits)
 npm run check          # lint + format:check + typecheck + test
@@ -47,6 +47,7 @@ npm run check          # lint + format:check + typecheck + test
 - **`src/orders/`** - Shared order-construction/validation helpers (`orderValidation.ts`, `buildOptionOrderRequest.ts`) used by both `src/cli/placeOrder.ts`/`placeOptionOrder.ts` and the `place_option_order` MCP tool, to avoid duplicating validation logic across entry points
 - **`src/mcp/`** - MCP server (`@modelcontextprotocol/sdk`, stdio transport) wrapping `src/cli/shared.ts` directly (no CLI subprocess) as market-data and account tools: `get_quote`, `search_symbol`, `get_positions` (broker-agnostic, default `schwab`), and `get_price_history`/`get_movers`/`get_vix_level`/`get_option_chain`/`get_option_expiries` (Schwab-only, no broker param). See `src/mcp/defaultBroker.ts` for the `HUSKLY_MCP_DEFAULT_BROKER` resolution and `src/mcp/toolResult.ts` for the shared error-to-`isError`-result wrapping.
   - `place_option_order` is the one **write** tool (Schwab-only, single-leg orders only): it requires `confirm: true` to actually submit — omitted/`false` returns a preview (contract, instruction, estimated credit/debit) without calling the broker. Shares its OCC-symbol building (`buildOccOptionSymbol` in `src/helpers.ts`) and order-request/validation logic (`src/orders/`) with the CLI's `place-option-order` command.
+- **`test/`** - Tests mirror the `src/` directory tree and import production modules through `#src/`.
 
 ### API Client Pattern
 ```typescript

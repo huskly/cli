@@ -7,7 +7,7 @@ import {
   validateOrderType,
   validatePrice,
   validateQuantity,
-} from "./orderValidation.js";
+} from "#src/orders/orderValidation.js";
 
 describe("validateInstruction", () => {
   it("accepts an allowed instruction case-insensitively", () => {

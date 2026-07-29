@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildOccOptionSymbol, ensureFloat, parseOccSymbol } from "./helpers.js";
+import { buildOccOptionSymbol, ensureFloat, parseOccSymbol } from "#src/helpers.js";
 
 describe("buildOccOptionSymbol", () => {
   it("builds a call symbol", () => {

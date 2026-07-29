@@ -4,8 +4,8 @@ import type {
   DerivativeContract,
   DerivativeDiscoveryClient,
   DerivativeQuote,
-} from "./derivativeDiscovery.js";
-import { DerivativeResearchService } from "./derivativeResearch.js";
+} from "#src/derivatives/derivativeDiscovery.js";
+import { DerivativeResearchService } from "#src/derivatives/derivativeResearch.js";
 
 function contract(strike: number): DerivativeContract {
   return {

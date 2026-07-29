@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Command } from "commander";
-import { addDerivativeCommands } from "./derivatives.js";
+import { addDerivativeCommands } from "#src/cli/derivatives.js";
 
 function program(): Command {
   const command = new Command();

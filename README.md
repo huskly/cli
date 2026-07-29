@@ -550,6 +550,13 @@ src/
 ├── helpers.ts      # Utility functions
 ├── logger.ts       # Logging configuration
 └── marketDataSource.ts  # Market data abstraction
+test/                    # Tests, mirroring the src/ directory tree
+├── brokers/
+├── cli/
+├── derivatives/
+├── orders/
+├── cachedIbkrClient.test.ts
+└── helpers.test.ts
 ```
 
 ## Environment Variables

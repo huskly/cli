@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { IbkrClient } from "@huskly/ibkr-client";
-import { IbkrBrokerAdapter } from "./ibkrBrokerAdapter.js";
+import { IbkrBrokerAdapter } from "#src/brokers/ibkrBrokerAdapter.js";
 
 describe("IbkrBrokerAdapter", () => {
   it("maps upstream balances and positions to the CLI presentation contract", async () => {

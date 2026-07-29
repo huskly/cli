@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { IbkrDerivativeAdapter } from "./ibkrDerivativeAdapter.js";
-import type { IbkrDerivativeDiscoveryApi } from "./ibkrDerivativeAdapter.js";
+import { IbkrDerivativeAdapter } from "#src/derivatives/ibkrDerivativeAdapter.js";
+import type { IbkrDerivativeDiscoveryApi } from "#src/derivatives/ibkrDerivativeAdapter.js";
 
 function fakeApi(overrides: Partial<IbkrDerivativeDiscoveryApi> = {}): IbkrDerivativeDiscoveryApi {
   return {

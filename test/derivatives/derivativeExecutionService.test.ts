@@ -3,20 +3,26 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { DerivativeContract, DerivativeDiscoveryClient } from "./derivativeDiscovery.js";
+import type {
+  DerivativeContract,
+  DerivativeDiscoveryClient,
+} from "#src/derivatives/derivativeDiscovery.js";
 import type {
   DerivativeComboExecutionRequest,
   DerivativeExecutionClient,
   DerivativeOrderLifecycle,
   DerivativeOrderSubmissionResult,
-} from "./derivativeExecution.js";
-import type { DerivativePreviewClient } from "./derivativePreview.js";
+} from "#src/derivatives/derivativeExecution.js";
+import type { DerivativePreviewClient } from "#src/derivatives/derivativePreview.js";
 import {
   DerivativeExecutionService,
   FileExecutionStateStore,
   InMemoryExecutionStateStore,
-} from "./derivativeExecutionService.js";
-import { DerivativePreviewService, InMemoryPreviewStore } from "./derivativePreviewService.js";
+} from "#src/derivatives/derivativeExecutionService.js";
+import {
+  DerivativePreviewService,
+  InMemoryPreviewStore,
+} from "#src/derivatives/derivativePreviewService.js";
 
 function contract(strike: number, drift = false): DerivativeContract {
   return {

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildOptionOrderRequest } from "./buildOptionOrderRequest.js";
+import { buildOptionOrderRequest } from "#src/orders/buildOptionOrderRequest.js";
 
 const occSymbol = "MSTR  260821C00135000";
 
