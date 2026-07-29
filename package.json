@@ -51,13 +51,13 @@
     "typescript-eslint": "^8.61.1"
   },
   "dependencies": {
+    "@huskly/ibkr-client": "^0.7.0",
     "@huskly/schwab-client": "^0.3.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "asciichart": "^1.5.25",
     "chalk": "^5.6.2",
     "commander": "^15.0.0",
     "dotenv": "^17.2.3",
-    "ibkr-client": "^1.0.4",
     "ioredis": "^5.8.2",
     "keytar": "^7.9.0",
     "open": "^11.0.0",

@@ -2,7 +2,8 @@
 
 A command line interface for trading APIs. Supports **Schwab** (via
 [huskly.finance](https://huskly.finance) auth) and **Interactive Brokers**
-(via native OAuth 1.0a).
+(via [`@huskly/ibkr-client`](https://github.com/huskly/ibkr-client), which owns
+the native OAuth 1.0a and Interactive Brokers API integration).
 
 ## Features
 
@@ -65,6 +66,10 @@ key / access token / secret from the IBKR self-service portal, and place the
 PEM key files (`private_signature.pem`, `private_encryption.pem`, `dhparam.pem`)
 in the working directory (or set `IBKR_KEYS_DIR`). See `.env.example` for the
 full list of variables.
+
+All IBKR transport, OAuth, endpoint response normalization, instrument search,
+transactions, and order behavior lives in `@huskly/ibkr-client`. This project
+keeps only the shared CLI presentation adapter and Redis read cache.
 
 ## Requirements
 

@@ -1,12 +1,12 @@
 import { HusklyDeviceAuth } from "#src/auth/husklyDeviceAuth.js";
 import { ensure } from "#src/helpers.js";
 import { SchwabClient } from "@huskly/schwab-client";
+import { IbkrClient, buildOauthConfig } from "@huskly/ibkr-client";
 import { CachedIbkrClient } from "#src/cachedIbkrClient.js";
 import { CachedSchwabClient } from "#src/cachedSchwabClient.js";
 import type { BrokerClient, BrokerName } from "#src/brokers/brokerClient.js";
 import { SchwabBrokerAdapter } from "#src/brokers/schwabBrokerAdapter.js";
-import { IbkrClient } from "#src/ibkr/ibkrClient.js";
-import { buildOauthConfig } from "#src/ibkr/oauthConfig.js";
+import { IbkrBrokerAdapter } from "#src/brokers/ibkrBrokerAdapter.js";
 import * as asciichart from "asciichart";
 
 export { asciichart };
@@ -43,7 +43,7 @@ export async function brokerClient(broker: BrokerName): Promise<BrokerClient> {
           new CachedIbkrClient(async () => {
             const client = new IbkrClient(buildOauthConfig());
             await client.init();
-            return client;
+            return new IbkrBrokerAdapter(client);
           })
         )
       : apiClient().then((client) => new SchwabBrokerAdapter(client));

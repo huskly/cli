@@ -4,7 +4,7 @@
  * Command handlers for the shared commands (`account`, `positions`,
  * `transactions`, `orders`) render these normalized shapes and never touch raw
  * broker JSON. Both the Schwab path
- * (via {@link SchwabBrokerAdapter}) and the IBKR path (via `IbkrClient`)
+ * (via {@link SchwabBrokerAdapter}) and the IBKR path (via `IbkrBrokerAdapter`)
  * implement {@link BrokerClient}, so a single set of handlers serves either
  * broker. The field names mirror `@huskly/schwab-client`'s `getAccountBalances`
  * / `SchwabPosition` shapes so the existing handlers needed almost no change.

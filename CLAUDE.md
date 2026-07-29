@@ -40,8 +40,7 @@ npm run check          # lint + format:check + typecheck + test
 
 ### Core Modules
 - **`src/cli/`** - Command handlers using Commander.js. Each command is an async `handleX` function.
-- **`src/brokers/`** - Broker-neutral `BrokerClient` interface (`brokerClient.ts`) used by the shared `account`/`positions`/`transactions`/`orders` handlers, plus `SchwabBrokerAdapter` mapping the Schwab client onto it.
-- **`src/ibkr/`** - IBKR Web API client (OAuth 1.0a via the `ibkr-client` package), emitting Schwab-shaped balances/positions/transactions. Config from env vars + PEM files (`oauthConfig.ts`).
+- **`src/brokers/`** - Broker-neutral `BrokerClient` interface (`brokerClient.ts`) used by the shared `account`/`positions`/`transactions`/`orders` handlers, plus thin Schwab and IBKR presentation adapters. IBKR transport, OAuth, raw API types, search, transactions, and orders belong to `@huskly/ibkr-client`.
 - **`src/auth/`** - OAuth 2.0 Device Authorization flow via huskly.finance, credentials stored in OS keychain via `keytar`
 - **`src/cache.ts`** - Redis caching layer with per-operation TTLs (Schwab only)
 - **`src/cachedSchwabClient.ts`** - Decorator wrapping `SchwabClient` with Redis caching
@@ -53,7 +52,7 @@ npm run check          # lint + format:check + typecheck + test
 ```typescript
 // Shared commands (account, positions, transactions, orders) — broker-aware, pass the resolved broker:
 import { brokerClient } from "#src/cli/shared.js";
-const api = await brokerClient(broker); // BrokerClient (Schwab adapter or IbkrClient)
+const api = await brokerClient(broker); // BrokerClient (Schwab or IBKR adapter)
 
 // Schwab-only commands — the cached Schwab client directly:
 import { apiClient } from "#src/cli/shared.js";
