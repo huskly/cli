@@ -76,6 +76,17 @@ export interface DerivativeQuote {
   openInterest: number | null;
 }
 
+export interface DerivativeReferenceQuote {
+  brokerReference: DerivativeBrokerReference;
+  symbol: string;
+  dataAvailability: DerivativeDataAvailability;
+  timestamp: string | null;
+  bid: number | null;
+  ask: number | null;
+  last: number | null;
+  mark: number | null;
+}
+
 /** Read-only derivative capability kept separate from the shared account client. */
 export interface DerivativeDiscoveryClient {
   getExpiries(request: DerivativeExpiryRequest): Promise<DerivativeExpiry[]>;
@@ -84,4 +95,5 @@ export interface DerivativeDiscoveryClient {
     request: DerivativeContractRequest & { right: DerivativeRight; strike: number }
   ): Promise<DerivativeContract>;
   getChain(request: DerivativeContractRequest): Promise<DerivativeQuote[]>;
+  getReferenceQuote(contract: DerivativeContract): Promise<DerivativeReferenceQuote>;
 }

@@ -7,6 +7,7 @@ import type {
   DerivativeExpiry,
   DerivativeExpiryRequest,
   DerivativeQuote,
+  DerivativeReferenceQuote,
   DerivativeRight,
 } from "./derivativeDiscovery.js";
 
@@ -43,6 +44,17 @@ interface IbkrDerivativeQuote {
   openInterest: number | null;
 }
 
+interface IbkrDerivativeReferenceQuote {
+  conid: number;
+  symbol: string;
+  availability: DerivativeDataAvailability;
+  timestamp: string | null;
+  bid: number | null;
+  ask: number | null;
+  last: number | null;
+  mark: number | null;
+}
+
 interface IbkrContractQuery {
   assetClass: DerivativeAssetClass;
   underlying: string;
@@ -71,6 +83,9 @@ export interface IbkrDerivativeDiscoveryApi {
     query: IbkrContractQuery & { right: IbkrOptionRight; strike: number }
   ): Promise<IbkrDerivativeContract>;
   getDerivativeChain(query: IbkrContractQuery): Promise<IbkrDerivativeQuote[]>;
+  getDerivativeReferenceQuote(
+    contract: IbkrDerivativeContract
+  ): Promise<IbkrDerivativeReferenceQuote>;
 }
 
 function toIbkrRight(right: DerivativeRight): IbkrOptionRight {
@@ -146,6 +161,31 @@ function normalizeQuote(quote: IbkrDerivativeQuote): DerivativeQuote {
   };
 }
 
+function ibkrContract(contract: DerivativeContract): IbkrDerivativeContract {
+  const reference = contract.brokerReference;
+  const conid = Number(reference?.contractId);
+  if (reference?.broker !== "ibkr" || !Number.isSafeInteger(conid) || conid <= 0) {
+    throw new Error("Derivative contract does not contain a valid IBKR broker reference");
+  }
+  return {
+    conid,
+    assetClass: contract.identity.assetClass,
+    underlying: contract.identity.underlying,
+    expiration: contract.identity.expiration,
+    strike: contract.identity.strike,
+    right: toIbkrRight(contract.identity.right),
+    tradingClass: contract.identity.tradingClass,
+    exchange: contract.identity.exchange,
+    multiplier: contract.identity.multiplier,
+    ...(contract.identity.settlement !== undefined
+      ? { settlement: contract.identity.settlement }
+      : {}),
+    ...(contract.identity.exerciseStyle !== undefined
+      ? { exerciseStyle: contract.identity.exerciseStyle }
+      : {}),
+  };
+}
+
 /** Maps broker-local conids and C/P codes into the CLI's durable semantic model. */
 export class IbkrDerivativeAdapter implements DerivativeDiscoveryClient {
   constructor(private readonly client: IbkrDerivativeDiscoveryApi) {}
@@ -172,5 +212,19 @@ export class IbkrDerivativeAdapter implements DerivativeDiscoveryClient {
 
   async getChain(request: DerivativeContractRequest): Promise<DerivativeQuote[]> {
     return (await this.client.getDerivativeChain(contractQuery(request))).map(normalizeQuote);
+  }
+
+  async getReferenceQuote(contract: DerivativeContract): Promise<DerivativeReferenceQuote> {
+    const quote = await this.client.getDerivativeReferenceQuote(ibkrContract(contract));
+    return {
+      brokerReference: { broker: "ibkr", contractId: String(quote.conid) },
+      symbol: quote.symbol,
+      dataAvailability: quote.availability,
+      timestamp: quote.timestamp,
+      bid: quote.bid,
+      ask: quote.ask,
+      last: quote.last,
+      mark: quote.mark,
+    };
   }
 }
