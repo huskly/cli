@@ -1,7 +1,7 @@
 import { IbkrClient, buildOauthConfig } from "@huskly/ibkr-client";
 import type { BrokerName } from "#src/brokers/brokerClient.js";
 import type { DerivativeDiscoveryClient } from "./derivativeDiscovery.js";
-import { IbkrDerivativeAdapter, type IbkrDerivativeDiscoveryApi } from "./ibkrDerivativeAdapter.js";
+import { IbkrDerivativeAdapter } from "./ibkrDerivativeAdapter.js";
 
 export interface DerivativeDiscoveryFactories {
   ibkr(): Promise<DerivativeDiscoveryClient>;
@@ -28,9 +28,7 @@ const resolveDerivativeDiscovery = createDerivativeDiscoveryResolver({
   ibkr: async () => {
     const client = new IbkrClient(buildOauthConfig());
     await client.init();
-    // The structural assertion can be removed once the published dependency contains
-    // the issue #46 capability types; it does not weaken runtime input validation.
-    return new IbkrDerivativeAdapter(client as unknown as IbkrDerivativeDiscoveryApi);
+    return new IbkrDerivativeAdapter(client);
   },
 });
 
