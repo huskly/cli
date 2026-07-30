@@ -294,6 +294,7 @@ export class DerivativeExecutionService {
     await this.execution.cancelDerivativeOrder({
       accountId: input.accountId,
       orderId: input.orderId,
+      assetClass: expectation.preview.order.legs[0].contract.identity.assetClass,
       extOperator: input.operator,
       manualIndicator: true,
     });

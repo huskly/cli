@@ -88,6 +88,7 @@ class FakePreviewClient implements DerivativePreviewClient {
 class FakeExecutionClient implements DerivativeExecutionClient {
   submitted?: DerivativeComboExecutionRequest;
   canceled = false;
+  canceledRequest?: unknown;
   submitResult: DerivativeOrderSubmissionResult = {
     state: "accepted",
     orderId: "777",
@@ -116,13 +117,15 @@ class FakeExecutionClient implements DerivativeExecutionClient {
     return Promise.resolve(this.lifecycle(accountId, orderId, "WORKING"));
   }
 
-  cancelDerivativeOrder(_input: {
+  cancelDerivativeOrder(input: {
     accountId: string;
     orderId: string;
+    assetClass: "OPT" | "FOP";
     extOperator: string;
     manualIndicator: boolean;
   }) {
     this.canceled = true;
+    this.canceledRequest = input;
     return Promise.resolve();
   }
 
@@ -377,6 +380,13 @@ void test("watch and cancel require verified terminal lifecycle states", async (
     "CANCELED"
   );
   assert.equal(context.execution.canceled, true);
+  assert.deepEqual(context.execution.canceledRequest, {
+    accountId: "U1234567",
+    orderId: "777",
+    assetClass: "FOP",
+    extOperator: "felipecsl",
+    manualIndicator: true,
+  });
 });
 
 void test("file execution state validates persisted expectations without storing account IDs", async () => {

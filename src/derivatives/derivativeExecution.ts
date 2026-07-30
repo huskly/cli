@@ -1,4 +1,5 @@
 import type { DerivativeComboPreviewRequest } from "./derivativePreview.js";
+import type { DerivativeAssetClass } from "./derivativeDiscovery.js";
 
 export interface DerivativeComboExecutionRequest extends DerivativeComboPreviewRequest {
   clientOrderId: string;
@@ -61,6 +62,7 @@ export interface DerivativeExecutionClient {
   cancelDerivativeOrder(input: {
     accountId: string;
     orderId: string;
+    assetClass: DerivativeAssetClass;
     extOperator: string;
     manualIndicator: boolean;
   }): Promise<void>;

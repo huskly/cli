@@ -134,9 +134,15 @@ export interface IbkrDerivativeDiscoveryApi {
   cancelDerivativeOrder(input: {
     accountId: string;
     orderId: string;
+    assetClass: DerivativeAssetClass;
     extOperator: string;
     manualIndicator: boolean;
-  }): Promise<void>;
+  }): Promise<{
+    state: "requested";
+    accountId: string;
+    orderId: string;
+    message: string | null;
+  }>;
 }
 
 function toIbkrRight(right: DerivativeRight): IbkrOptionRight {
@@ -326,12 +332,13 @@ export class IbkrDerivativeAdapter
     return this.client.getDerivativeOrderStatus(accountId, orderId);
   }
 
-  cancelDerivativeOrder(input: {
+  async cancelDerivativeOrder(input: {
     accountId: string;
     orderId: string;
+    assetClass: DerivativeAssetClass;
     extOperator: string;
     manualIndicator: boolean;
   }): Promise<void> {
-    return this.client.cancelDerivativeOrder(input);
+    await this.client.cancelDerivativeOrder(input);
   }
 }
