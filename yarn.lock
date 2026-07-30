@@ -221,10 +221,10 @@
   resolved "https://registry.yarnpkg.com/@humanwhocodes/retry/-/retry-0.4.3.tgz#c2b9d2e374ee62c586d3adbea87199b1d7a7a6ba"
   integrity sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ==
 
-"@huskly/ibkr-client@^0.11.0":
-  version "0.11.0"
-  resolved "https://registry.yarnpkg.com/@huskly/ibkr-client/-/ibkr-client-0.11.0.tgz#702b1dff9dc5a4ccf39fa2c1922233d4f3c828e6"
-  integrity sha512-cDxezYpjKpVNgKdwnr0E6B6TESIKgepA9+v/j8fdLgFZQ1pe5+n+u78ZDJJQnI8OCmJCUZ5ztb89Y7DxfDi9ng==
+"@huskly/ibkr-client@^0.12.0":
+  version "0.12.0"
+  resolved "https://registry.yarnpkg.com/@huskly/ibkr-client/-/ibkr-client-0.12.0.tgz#5ba9fcd57bb4004715ec077eae28c8104abd8f2e"
+  integrity sha512-4SpCUp09VED0RXHU77+rylghMwciT8jx9qOktsZRgG9lktzhMgOVDDWHL4m6ao49dWFByLh6GVQi5ZoiDlGE2g==
   dependencies:
     dotenv "^17.2.3"
     ibkr-client "^1.0.4"
