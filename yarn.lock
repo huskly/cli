@@ -221,18 +221,18 @@
   resolved "https://registry.yarnpkg.com/@humanwhocodes/retry/-/retry-0.4.3.tgz#c2b9d2e374ee62c586d3adbea87199b1d7a7a6ba"
   integrity sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ==
 
-"@huskly/ibkr-client@^0.12.0":
-  version "0.12.0"
-  resolved "https://registry.yarnpkg.com/@huskly/ibkr-client/-/ibkr-client-0.12.0.tgz#5ba9fcd57bb4004715ec077eae28c8104abd8f2e"
-  integrity sha512-4SpCUp09VED0RXHU77+rylghMwciT8jx9qOktsZRgG9lktzhMgOVDDWHL4m6ao49dWFByLh6GVQi5ZoiDlGE2g==
+"@huskly/ibkr-client@^0.18.0":
+  version "0.18.0"
+  resolved "https://registry.yarnpkg.com/@huskly/ibkr-client/-/ibkr-client-0.18.0.tgz#a6287c6377081f94602894ea550d6e8be1b6c64b"
+  integrity sha512-KtAsfyq+VSWLjKA9YozQgQhfYQ6+Ysb7Z78iVPyqtZKnZSoZdktczHEUhdCRTswJGbEbi7PAiQBXxi0GYMDrtQ==
   dependencies:
     dotenv "^17.2.3"
     ibkr-client "^1.0.4"
 
-"@huskly/schwab-client@^0.6.0":
-  version "0.6.0"
-  resolved "https://registry.yarnpkg.com/@huskly/schwab-client/-/schwab-client-0.6.0.tgz#967378c70417adcaeb6ea18f2de6b7b80992d929"
-  integrity sha512-hj9XajZTGiXjl1LnvwRES3I7G2pCVeK/C4GLIQRZAfjcyesaGqw55SDyb7X/d91Yfu5l33KklaEx5o7uRkxKrQ==
+"@huskly/schwab-client@^0.8.0":
+  version "0.8.0"
+  resolved "https://registry.yarnpkg.com/@huskly/schwab-client/-/schwab-client-0.8.0.tgz#bdb12ea729f0dcd8625c2a6ae6b932f24b0d40a8"
+  integrity sha512-1ncAzxDpIZYX9ox3LDIhxDRcUY17D8X3RjYa3rcBbFWaDZxm+bN5LKHAOPo317EeZBdbGIXgN7/fITIKJ5apQg==
   dependencies:
     date-fns "^4.1.0"
 

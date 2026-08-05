@@ -92,6 +92,7 @@ export interface BrokerQuote {
 export interface AccountBalances {
   liquidationValue: number;
   cashBalance: number;
+  marginBalance: number;
   availableFunds: number;
   buyingPower: number;
   equity: number;
