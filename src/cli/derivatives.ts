@@ -300,6 +300,9 @@ function renderSubmission(result: SubmissionDto): string {
   if (result.rejectionReasons.length > 0) {
     lines.push(`Rejected: ${result.rejectionReasons.join(" | ")}`);
   }
+  if (result.recovery !== undefined) {
+    lines.push(`Recovery required: ${result.recovery.reasons.join(" | ")}`);
+  }
   return lines.join("\n");
 }
 

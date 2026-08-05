@@ -5,9 +5,11 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { DerivativeDiscoveryClient } from "./derivativeDiscovery.js";
 import type {
+  BrokerErrorDetail,
   DerivativeExecutionClient,
   DerivativeOrderLifecycle,
   DerivativeOrderSubmissionResult,
+  DerivativeSubmittedOrder,
   OrderWarning,
 } from "./derivativeExecution.js";
 import type { BrokerEnvironment, DerivativePreviewClient } from "./derivativePreview.js";
@@ -155,7 +157,7 @@ export class FileExecutionStateStore implements ExecutionStateStore {
 }
 
 export interface SubmissionDto {
-  state: "accepted" | "warning" | "rejected";
+  state: "accepted" | "warning" | "rejected" | "recovery_required";
   account: { maskedId: string; environment: BrokerEnvironment };
   previewId: string;
   orderId?: string;
@@ -164,6 +166,12 @@ export interface SubmissionDto {
   updatedAt?: string | null;
   warnings: OrderWarning[];
   rejectionReasons: string[];
+  recovery?: {
+    reasons: string[];
+    orders: DerivativeSubmittedOrder[];
+    errors: BrokerErrorDetail[];
+    unrecognizedResponses: unknown[];
+  };
 }
 
 export interface OrderLifecycleDto extends Omit<DerivativeOrderLifecycle, "accountId"> {
@@ -339,6 +347,21 @@ export class DerivativeExecutionService {
         previewId: preview.previewId,
         warnings: [],
         rejectionReasons: result.reasons,
+      };
+    }
+    if (result.state === "recovery_required") {
+      return {
+        state: "recovery_required",
+        account: { maskedId: maskAccountId(accountId), environment: preview.account.environment },
+        previewId: preview.previewId,
+        warnings: result.warnings,
+        rejectionReasons: [],
+        recovery: {
+          reasons: result.reasons,
+          orders: result.orders,
+          errors: result.errors,
+          unrecognizedResponses: result.unrecognizedResponses,
+        },
       };
     }
     const effectiveClientOrderId = result.clientOrderId ?? clientOrderId;

@@ -84,7 +84,7 @@ export class CachedSchwabClient {
    * Get account balances.
    * Cached for 2 minutes.
    */
-  async getAccountBalances() {
+  async getAccountBalances(): Promise<Awaited<ReturnType<SchwabClient["getAccountBalances"]>>> {
     return cacheFetch(
       "account_balances",
       () => this.client.getAccountBalances(),

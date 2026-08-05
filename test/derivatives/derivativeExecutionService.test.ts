@@ -321,6 +321,37 @@ void test("known warnings require exact acknowledgment and unknown warnings stop
   );
 });
 
+void test("preserves recovery-required submission evidence without accepting the order", async () => {
+  const context = await setup();
+  context.execution.submitResult = {
+    state: "recovery_required",
+    reasons: ["Ambiguous broker response"],
+    orders: [{ orderId: "777", status: "UNKNOWN", clientOrderId: "huskly-test" }],
+    warnings: [],
+    errors: [
+      {
+        message: "Broker response was incomplete",
+        code: null,
+        statusCode: null,
+        details: {},
+      },
+    ],
+    unrecognizedResponses: [{ raw: true }],
+  };
+
+  const result = await context.service.submit({
+    previewId: context.preview.previewId,
+    accountId: "U1234567",
+    operator: "felipecsl",
+    confirm: true,
+  });
+
+  assert.equal(result.state, "recovery_required");
+  assert.ok(result.recovery);
+  assert.deepEqual(result.recovery.reasons, ["Ambiguous broker response"]);
+  assert.equal(result.recovery.orders[0]?.orderId, "777");
+});
+
 void test("post-submit verification rejects changed legs or economics", async () => {
   const { service, execution, preview } = await setup();
   const mismatch = execution.lifecycle("U1234567", "777", "WORKING");

@@ -14,6 +14,19 @@ export interface OrderWarning {
   known: boolean;
 }
 
+export interface DerivativeSubmittedOrder {
+  orderId: string;
+  status: DerivativeOrderStatus;
+  clientOrderId: string | null;
+}
+
+export interface BrokerErrorDetail {
+  message: string;
+  code: string | null;
+  statusCode: number | null;
+  details: Readonly<Record<string, unknown>>;
+}
+
 export type DerivativeOrderStatus =
   | "WARNING_PENDING"
   | "PENDING"
@@ -33,7 +46,20 @@ export type DerivativeOrderSubmissionResult =
       warnings: OrderWarning[];
     }
   | { state: "warning"; warnings: OrderWarning[] }
-  | { state: "rejected"; reasons: string[] };
+  | {
+      state: "rejected";
+      reasons: string[];
+      errors?: BrokerErrorDetail[];
+      orders?: DerivativeSubmittedOrder[];
+    }
+  | {
+      state: "recovery_required";
+      reasons: string[];
+      orders: DerivativeSubmittedOrder[];
+      warnings: OrderWarning[];
+      errors: BrokerErrorDetail[];
+      unrecognizedResponses: unknown[];
+    };
 
 export interface DerivativeOrderLifecycle {
   accountId: string;
