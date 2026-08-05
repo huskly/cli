@@ -12,6 +12,9 @@ describe("IbkrBrokerAdapter", () => {
           cashBalance: 10_000,
           availableFunds: 20_000,
           buyingPower: 40_000,
+          margin: {
+            total: { initialMarginRequirement: 25_000 },
+          },
         }),
       getPositions: () =>
         Promise.resolve([
@@ -45,6 +48,7 @@ describe("IbkrBrokerAdapter", () => {
       liquidationValue: 100_000,
       equity: 100_000,
       cashBalance: 10_000,
+      marginBalance: 25_000,
       availableFunds: 20_000,
       buyingPower: 40_000,
     });

@@ -28,7 +28,9 @@ export class IbkrBrokerAdapter implements BrokerClient {
       liquidationValue: balances.netLiquidation,
       equity: balances.netLiquidation,
       cashBalance: balances.cashBalance,
-      marginBalance: balances.marginBalance,
+      ...(balances.margin.total.initialMarginRequirement !== null
+        ? { marginBalance: balances.margin.total.initialMarginRequirement }
+        : {}),
       availableFunds: balances.availableFunds,
       buyingPower: balances.buyingPower,
     };

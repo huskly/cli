@@ -92,7 +92,8 @@ export interface BrokerQuote {
 export interface AccountBalances {
   liquidationValue: number;
   cashBalance: number;
-  marginBalance: number;
+  /** Schwab exposes this debt metric; IBKR has no direct equivalent. */
+  marginBalance?: number;
   availableFunds: number;
   buyingPower: number;
   equity: number;

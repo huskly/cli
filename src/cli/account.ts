@@ -16,7 +16,9 @@ export async function handleAccount(broker: BrokerName): Promise<void> {
   console.log(`Net Liquidation:  ${chalk.green(formatCurrency(balances.liquidationValue))}`);
   console.log(`Account Equity:   ${chalk.cyan(formatCurrency(balances.equity))}`);
   console.log(`Cash Balance:     ${chalk.yellow(formatCurrency(balances.cashBalance))}`);
-  console.log(`Margin Balance:   ${chalk.red(formatCurrency(balances.marginBalance))}`);
+  if (balances.marginBalance !== undefined) {
+    console.log(`Margin Balance:   ${chalk.red(formatCurrency(balances.marginBalance))}`);
+  }
   console.log(`Available Funds:  ${chalk.blue(formatCurrency(balances.availableFunds))}`);
   console.log(`Buying Power:     ${chalk.magenta(formatCurrency(balances.buyingPower))}`);
   console.log(chalk.gray("─".repeat(50)));
