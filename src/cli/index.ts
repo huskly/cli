@@ -17,7 +17,7 @@ import { handleRepl } from "./repl.js";
 import { handleUserPreference } from "./userPreference.js";
 import { handleSearch } from "./search.js";
 import { handleMovers } from "./movers.js";
-import { disconnectCache } from "#src/cache.js";
+import { disconnectCache, RedisUnavailableError } from "#src/cache.js";
 import { resolveBroker, requireSchwab } from "./shared.js";
 import type { BrokerName } from "#src/brokers/brokerClient.js";
 import { addDerivativeCommands } from "./derivatives.js";
@@ -284,6 +284,11 @@ program
 program
   .parseAsync(process.argv)
   .catch((error: unknown) => {
+    if (error instanceof RedisUnavailableError) {
+      console.error(chalk.red("Error:"), error.message);
+      console.error(chalk.dim("Example: brew services start redis  (or: redis-server)"));
+      process.exit(1);
+    }
     const message = error instanceof Error ? error.message : String(error);
     console.error(chalk.red("Error:"), message);
     process.exit(1);

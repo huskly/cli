@@ -10,23 +10,64 @@ export const CACHE_DURATION = 5 * 60; // 5 minutes in seconds
 
 let redisClient: Redis | null = null;
 
+/** Give up quickly instead of reconnecting forever when Redis is down. */
+const MAX_CONNECTION_ATTEMPTS = 3;
+
+/** Raised when Redis cannot be reached, so the CLI can exit with clear advice. */
+export class RedisUnavailableError extends Error {
+  constructor(readonly redisUrl: string) {
+    super(`Cannot connect to Redis at ${redisUrl}. Start Redis and try the command again.`);
+    this.name = "RedisUnavailableError";
+  }
+}
+
+function redisUrl(): string {
+  return process.env["REDIS_URL"] ?? "redis://localhost:6379";
+}
+
+/** True when the error means the server is unreachable, not a command failure. */
+function isConnectionError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = (error as NodeJS.ErrnoException).code;
+  if (code === "ECONNREFUSED" || code === "ENOTFOUND" || code === "ETIMEDOUT") return true;
+  return /connection is closed|enotfound|econnrefused|max retries/i.test(error.message);
+}
+
 function getRedisClient(): Redis {
   if (redisClient) {
     return redisClient;
   }
 
-  const redisUrl = process.env["REDIS_URL"] ?? "redis://localhost:6379";
-  const client = new Redis(redisUrl, {
+  const url = redisUrl();
+  const client = new Redis(url, {
     lazyConnect: true,
-    maxRetriesPerRequest: 3,
+    maxRetriesPerRequest: MAX_CONNECTION_ATTEMPTS,
+    retryStrategy: (attempt: number) =>
+      attempt > MAX_CONNECTION_ATTEMPTS ? null : Math.min(attempt * 100, 500),
   });
 
   client.on("error", (err: unknown) => {
+    // Connection failures surface once through RedisUnavailableError; logging
+    // every reconnect attempt only floods the terminal.
+    if (isConnectionError(err)) {
+      logger.debug({ err }, "Redis connection error");
+      return;
+    }
     logger.error({ err }, "Redis client error");
   });
 
   redisClient = client;
   return client;
+}
+
+/**
+ * Rethrow unreachable-Redis failures as {@link RedisUnavailableError}; other
+ * cache errors stay non-fatal so commands can still serve uncached data.
+ */
+function rethrowIfUnavailable(error: unknown): void {
+  if (isConnectionError(error)) {
+    throw new RedisUnavailableError(redisUrl());
+  }
 }
 
 export async function cacheFetch<T>(
@@ -62,6 +103,7 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
 
     return entry.data;
   } catch (error) {
+    rethrowIfUnavailable(error);
     logger.error({ error, key }, "Cache get error");
     return null;
   }
@@ -82,6 +124,7 @@ export async function cacheSet<T>(
     await client.set(key, JSON.stringify(entry), "EX", expirationInSeconds);
     return data;
   } catch (error) {
+    rethrowIfUnavailable(error);
     logger.error({ error, key }, "Cache set error");
     return data;
   }
@@ -92,6 +135,7 @@ export async function cacheRemove(key: string): Promise<void> {
     const client = getRedisClient();
     await client.del(key);
   } catch (error) {
+    rethrowIfUnavailable(error);
     logger.error({ error, key }, "Cache remove error");
   }
 }
@@ -101,13 +145,20 @@ export async function clearCache(): Promise<void> {
     const client = getRedisClient();
     await client.flushdb();
   } catch (error) {
+    rethrowIfUnavailable(error);
     logger.error({ error }, "Cache clear error");
   }
 }
 
 export async function disconnectCache(): Promise<void> {
-  if (redisClient) {
-    await redisClient.quit();
-    redisClient = null;
+  if (!redisClient) return;
+  const client = redisClient;
+  redisClient = null;
+  try {
+    await client.quit();
+  } catch (error) {
+    // A never-connected or already-closed client rejects here; nothing to clean.
+    logger.debug({ error }, "Redis disconnect error");
+    client.disconnect();
   }
 }

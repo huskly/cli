@@ -12,6 +12,7 @@ import { handleSearch } from "./search.js";
 import { handleTransactions } from "./transactions.js";
 import { handleOrders } from "./orders.js";
 import { requireSchwab } from "./shared.js";
+import { RedisUnavailableError } from "#src/cache.js";
 import type { BrokerName } from "#src/brokers/brokerClient.js";
 
 type ReplCommandResult = "continue" | "exit";
@@ -257,6 +258,10 @@ async function executeCommand(broker: BrokerName, input: string): Promise<ReplCo
         console.log(chalk.gray('Type "help" for available commands.'));
     }
   } catch (error) {
+    if (error instanceof RedisUnavailableError) {
+      console.error(chalk.red("Error:"), error.message);
+      return "exit";
+    }
     const message = error instanceof Error ? error.message : String(error);
     console.error(chalk.red("Error:"), message);
   }
