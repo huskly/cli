@@ -222,9 +222,9 @@
   integrity sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ==
 
 "@huskly/ibkr-client@^1.4.0":
-  version "1.4.0"
-  resolved "https://registry.yarnpkg.com/@huskly/ibkr-client/-/ibkr-client-1.4.0.tgz#2a3cbad5509fdc234392a748dd01b4e40fc39697"
-  integrity sha512-6BlvRn3MoAqPRVYPCINyzc67oxriroI2DPdrDrjaLFO/yOV7ne02tCsMCJh4BfKjINkWXVFAnXcUkgKxgRETlA==
+  version "1.6.0"
+  resolved "https://registry.yarnpkg.com/@huskly/ibkr-client/-/ibkr-client-1.6.0.tgz#31380bac5d733ca262ac42fcd6b8f62fcb5c4ccb"
+  integrity sha512-HtMb90wdTuQd8Qgyc+SpS4gKVa8rDoUAQ18KnlDUldWmQnwpgOVkEMd2r5IQ78ssWmS/4LJTFRt2ookyHqZQLg==
   dependencies:
     dotenv "^17.2.3"
     ibkr-client "^1.0.4"
