@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { observe } from "#src/brokers/brokerClient.js";
@@ -47,6 +47,7 @@ const preview: DerivativePreviewClient = {
   getTradingDiagnostics: () =>
     Promise.resolve({
       accountId: "U1234567",
+      maskedAccountDisplay: "U***567",
       selectedAccountId: "U1234567",
       environment: "paper",
       authenticated: true,
@@ -67,9 +68,8 @@ const preview: DerivativePreviewClient = {
       pendingWarnings: 0,
       reconciliationRequiredOperations: 0,
     }),
-  previewDerivativeCombo: (request) =>
+  previewDerivativeCombo: (_request) =>
     Promise.resolve({
-      accountId: request.accountId,
       environment: "paper",
       accepted: true,
       submitted: false,
@@ -109,39 +109,26 @@ void test("preview DTO masks the account and binds exact economic terms", async 
   const changed = await service.previewVertical(request({ limit: 38 }));
 
   assert.equal(first.account.maskedId, "U***567");
+  assert.equal(first.order.kind, "put-credit");
+  assert.equal(first.order.gateway.orderType, "LMT");
   assert.equal(first.submitted, false);
   assert.equal(first.whatIf.initialMargin?.change, 3220);
   assert.equal(first.order.legs[0].contract.identity.strike, 26400);
   assert.notEqual(first.previewId, changed.previewId);
-  assert.equal(
-    await service.validatePreview(first.previewId, {
-      accountId: "U1234567",
-      environment: "paper",
-    }),
-    first
-  );
+  assert.deepEqual(await service.validatePreview(first.previewId), first);
 });
 
-void test("preview validation rejects account/environment mismatch and expiry", async () => {
+void test("preview validation rejects at the exact expiry boundary and keeps the last valid instant", async () => {
   let now = new Date("2026-07-29T12:00:00.000Z");
   const service = new DerivativePreviewService(discovery, preview, () => now, 60_000);
   const result = await service.previewVertical(request());
-  await assert.rejects(
-    () => service.validatePreview(result.previewId, { accountId: "U999", environment: "paper" }),
-    /account or environment/
-  );
+  now = new Date("2026-07-29T12:00:59.999Z");
+  assert.equal((await service.validatePreview(result.previewId)).previewId, result.previewId);
   now = new Date("2026-07-29T12:01:00.000Z");
-  await assert.rejects(
-    () =>
-      service.validatePreview(result.previewId, {
-        accountId: "U1234567",
-        environment: "paper",
-      }),
-    /expired/
-  );
+  await assert.rejects(() => service.validatePreview(result.previewId), /expired/);
 });
 
-void test("file preview store supports separate processes without persisting full account IDs", async () => {
+void test("file preview store round-trips the canonical gateway intent without persisting authority", async () => {
   const directory = await mkdtemp(join(tmpdir(), "huskly-preview-test-"));
   try {
     const now = new Date("2026-07-29T12:00:00.000Z");
@@ -162,16 +149,81 @@ void test("file preview store supports separate processes without persisting ful
     );
     assert.equal(
       (
-        await reader.validatePreview(result.previewId, {
-          accountId: "U1234567",
-          environment: "paper",
-        })
+        await reader.validatePreview(result.previewId)
       ).previewId,
       result.previewId
     );
     const [filename] = await readdir(directory);
     assert.ok(filename);
-    assert.doesNotMatch(await readFile(join(directory, filename), "utf8"), /U1234567/);
+    const persisted = await readFile(join(directory, filename), "utf8");
+    assert.doesNotMatch(persisted, /U1234567/);
+    assert.doesNotMatch(persisted, /clientOrderId/);
+    const parsed = JSON.parse(persisted) as { schemaVersion: number; canonicalIntent: { orderType: string }; previewResult: { accepted: boolean } };
+    assert.equal(parsed.schemaVersion, 1);
+    assert.equal(parsed.canonicalIntent.orderType, "LMT");
+    assert.equal(parsed.previewResult.accepted, true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("stores rejected previews and never submits during preview", async () => {
+  let previewCalls = 0;
+  const rejectedPreview: DerivativePreviewClient = {
+    getTradingDiagnostics: () =>
+      Promise.resolve({
+        accountId: "U1234567",
+        maskedAccountDisplay: "U***567",
+        selectedAccountId: "U1234567",
+        environment: "paper",
+        authenticated: true,
+        competingSession: false,
+        marketDataAvailable: true,
+        advisoryAssetPermissions: [],
+        state: "ready",
+        readReady: true,
+        newMutationReady: false,
+        recoveryMutationReady: false,
+        lockOwned: true,
+        accountVerified: true,
+        connected: true,
+        lastTickleAt: null,
+        nextRenewalAt: null,
+        lastBrokerRequestAt: null,
+        readQueueDepth: 0,
+        pendingWarnings: 0,
+        reconciliationRequiredOperations: 0,
+      }),
+    previewDerivativeCombo: () => {
+      previewCalls += 1;
+      return Promise.resolve({
+        environment: "paper",
+        accepted: false,
+        submitted: false,
+        commission: null,
+        initialMargin: null,
+        maintenanceMargin: null,
+        warnings: ["Permissions missing"],
+        rejectionReasons: ["Risk rejected"],
+        advisoryAssetPermissions: [],
+      });
+    },
+  };
+
+  const directory = await mkdtemp(join(tmpdir(), "huskly-preview-test-"));
+  try {
+    const service = new DerivativePreviewService(
+      discovery,
+      rejectedPreview,
+      () => new Date("2026-07-29T12:00:00.000Z"),
+      60_000,
+      new FilePreviewStore(directory)
+    );
+    const result = await service.previewVertical(request());
+    assert.equal(previewCalls, 1);
+    assert.equal(result.submitted, false);
+    assert.equal(result.whatIf.accepted, false);
+    await assert.rejects(() => service.validatePreview(result.previewId), /rejected/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -181,4 +233,16 @@ void test("account masking covers short paper fixtures", () => {
   assert.equal(maskAccountId("DU123456"), "D***456");
   assert.equal(maskAccountId("DU12"), "D***");
   assert.equal(maskAccountId("U1"), "U***");
+});
+
+void test("breaking old persisted preview formats is required", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "huskly-preview-test-"));
+  try {
+    const store = new FilePreviewStore(directory);
+    await writeFile(join(directory, `${"a".repeat(64)}.json`), JSON.stringify({ dto: { previewId: "a".repeat(64) } }), { mode: 0o600 });
+    await chmod(join(directory, `${"a".repeat(64)}.json`), 0o600);
+    await assert.rejects(() => store.load("a".repeat(64)), /schema|version|invalid/i);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

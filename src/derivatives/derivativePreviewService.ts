@@ -1,10 +1,10 @@
 import { requireObservation } from "#src/brokers/brokerClient.js";
 import type { Observation } from "#src/brokers/brokerClient.js";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
+import { PrivateJsonFile } from "#src/storage/privateJsonFile.js";
 import type {
   DerivativeContract,
   DerivativeDiscoveryClient,
@@ -12,6 +12,7 @@ import type {
 } from "./derivativeDiscovery.js";
 import type {
   BrokerEnvironment,
+  CanonicalComboIntent,
   DerivativeComboPreviewResult,
   DerivativePreviewClient,
   TradingDiagnostics,
@@ -39,9 +40,10 @@ export interface SpreadPreviewDto {
   previewId: string;
   createdAt: string;
   expiresAt: string;
-  account: { maskedId: string; environment: BrokerEnvironment };
+  account: { maskedId: string | null; environment: BrokerEnvironment };
   order: {
     kind: VerticalSpreadKind;
+    gateway: CanonicalComboIntent;
     legs: [
       { side: "LONG"; ratio: 1; contract: DerivativeContract },
       { side: "SHORT"; ratio: -1; contract: DerivativeContract },
@@ -52,20 +54,22 @@ export interface SpreadPreviewDto {
     tif: "DAY" | "GTC";
     session: "REGULAR" | "OVERNIGHT";
   };
-  whatIf: Omit<DerivativeComboPreviewResult, "accountId" | "environment">;
+  whatIf: Omit<DerivativeComboPreviewResult, "environment">;
   submitted: false;
 }
 
-interface StoredPreview {
-  dto: SpreadPreviewDto;
-  accountDigest: string;
-  environment: BrokerEnvironment;
+interface StoredPreviewRecord {
+  schemaVersion: 1;
+  previewId: string;
+  createdAt: string;
+  expiresAt: string;
+  account: { maskedId: string | null; environment: BrokerEnvironment };
+  canonicalIntent: CanonicalComboIntent;
+  previewResult: DerivativeComboPreviewResult;
 }
 
-const marginSchema = z
-  .object({ current: z.number(), change: z.number(), after: z.number() })
-  .nullable();
-const identitySchema = z.object({
+const marginSchema = z.strictObject({ current: z.number(), change: z.number(), after: z.number() }).nullable();
+const identitySchema = z.strictObject({
   assetClass: z.enum(["OPT", "FOP"]),
   underlying: z.string(),
   expiration: z.string(),
@@ -77,22 +81,46 @@ const identitySchema = z.object({
   settlement: z.string().optional(),
   exerciseStyle: z.string().optional(),
 });
-const contractSchema = z.object({
+const contractSchema = z.strictObject({
   identity: identitySchema,
   brokerReference: z
-    .object({ broker: z.enum(["schwab", "ibkr"]), contractId: z.string() })
+    .strictObject({ broker: z.enum(["schwab", "ibkr"]), contractId: z.string() })
     .optional(),
 });
-export const spreadPreviewDtoSchema = z.object({
+const canonicalComboIntentSchema = z.strictObject({
+  legs: z.tuple([
+    z.strictObject({ contract: contractSchema, ratio: z.literal(1) }),
+    z.strictObject({ contract: contractSchema, ratio: z.literal(-1) }),
+  ]),
+  quantity: z.number().int().positive(),
+  tif: z.enum(["DAY", "GTC"]),
+  session: z.enum(["REGULAR", "OVERNIGHT"]),
+  priceEffect: z.enum(["CREDIT", "DEBIT"]),
+  orderType: z.literal("LMT"),
+  limit: z.number().positive(),
+});
+const derivativeComboPreviewResultSchema = z.strictObject({
+  environment: z.enum(["live", "paper"]),
+  accepted: z.boolean(),
+  submitted: z.literal(false),
+  commission: z.number().nullable(),
+  initialMargin: marginSchema,
+  maintenanceMargin: marginSchema,
+  warnings: z.array(z.string()),
+  rejectionReasons: z.array(z.string()),
+  advisoryAssetPermissions: z.array(z.string()),
+});
+export const spreadPreviewDtoSchema = z.strictObject({
   previewId: z.string().regex(/^[a-f0-9]{64}$/),
   createdAt: z.iso.datetime(),
   expiresAt: z.iso.datetime(),
-  account: z.object({ maskedId: z.string(), environment: z.enum(["live", "paper"]) }),
-  order: z.object({
+  account: z.strictObject({ maskedId: z.string().nullable(), environment: z.enum(["live", "paper"]) }),
+  order: z.strictObject({
     kind: z.enum(["call-debit", "call-credit", "put-debit", "put-credit"]),
+    gateway: canonicalComboIntentSchema,
     legs: z.tuple([
-      z.object({ side: z.literal("LONG"), ratio: z.literal(1), contract: contractSchema }),
-      z.object({ side: z.literal("SHORT"), ratio: z.literal(-1), contract: contractSchema }),
+      z.strictObject({ side: z.literal("LONG"), ratio: z.literal(1), contract: contractSchema }),
+      z.strictObject({ side: z.literal("SHORT"), ratio: z.literal(-1), contract: contractSchema }),
     ]),
     quantity: z.number().int().positive(),
     priceEffect: z.enum(["CREDIT", "DEBIT"]),
@@ -100,7 +128,7 @@ export const spreadPreviewDtoSchema = z.object({
     tif: z.enum(["DAY", "GTC"]),
     session: z.enum(["REGULAR", "OVERNIGHT"]),
   }),
-  whatIf: z.object({
+  whatIf: z.strictObject({
     accepted: z.boolean(),
     submitted: z.literal(false),
     commission: z.number().nullable(),
@@ -112,27 +140,31 @@ export const spreadPreviewDtoSchema = z.object({
   }),
   submitted: z.literal(false),
 });
-const storedPreviewSchema = z.object({
-  accountDigest: z.string().regex(/^[a-f0-9]{64}$/),
-  environment: z.enum(["live", "paper"]),
-  dto: spreadPreviewDtoSchema,
+const storedPreviewRecordSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  previewId: z.string().regex(/^[a-f0-9]{64}$/),
+  createdAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+  account: z.strictObject({ maskedId: z.string().nullable(), environment: z.enum(["live", "paper"]) }),
+  canonicalIntent: canonicalComboIntentSchema,
+  previewResult: derivativeComboPreviewResultSchema,
 });
 
 export interface PreviewStore {
-  save(previewId: string, preview: StoredPreview): Promise<void>;
-  load(previewId: string): Promise<StoredPreview | undefined>;
+  save(previewId: string, preview: StoredPreviewRecord): Promise<void>;
+  load(previewId: string): Promise<StoredPreviewRecord | undefined>;
   delete(previewId: string): Promise<void>;
 }
 
 export class InMemoryPreviewStore implements PreviewStore {
-  private readonly previews = new Map<string, StoredPreview>();
+  private readonly previews = new Map<string, StoredPreviewRecord>();
 
-  save(previewId: string, preview: StoredPreview): Promise<void> {
+  save(previewId: string, preview: StoredPreviewRecord): Promise<void> {
     this.previews.set(previewId, preview);
     return Promise.resolve();
   }
 
-  load(previewId: string): Promise<StoredPreview | undefined> {
+  load(previewId: string): Promise<StoredPreviewRecord | undefined> {
     return Promise.resolve(this.previews.get(previewId));
   }
 
@@ -146,45 +178,44 @@ export class InMemoryPreviewStore implements PreviewStore {
 export class FilePreviewStore implements PreviewStore {
   constructor(
     private readonly directory = process.env["HUSKLY_PREVIEW_DIR"] ??
-      join(homedir(), ".cache", "huskly-cli", "previews")
+      join(homedir(), ".cache", "huskly-cli", "previews"),
   ) {}
 
-  async save(previewId: string, preview: StoredPreview): Promise<void> {
+  async save(previewId: string, preview: StoredPreviewRecord): Promise<void> {
     this.assertPreviewId(previewId);
-    await mkdir(this.directory, { recursive: true, mode: 0o700 });
-    await writeFile(join(this.directory, `${previewId}.json`), JSON.stringify(preview), {
-      encoding: "utf8",
-      mode: 0o600,
-    });
+    await this.file(previewId).save(preview);
   }
 
-  async load(previewId: string): Promise<StoredPreview | undefined> {
+  async load(previewId: string): Promise<StoredPreviewRecord | undefined> {
     this.assertPreviewId(previewId);
-    try {
-      const parsed = storedPreviewSchema.parse(
-        JSON.parse(await readFile(join(this.directory, `${previewId}.json`), "utf8")) as unknown
-      );
-      if (parsed.dto.previewId !== previewId) throw new Error("Preview file identity mismatch");
-      // Zod represents optional keys as `T | undefined`; the domain uses exact optional keys.
-      // The schema has already validated every persisted execution-sensitive field.
-      return parsed as unknown as StoredPreview;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-      throw error;
+    const parsed = await this.file(previewId).load();
+    if (parsed === undefined) {
+      return undefined;
     }
+    if (parsed.previewId !== previewId) {
+      throw new Error("Preview file identity mismatch");
+    }
+    return parsed;
   }
 
   async delete(previewId: string): Promise<void> {
     this.assertPreviewId(previewId);
-    try {
-      await unlink(join(this.directory, `${previewId}.json`));
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
+    await this.file(previewId).delete();
+  }
+
+  private file(previewId: string): PrivateJsonFile<StoredPreviewRecord> {
+    return new PrivateJsonFile({
+      directory: this.directory,
+      filename: `${previewId}.json`,
+      schema: storedPreviewRecordSchema as z.ZodType<StoredPreviewRecord>,
+      maxBytes: 128 * 1024,
+    });
   }
 
   private assertPreviewId(previewId: string): void {
-    if (!/^[a-f0-9]{64}$/.test(previewId)) throw new Error("Invalid preview ID");
+    if (!/^[a-f0-9]{64}$/.test(previewId)) {
+      throw new Error("Invalid preview ID");
+    }
   }
 }
 
@@ -197,16 +228,56 @@ export function maskAccountId(accountId: string): string {
   return `${accountId[0] ?? "*"}***${accountId.slice(-3)}`;
 }
 
-
 function requireResolvedContract(
   observation: Observation<DerivativeContract | null>,
-  strike: number
+  strike: number,
 ): DerivativeContract {
   const resolved = requireObservation("resolveDerivativeContract", observation);
   if (resolved.value === null) {
     throw new Error(`No exact derivative contract returned for strike ${String(strike)}`);
   }
   return resolved.value;
+}
+
+function deriveKind(intent: CanonicalComboIntent): VerticalSpreadKind {
+  const right = intent.legs[0].contract.identity.right;
+  if (right === "CALL") {
+    return intent.priceEffect === "DEBIT" ? "call-debit" : "call-credit";
+  }
+  return intent.priceEffect === "DEBIT" ? "put-debit" : "put-credit";
+}
+
+function toSpreadPreviewDto(record: StoredPreviewRecord): SpreadPreviewDto {
+  return {
+    previewId: record.previewId,
+    createdAt: record.createdAt,
+    expiresAt: record.expiresAt,
+    account: record.account,
+    order: {
+      kind: deriveKind(record.canonicalIntent),
+      gateway: record.canonicalIntent,
+      legs: [
+        { side: "LONG", ratio: 1, contract: record.canonicalIntent.legs[0].contract },
+        { side: "SHORT", ratio: -1, contract: record.canonicalIntent.legs[1].contract },
+      ],
+      quantity: record.canonicalIntent.quantity,
+      priceEffect: record.canonicalIntent.priceEffect,
+      limit: record.canonicalIntent.limit,
+      tif: record.canonicalIntent.tif,
+      session: record.canonicalIntent.session,
+    },
+    whatIf: {
+      accepted: record.previewResult.accepted,
+      submitted: false,
+      commission: record.previewResult.commission,
+      initialMargin: record.previewResult.initialMargin,
+      maintenanceMargin: record.previewResult.maintenanceMargin,
+      warnings: record.previewResult.warnings,
+      rejectionReasons: record.previewResult.rejectionReasons,
+      advisoryAssetPermissions: record.previewResult.advisoryAssetPermissions,
+    },
+    submitted: false,
+  };
 }
 
 /** Short-lived, process-local preview registry reusable by CLI and MCP. */
@@ -216,7 +287,7 @@ export class DerivativePreviewService {
     private readonly preview: DerivativePreviewClient,
     private readonly now: () => Date = () => new Date(),
     private readonly ttlMs = 5 * 60 * 1000,
-    private readonly store: PreviewStore = new InMemoryPreviewStore()
+    private readonly store: PreviewStore = new InMemoryPreviewStore(),
   ) {}
 
   getTradingDiagnostics(): Promise<TradingDiagnostics> {
@@ -249,7 +320,7 @@ export class DerivativePreviewService {
     if (diagnostics.accountId !== request.accountId) {
       throw new Error("What-If account does not match the configured gateway account");
     }
-    const result = await this.preview.previewDerivativeCombo({
+    const previewResult = await this.preview.previewDerivativeCombo({
       accountId: request.accountId,
       legs: [
         { contract: longContract, ratio: 1 },
@@ -261,92 +332,65 @@ export class DerivativePreviewService {
       tif: request.tif,
       session: request.session,
     });
-    if (result.accountId !== request.accountId) {
-      throw new Error("What-If account does not match the requested account");
-    }
     const createdAt = this.now();
     const expiresAt = new Date(createdAt.getTime() + this.ttlMs);
-    const material = {
-      broker: "ibkr",
-      accountId: request.accountId,
-      environment: result.environment,
+    const canonicalIntent: CanonicalComboIntent = {
       legs: [
-        { identity: longContract.identity, reference: longContract.brokerReference, ratio: 1 },
-        { identity: shortContract.identity, reference: shortContract.brokerReference, ratio: -1 },
+        { contract: longContract, ratio: 1 },
+        { contract: shortContract, ratio: -1 },
       ],
       quantity: request.quantity,
-      priceEffect: request.priceEffect,
-      limit: request.limit,
       tif: request.tif,
       session: request.session,
-      createdAt: createdAt.toISOString(),
-      whatIf: result,
+      priceEffect: request.priceEffect,
+      orderType: "LMT",
+      limit: request.limit,
     };
-    const previewId = createHash("sha256").update(JSON.stringify(material)).digest("hex");
-    const dto: SpreadPreviewDto = {
+    const account = {
+      maskedId: diagnostics.maskedAccountDisplay ?? null,
+      environment: previewResult.environment,
+    };
+    const previewId = createHash("sha256")
+      .update(
+        JSON.stringify({
+          createdAt: createdAt.toISOString(),
+          expiresAt: expiresAt.toISOString(),
+          canonicalIntent,
+          previewResult,
+          account,
+        }),
+      )
+      .digest("hex");
+    const record: StoredPreviewRecord = {
+      schemaVersion: 1,
       previewId,
       createdAt: createdAt.toISOString(),
       expiresAt: expiresAt.toISOString(),
-      account: { maskedId: maskAccountId(request.accountId), environment: result.environment },
-      order: {
-        kind: request.kind,
-        legs: [
-          { side: "LONG", ratio: 1, contract: longContract },
-          { side: "SHORT", ratio: -1, contract: shortContract },
-        ],
-        quantity: request.quantity,
-        priceEffect: request.priceEffect,
-        limit: request.limit,
-        tif: request.tif,
-        session: request.session,
-      },
-      whatIf: {
-        accepted: result.accepted,
-        submitted: false,
-        commission: result.commission,
-        initialMargin: result.initialMargin,
-        maintenanceMargin: result.maintenanceMargin,
-        warnings: result.warnings,
-        rejectionReasons: result.rejectionReasons,
-        advisoryAssetPermissions: result.advisoryAssetPermissions,
-      },
-      submitted: false,
+      account,
+      canonicalIntent,
+      previewResult,
     };
-    await this.store.save(previewId, {
-      dto,
-      accountDigest: this.accountDigest(request.accountId),
-      environment: result.environment,
-    });
-    return dto;
+    await this.store.save(previewId, record);
+    return toSpreadPreviewDto(record);
   }
 
   async validatePreview(
     previewId: string,
-    context: { accountId: string; environment: BrokerEnvironment }
+    _context?: { accountId: string; environment: BrokerEnvironment },
   ): Promise<SpreadPreviewDto> {
     const stored = await this.store.load(previewId);
     if (stored === undefined) throw new Error("Unknown preview ID");
-    if (this.now().getTime() >= new Date(stored.dto.expiresAt).getTime()) {
+    if (this.now().getTime() >= new Date(stored.expiresAt).getTime()) {
       await this.store.delete(previewId);
       throw new Error("Preview has expired");
     }
-    if (
-      stored.accountDigest !== this.accountDigest(context.accountId) ||
-      stored.environment !== context.environment
-    ) {
-      throw new Error("Preview account or environment does not match");
-    }
-    if (!stored.dto.whatIf.accepted) {
+    if (!stored.previewResult.accepted) {
       throw new Error("Preview was rejected by broker What-If");
     }
-    return stored.dto;
+    return toSpreadPreviewDto(stored);
   }
 
   async consumePreview(previewId: string): Promise<void> {
     await this.store.delete(previewId);
-  }
-
-  private accountDigest(accountId: string): string {
-    return createHash("sha256").update(accountId).digest("hex");
   }
 }

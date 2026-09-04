@@ -109,12 +109,15 @@ function legacyPreviewClient(): Promise<DerivativePreviewClient> {
     return {
       getTradingDiagnostics: (): Promise<TradingDiagnostics> =>
         (discovery as IbkrDerivativeAdapter).getTradingDiagnostics(),
-      previewDerivativeCombo: (request: DerivativeComboPreviewRequest): Promise<DerivativeComboPreviewResult> =>
-        direct.previewDerivativeCombo({
+      previewDerivativeCombo: async (request: DerivativeComboPreviewRequest): Promise<DerivativeComboPreviewResult> => {
+        const result = await direct.previewDerivativeCombo({
           ...request,
           legs: [...toLegacyLegs(request)],
           orderType: "LMT",
-        }),
+        });
+        const { accountId: _accountId, ...normalized } = result;
+        return normalized;
+      },
     };
   })().catch((error: unknown) => {
     derivativePreviewPromise.delete("ibkr");

@@ -278,7 +278,7 @@ function renderTradingDiagnostics(result: TradingDiagnostics): string {
 function renderSpreadPreview(result: SpreadPreviewDto): string {
   return [
     `Preview ${result.previewId}`,
-    `Account: ${result.account.maskedId}  Environment: ${result.account.environment}`,
+    `Account: ${result.account.maskedId ?? "unknown"}  Environment: ${result.account.environment}`,
     `Expires: ${result.expiresAt}`,
     `${result.order.kind} x${String(result.order.quantity)} ${result.order.priceEffect.toLowerCase()} ${String(result.order.limit)}`,
     `Initial margin change: ${formatPrice(result.whatIf.initialMargin?.change ?? null)}`,

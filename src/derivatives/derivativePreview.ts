@@ -4,6 +4,7 @@ export type BrokerEnvironment = "live" | "paper";
 
 export interface TradingDiagnostics {
   accountId: string;
+  maskedAccountDisplay?: string | null;
   selectedAccountId: string | null;
   environment: BrokerEnvironment;
   authenticated: boolean;
@@ -38,6 +39,19 @@ export interface DerivativeComboPreviewRequest {
   session: "REGULAR" | "OVERNIGHT";
 }
 
+export interface CanonicalComboIntent {
+  legs: readonly [
+    { contract: DerivativeContract; ratio: 1 },
+    { contract: DerivativeContract; ratio: -1 },
+  ];
+  quantity: number;
+  tif: "DAY" | "GTC";
+  session: "REGULAR" | "OVERNIGHT";
+  priceEffect: "CREDIT" | "DEBIT";
+  orderType: "LMT";
+  limit: number;
+}
+
 export interface MarginImpact {
   current: number;
   change: number;
@@ -45,7 +59,6 @@ export interface MarginImpact {
 }
 
 export interface DerivativeComboPreviewResult {
-  accountId: string;
   environment: BrokerEnvironment;
   accepted: boolean;
   submitted: false;
@@ -60,6 +73,6 @@ export interface DerivativeComboPreviewResult {
 export interface DerivativePreviewClient {
   getTradingDiagnostics(): Promise<TradingDiagnostics>;
   previewDerivativeCombo(
-    request: DerivativeComboPreviewRequest
+    request: DerivativeComboPreviewRequest,
   ): Promise<DerivativeComboPreviewResult>;
 }
