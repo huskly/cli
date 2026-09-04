@@ -318,7 +318,7 @@ __metadata:
   resolution: "@huskly/cli@workspace:."
   dependencies:
     "@eslint/js": "npm:^10.0.1"
-    "@huskly/ibkr-client": "npm:^1.4.0"
+    "@huskly/ibkr-gateway-client": "npm:0.5.0"
     "@huskly/schwab-client": "npm:^0.8.0"
     "@modelcontextprotocol/sdk": "npm:^1.29.0"
     "@types/asciichart": "npm:^1.5.8"
@@ -350,13 +350,10 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@huskly/ibkr-client@npm:^1.4.0":
-  version: 1.4.0
-  resolution: "@huskly/ibkr-client@npm:1.4.0"
-  dependencies:
-    dotenv: "npm:^17.2.3"
-    ibkr-client: "npm:^1.0.4"
-  checksum: 10c0/1e488cb38642b4c049ae84162ca6f35312f32b635367faf6a6fbd92ec793cb9ef03f889790f008e7e8f87cae69bd1a1398373446ebd7a8ff3a6fe09616fb240b
+"@huskly/ibkr-gateway-client@npm:0.5.0":
+  version: 0.5.0
+  resolution: "@huskly/ibkr-gateway-client@npm:0.5.0"
+  checksum: 10c0/73fcdecdd0b37316239e51795614e53e4fe7f330cddb9633d3f49cebd4ad60be89dcec4f0bf354355a6124970fe9c11597c9d7b8d2a8a69b45cea26f1a766fa6
   languageName: node
   linkType: hard
 
@@ -1456,9 +1453,9 @@ __metadata:
   linkType: hard
 
 "fast-uri@npm:^3.0.1":
-  version: 3.1.3
-  resolution: "fast-uri@npm:3.1.3"
-  checksum: 10c0/0ce405815546770ad7e730b8f8fd58db80cefe4533ee99ee1a3263f11d2ccc3b8a0cf10d6cd9ba590e9746eb43b60f2ef2631d0c379a9ebba063ce0d4076b109
+  version: 3.1.7
+  resolution: "fast-uri@npm:3.1.7"
+  checksum: 10c0/ca2baa4bde48fc7322bdc692c6636975943ebe4f6dd97e07d70b14e0ab85af2ff30de90f550f5ec2956684fe208e150d85d6cb5f3c74438c8ac1bf86bd435c13
   languageName: node
   linkType: hard
 
@@ -1660,9 +1657,9 @@ __metadata:
   linkType: hard
 
 "hono@npm:^4.11.4":
-  version: 4.12.28
-  resolution: "hono@npm:4.12.28"
-  checksum: 10c0/ae40349d1e2bbc3cd1f08083644287dc8cbdb9ca6ed8f1bcd5cd896a72763a79dd38a4153ef9bfb4102ae8f2203c36fa9033863f03431f9f52d21f4d720dbce5
+  version: 4.13.7
+  resolution: "hono@npm:4.13.7"
+  checksum: 10c0/29672a94a4f2be7f3f4d959ad69808dd3bbc220909ca4f9660997022ff45d48ae71e42a460e417d808809d68110196f19359aaab2b14ae6a750331d789601b5a
   languageName: node
   linkType: hard
 
@@ -1676,19 +1673,6 @@ __metadata:
     statuses: "npm:~2.0.2"
     toidentifier: "npm:~1.0.1"
   checksum: 10c0/fb38906cef4f5c83952d97661fe14dc156cb59fe54812a42cd448fa57b5c5dfcb38a40a916957737bd6b87aab257c0648d63eb5b6a9ca9f548e105b6072712d4
-  languageName: node
-  linkType: hard
-
-"ibkr-client@npm:^1.0.4":
-  version: 1.0.4
-  resolution: "ibkr-client@npm:1.0.4"
-  dependencies:
-    node-forge: "npm:^1.3.1"
-    rxjs: "npm:^7.8.2"
-    rxwebsocket: "npm:^1.0.7"
-    undici: "npm:^7.15.0"
-    ws: "npm:^8.18.3"
-  checksum: 10c0/2a81c58ea234eaea8c9f6592a32f5e0ac797ae20c898eb2114cc2ab1e006936a3a58f01210f18383a9e34194a140715e99dd7293c629111f7cfb3c442aa9701c
   languageName: node
   linkType: hard
 
@@ -1758,9 +1742,9 @@ __metadata:
   linkType: hard
 
 "ip-address@npm:^10.2.0":
-  version: 10.2.0
-  resolution: "ip-address@npm:10.2.0"
-  checksum: 10c0/5a00aada6e922c9c69dfc800ed5d0fa3348675ebdeed0e1575f503f27ca385b5f534363c9af7ad1daf64c1f1409388cdd3cc2e9b9b0fe1c924a431378d55075a
+  version: 10.7.0
+  resolution: "ip-address@npm:10.7.0"
+  checksum: 10c0/bb6f514708b84ec75ad4d8156f3d571a5b8e592a15359386100f4f8d7366a4b7723d54b88a30d80b3f51ca5f4dee239e94ef4b53765b9c41a8ea46b421307d14
   languageName: node
   linkType: hard
 
@@ -2089,13 +2073,6 @@ __metadata:
   dependencies:
     node-gyp: "npm:latest"
   checksum: 10c0/5febe94d58cdef319bc96a357b43d7a13776c93ee3f2edb374000f16454e65cec06035497947d5fdaa50db1cc7ab8e3a30ca8669bb07a1b159f0307dc2c1ccdf
-  languageName: node
-  linkType: hard
-
-"node-forge@npm:^1.3.1":
-  version: 1.4.0
-  resolution: "node-forge@npm:1.4.0"
-  checksum: 10c0/67330a5f1f95257a4c8a93b7d555abe87b5f15e350123aa396c97a21a8ca94f9c6549008eb2c73668a91e0d7e3a905785acbd8f8bd0751c29401292011f8f8e1
   languageName: node
   linkType: hard
 
@@ -2445,12 +2422,12 @@ __metadata:
   linkType: hard
 
 "qs@npm:^6.14.0, qs@npm:^6.15.2":
-  version: 6.15.3
-  resolution: "qs@npm:6.15.3"
+  version: 6.16.0
+  resolution: "qs@npm:6.16.0"
   dependencies:
     es-define-property: "npm:^1.0.1"
     side-channel: "npm:^1.1.1"
-  checksum: 10c0/8f3f6e45ece255347d57696628401cde29e9ec649fff698b53bd3150dea7cefdf33036e1bc1826b9f110bfa7cb0ec4ab9f5297eca628ce216c55af82c304e08e
+  checksum: 10c0/eb3e31992fbd70e31a1791e571ed817d70975de7d3bfcbbbec93d77d1dd305877e9e8fdbcc62303c228ee5c3606685622cd6231c042dbc4790bb4e7c65fcbe18
   languageName: node
   linkType: hard
 
@@ -2560,24 +2537,6 @@ __metadata:
   version: 7.1.0
   resolution: "run-applescript@npm:7.1.0"
   checksum: 10c0/ab826c57c20f244b2ee807704b1ef4ba7f566aa766481ae5922aac785e2570809e297c69afcccc3593095b538a8a77d26f2b2e9a1d9dffee24e0e039502d1a03
-  languageName: node
-  linkType: hard
-
-"rxjs@npm:^7.8.2":
-  version: 7.8.2
-  resolution: "rxjs@npm:7.8.2"
-  dependencies:
-    tslib: "npm:^2.1.0"
-  checksum: 10c0/1fcd33d2066ada98ba8f21fcbbcaee9f0b271de1d38dc7f4e256bfbc6ffcdde68c8bfb69093de7eeb46f24b1fb820620bf0223706cff26b4ab99a7ff7b2e2c45
-  languageName: node
-  linkType: hard
-
-"rxwebsocket@npm:^1.0.7":
-  version: 1.0.7
-  resolution: "rxwebsocket@npm:1.0.7"
-  dependencies:
-    rxjs: "npm:^7.8.2"
-  checksum: 10c0/976f7c1ea0c78158b9784e5494f4590a225be856394d5a4eef10a103756b901a3ecf12b61188bdfa006686cb3951514ee6f01592302ce6d9d105825b1c679012
   languageName: node
   linkType: hard
 
@@ -2915,13 +2874,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"tslib@npm:^2.1.0":
-  version: 2.8.1
-  resolution: "tslib@npm:2.8.1"
-  checksum: 10c0/9c4759110a19c53f992d9aae23aac5ced636e99887b51b9e61def52611732872ff7668757d4e4c61f19691e36f4da981cd9485e869b4a7408d689f6bf1f14e62
-  languageName: node
-  linkType: hard
-
 "tsx@npm:^4.19.2":
   version: 4.23.12
   resolution: "tsx@npm:4.23.12"
@@ -3008,13 +2960,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"undici@npm:^7.15.0":
-  version: 7.27.2
-  resolution: "undici@npm:7.27.2"
-  checksum: 10c0/714632147c80eb8eda8a52df51b481d346df5e035ccc1d87eb3bbcb8f92ec25d7cbbe81abdeae5db4e37a93e490c8d2fa2359ecdca4b2c5c6c513dcd2626ad47
-  languageName: node
-  linkType: hard
-
 "undici@npm:^8.4.1":
   version: 8.10.2
   resolution: "undici@npm:8.10.2"
@@ -3085,21 +3030,6 @@ __metadata:
   version: 1.0.2
   resolution: "wrappy@npm:1.0.2"
   checksum: 10c0/56fece1a4018c6a6c8e28fbc88c87e0fbf4ea8fd64fc6c63b18f4acc4bd13e0ad2515189786dd2c30d3eec9663d70f4ecf699330002f8ccb547e4a18231fc9f0
-  languageName: node
-  linkType: hard
-
-"ws@npm:^8.18.3":
-  version: 8.21.0
-  resolution: "ws@npm:8.21.0"
-  peerDependencies:
-    bufferutil: ^4.0.1
-    utf-8-validate: ">=5.0.2"
-  peerDependenciesMeta:
-    bufferutil:
-      optional: true
-    utf-8-validate:
-      optional: true
-  checksum: 10c0/ef4a243476283fc49bc7550966c4af4aa0eef56273837211e700de3b664e08604a760cdddcb5ba43c049140e74ccfec5b0ee0bb439e08c2adf9138902fdde5f9
   languageName: node
   linkType: hard
 
