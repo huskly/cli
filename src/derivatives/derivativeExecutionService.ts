@@ -412,14 +412,14 @@ export class DerivativeExecutionService {
   }
 
   async watch(input: {
-    orderId: string;
+    operationId: string;
     accountId?: string;
     timeoutMs?: number;
     pollMs?: number;
   }): Promise<OrderLifecycleDto> {
     const deadline = this.now().getTime() + (input.timeoutMs ?? 300_000);
     for (;;) {
-      const status = await this.getStatus(input.orderId);
+      const status = await this.getStatus(input.operationId);
       if (terminalStates.has(status.operation.state)) return status;
       const remaining = deadline - this.now().getTime();
       if (remaining <= 0) throw new Error("Timed out waiting for terminal order operation");
@@ -428,25 +428,25 @@ export class DerivativeExecutionService {
   }
 
   async cancel(input: {
-    orderId: string;
+    operationId: string;
     confirm: true;
     accountId?: string;
     operator?: string;
     timeoutMs?: number;
     pollMs?: number;
   }): Promise<OrderLifecycleDto> {
-    const record = await this.requiredOperation(input.orderId);
-    const existing = await this.store.loadAction(input.orderId, "cancellation");
+    const record = await this.requiredOperation(input.operationId);
+    const existing = await this.store.loadAction(input.operationId, "cancellation");
     if (existing !== undefined) {
       if (existing.state === "completed" && existing.operation !== null) {
         return this.operationDto(existing.operation, record);
       }
       throw new Error("Cancellation recovery is required");
     }
-    const action = this.pendingAction(input.orderId, "cancellation", null);
+    const action = this.pendingAction(input.operationId, "cancellation", null);
     await this.store.saveAction(action);
     try {
-      const operation = await this.execution.cancel(input.orderId, action.idempotencyKey);
+      const operation = await this.execution.cancel(input.operationId, action.idempotencyKey);
       await this.store.saveAction({
         ...action,
         state: "completed",

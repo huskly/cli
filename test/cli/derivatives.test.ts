@@ -417,7 +417,7 @@ void test("operation commands use gateway operation ids and make one service cal
       calls.push({ name: "show", input: operationId });
       return Promise.resolve(lifecycle);
     },
-    watch: (input: { orderId: string; timeoutMs: number; pollMs: number }) => {
+    watch: (input: { operationId: string; timeoutMs: number; pollMs: number }) => {
       calls.push({ name: "watch", input });
       return Promise.resolve(lifecycle);
     },
@@ -429,7 +429,7 @@ void test("operation commands use gateway operation ids and make one service cal
       calls.push({ name: "reconcile", input: operationId });
       return Promise.resolve(reconciliation);
     },
-    cancel: (input: { orderId: string; confirm: true }) => {
+    cancel: (input: { operationId: string; confirm: true }) => {
       calls.push({ name: "cancel", input });
       return Promise.resolve(lifecycle);
     },
@@ -466,10 +466,10 @@ void test("operation commands use gateway operation ids and make one service cal
   assert.deepEqual(calls, [
     { name: "recover", input: previewId },
     { name: "show", input: "op-1" },
-    { name: "watch", input: { orderId: "op-1", timeoutMs: 7000, pollMs: 3000 } },
+    { name: "watch", input: { operationId: "op-1", timeoutMs: 7000, pollMs: 3000 } },
     { name: "acknowledge", input: { operationId: "op-1", replyId: "reply-1", confirm: true } },
     { name: "reconcile", input: "op-1" },
-    { name: "cancel", input: { orderId: "op-1", confirm: true } },
+    { name: "cancel", input: { operationId: "op-1", confirm: true } },
   ]);
 });
 

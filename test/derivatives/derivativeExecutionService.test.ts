@@ -329,7 +329,7 @@ void test("warning and cancellation keys are independently durable before their 
   await ctx.service.submit({ previewId: preview.previewId, operator: "x", confirm: true });
   await ctx.service.acknowledgeWarning({ operationId: "op-1", replyId: "reply-1", confirm: true });
   const warning = await ctx.store.loadAction("op-1", "warning_acknowledgement");
-  await ctx.service.cancel({ orderId: "op-1", confirm: true });
+  await ctx.service.cancel({ operationId: "op-1", confirm: true });
   const cancellation = await ctx.store.loadAction("op-1", "cancellation");
   assert.ok(warning);
   assert.ok(cancellation);
@@ -339,7 +339,7 @@ void test("warning and cancellation keys are independently durable before their 
   assert.equal(cancellation.state, "completed");
   assert.notEqual(warning.idempotencyKey, cancellation.idempotencyKey);
   assert.equal(ctx.network.lastActionKey, cancellation.idempotencyKey);
-  await ctx.service.cancel({ orderId: "op-1", confirm: true });
+  await ctx.service.cancel({ operationId: "op-1", confirm: true });
   assert.equal(ctx.network.cancelCalls, 1);
 });
 
@@ -361,7 +361,7 @@ void test("pending cancellation action is durable before its network request beg
   };
   const ctx = context(store);
   await ctx.service.submit({ previewId: preview.previewId, operator: "x", confirm: true });
-  const cancellation = ctx.service.cancel({ orderId: "op-1", confirm: true });
+  const cancellation = ctx.service.cancel({ operationId: "op-1", confirm: true });
   await Promise.resolve();
   assert.equal(ctx.network.cancelCalls, 0);
   gate.resolve();
@@ -395,7 +395,7 @@ void test("watch uses injected time and delay at the exact deadline", async () =
   ctx.network.created = operation("broker_attempt_started");
   await ctx.service.submit({ previewId: preview.previewId, operator: "x", confirm: true });
   await assert.rejects(
-    () => ctx.service.watch({ orderId: "op-1", timeoutMs: 1000, pollMs: 600 }),
+    () => ctx.service.watch({ operationId: "op-1", timeoutMs: 1000, pollMs: 600 }),
     /Timed out/
   );
   assert.deepEqual(delays, [600, 400]);

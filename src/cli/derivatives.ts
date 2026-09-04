@@ -916,7 +916,7 @@ export function addDerivativeCommands(
       const result = await (
         await createExecutionService(broker(options.broker))
       ).watch({
-        orderId: operationId,
+        operationId,
         timeoutMs: number(options.timeout, "timeout") * 1000,
         pollMs: number(options.poll, "poll") * 1000,
       });
@@ -964,7 +964,7 @@ export function addDerivativeCommands(
       const result = await (
         await createExecutionService(broker(options.broker))
       ).cancel({
-        orderId: operationId,
+        operationId,
         confirm,
       });
       output(toLifecycleView(result), options.json, renderOrderLifecycle, log);

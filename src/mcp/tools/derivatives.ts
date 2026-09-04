@@ -222,11 +222,11 @@ export function registerDerivativeTools(server: McpServer): void {
       title: "Get guarded IBKR derivative order status",
       description:
         "Fetch fresh lifecycle state and verify the broker order against its persisted exact preview.",
-      inputSchema: { orderId: z.string().min(1), accountId: account },
+      inputSchema: { operationId: z.string().min(1), accountId: account },
     },
-    async ({ orderId, accountId }) =>
+    async ({ operationId, accountId }) =>
       runTool(async () =>
-        jsonResult(await (await derivativeTools()).execution.getStatus(orderId, accountId))
+        jsonResult(await (await derivativeTools()).execution.getStatus(operationId, accountId))
       )
   );
 
@@ -237,7 +237,7 @@ export function registerDerivativeTools(server: McpServer): void {
       description:
         "Request cancellation, then poll until a verified CANCELED state. Other terminal states are returned as errors.",
       inputSchema: {
-        orderId: z.string().min(1),
+        operationId: z.string().min(1),
         accountId: account,
         operator: z.string().min(1).describe("CME operator identity"),
         confirm: confirmed,
