@@ -29,35 +29,40 @@ Implement Task 1 only in `/home/felipecsl/prj/huskly-cli/.worktrees/issue-17-gat
   - HTTPS enforcement.
   - URL credentials and fragment rejection.
   - allowed loopback HTTP hosts only.
+- Follow-up fix: changed `requiredUid()` to use explicit narrowing and throw when `process.getuid?.()` is unavailable.
 
-## Verification run
+## Fresh verification
 
-### Install and baseline
+### `npm test -- test/gateway/gatewayConfig.test.ts`
 
-- `npm install --save-exact @huskly/ibkr-gateway-client@0.5.0` ✅
-- `npm test` ✅
+- Exit: `0`
+- Result: `74` tests passed, `0` failed.
 
-### Task 1 red step
+### `npm exec eslint -- src/gateway/gatewayConfig.ts test/gateway/gatewayConfig.test.ts`
 
-- `npm test -- test/gateway/gatewayConfig.test.ts` ✅ RED before implementation with `ERR_MODULE_NOT_FOUND` for `src/gateway/gatewayConfig.ts`.
+- Exit: `0`
+- Result: no lint errors.
 
-### Task 1 verification after implementation
+### `npm run typecheck`
 
-- `npm exec eslint -- src/gateway/gatewayConfig.ts test/gateway/gatewayConfig.test.ts` ✅
-- `npm test -- test/gateway/gatewayConfig.test.ts` ✅
-- `npm run typecheck` ❌
+- Exit: `2`
+- Result: only the two expected pre-existing direct-client errors remain:
 
-## Typecheck concern
-
-`npm run typecheck` still fails in pre-existing files outside Task 1:
-
-- `src/brokers/ibkrBrokerAdapter.ts(44,34)`
-- `src/derivatives/derivativeClient.ts(33,38)`
-
-These failures are unrelated to the new gateway config loader files. I did not change those files because the task brief restricted this task to Task 1 only.
+```text
+src/brokers/ibkrBrokerAdapter.ts(44,34): error TS2345: Argument of type 'string[]' is not assignable to parameter of type 'readonly BrokerQuoteRequest[]'.
+  Type 'string' is not assignable to type 'BrokerQuoteRequest'.
+src/derivatives/derivativeClient.ts(33,38): error TS2345: Argument of type 'IbkrClient' is not assignable to parameter of type 'IbkrDerivativeDiscoveryApi'.
+  Types of property 'previewDerivativeCombo' are incompatible.
+    Type '(request: DerivativeComboPreviewRequest) => Promise<DerivativeComboPreviewResult>' is not assignable to type '(request: { accountId: string; legs: [{ contract: IbkrDerivativeContract; ratio: 1 | -1; }, { contract: IbkrDerivativeContract; ratio: 1 | -1; }]; ... 4 more ...; session: "REGULAR" | "OVERNIGHT"; }) => Promise<...>'.
+      Types of parameters 'request' and 'request' are incompatible.
+        Type '{ accountId: string; legs: [{ contract: IbkrDerivativeContract; ratio: 1 | -1; }, { contract: IbkrDerivativeContract; ratio: 1 | -1; }]; ... 4 more ...; session: "REGULAR" | "OVERNIGHT"; }' is not assignable to type 'DerivativeComboPreviewRequest'.
+          Type '{ accountId: string; legs: [{ contract: IbkrDerivativeContract; ratio: 1 | -1; }, { contract: IbkrDerivativeContract; ratio: 1 | -1; }]; ... 4 more ...; session: "REGULAR" | "OVERNIGHT"; }' is not assignable to type 'DerivativeComboOrderFields & { orderType: "LMT"; limit: number; stopPrice?: never; }'.
+            Property 'orderType' is missing in type '{ accountId: string; legs: [{ contract: IbkrDerivativeContract; ratio: 1 | -1; }, { contract: IbkrDerivativeContract; ratio: 1 | -1; }]; ... 4 more ...; session: "REGULAR" | "OVERNIGHT"; }' but required in type '{ orderType: "LMT"; limit: number; stopPrice?: never; }'.
+```
 
 ## Self-review notes
 
 - Confirmed the descriptor-safe loader keeps checks and reads on the opened file handle.
 - Confirmed tests cover the strict mode matrix and loopback URL allowlist.
 - Confirmed no secret value is logged or serialized by the loader logic.
+- Confirmed the follow-up helper fix stays inside Task 1 scope.

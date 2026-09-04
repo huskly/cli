@@ -46,7 +46,9 @@ async function expectConfigError(
 
 function requiredUid(): number {
   const uid = process.getuid?.();
-  assert.notEqual(uid, undefined);
+  if (uid === undefined) {
+    throw new Error("process.getuid() is required for gateway config tests");
+  }
   return uid;
 }
 
