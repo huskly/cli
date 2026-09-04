@@ -176,16 +176,23 @@ function formatPrice(value: number | null): string {
   return value === null ? "-" : String(value);
 }
 
+
+function observationDetails(observedAt: string | null, completeness: string): string {
+  const detail = observedAt === null ? completeness : `${completeness} @ ${observedAt}`;
+  return `[${detail}]`;
+}
+
+
 export function renderOptionDiscovery(result: OptionDiscoveryResearch): string {
   const reference = result.referenceQuote;
   const lines = [
     reference === null
-      ? "Reference: unavailable"
-      : `Reference ${reference.symbol}: bid ${formatPrice(reference.bid)}  ask ${formatPrice(reference.ask)}  last ${formatPrice(reference.last)}  mark ${formatPrice(reference.mark)}  data ${reference.dataAvailability}`,
-    `Contracts: ${String(result.contracts.length)}`,
+      ? "Reference: not requested"
+      : `Reference ${reference.value.symbol}: bid ${formatPrice(reference.value.bid)}  ask ${formatPrice(reference.value.ask)}  last ${formatPrice(reference.value.last)}  mark ${formatPrice(reference.value.mark)}  data ${reference.value.dataAvailability} ${observationDetails(reference.observedAt, reference.completeness)}`,
+    `Contracts: ${String(result.contracts.value.length)} ${observationDetails(result.contracts.observedAt, result.contracts.completeness)}`,
     "EXPIRY  STRIKE  RIGHT  ASSET  CLASS  EXCHANGE  MULTIPLIER  BROKER-REFERENCE",
   ];
-  for (const contract of result.contracts) {
+  for (const contract of result.contracts.value) {
     const identity = contract.identity;
     lines.push(
       [
@@ -208,12 +215,12 @@ export function renderOptionChain(result: OptionChainResearch): string {
   const reference = result.referenceQuote;
   const lines = [
     reference === null
-      ? "Reference: unavailable"
-      : `Reference ${reference.symbol}: ${formatPrice(reference.mark ?? reference.last)} (${reference.dataAvailability})`,
-    `Center: ${formatPrice(result.center)}  Contracts: ${String(result.quotes.length)}`,
+      ? "Reference: not requested"
+      : `Reference ${reference.value.symbol}: ${formatPrice(reference.value.mark ?? reference.value.last)} (${reference.value.dataAvailability}) ${observationDetails(reference.observedAt, reference.completeness)}`,
+    `Center: ${formatPrice(result.center)}  Contracts: ${String(result.quotes.value.length)} ${observationDetails(result.quotes.observedAt, result.quotes.completeness)}`,
     "STRIKE  RIGHT  BID  ASK  MARK  DELTA  CLASS  EXCHANGE  MULTIPLIER  DATA",
   ];
-  for (const quote of result.quotes) {
+  for (const quote of result.quotes.value) {
     const identity = quote.contract.identity;
     lines.push(
       [
@@ -237,7 +244,7 @@ export function renderVerticalSpread(result: VerticalSpreadResearch): string {
   const { spread } = result;
   const lines = [
     `${spread.kind} x${String(spread.quantity)}  width ${String(spread.width)}  multiplier ${String(spread.multiplier)}`,
-    `Reference ${result.referenceQuote.symbol}: ${formatPrice(result.referenceQuote.mark ?? result.referenceQuote.last)} (${result.referenceQuote.dataAvailability})`,
+    `Reference ${result.referenceQuote.value.symbol}: ${formatPrice(result.referenceQuote.value.mark ?? result.referenceQuote.value.last)} (${result.referenceQuote.value.dataAvailability}) ${observationDetails(result.referenceQuote.observedAt, result.referenceQuote.completeness)}`,
     `Long ${String(spread.longLeg.quote.contract.identity.strike)} @ ${formatPrice(spread.longLeg.quote.bid)} x ${formatPrice(spread.longLeg.quote.ask)}`,
     `Short ${String(spread.shortLeg.quote.contract.identity.strike)} @ ${formatPrice(spread.shortLeg.quote.bid)} x ${formatPrice(spread.shortLeg.quote.ask)}`,
   ];
@@ -258,12 +265,13 @@ export function renderVerticalSpread(result: VerticalSpreadResearch): string {
 
 function renderTradingDiagnostics(result: TradingDiagnostics): string {
   return [
-    `Account: ${result.accountId}  Environment: ${result.environment}`,
-    `Authenticated: ${String(result.authenticated)}  Competing session: ${String(result.competingSession)}`,
-    `Selected account matches: ${String(result.selectedAccountId === result.accountId)}`,
-    `Market data: ${result.marketDataAvailable === null ? "unknown" : String(result.marketDataAvailable)}`,
-    `Advisory asset permissions: ${result.advisoryAssetPermissions.join(", ") || "unknown"}`,
-    "Permission metadata is diagnostic only; an explicit What-If is authoritative.",
+    `Account: ${result.accountId}  Environment: ${result.environment}  State: ${result.state}`,
+    `Authenticated: ${String(result.authenticated)}  Connected: ${String(result.connected)}  Competing session: ${String(result.competingSession)}`,
+    `Read ready: ${String(result.readReady)}  New mutations ready: ${String(result.newMutationReady)}  Recovery ready: ${String(result.recoveryMutationReady)}`,
+    `Account verified: ${String(result.accountVerified)}  Lock owned: ${String(result.lockOwned)}  Selected account matches: ${String(result.selectedAccountId === result.accountId)}`,
+    `Market data: ${result.marketDataAvailable === null ? "unknown" : String(result.marketDataAvailable)}  Queue depth: ${String(result.readQueueDepth)}`,
+    `Last tickle: ${result.lastTickleAt ?? "unknown"}  Next renewal: ${result.nextRenewalAt ?? "unknown"}  Last broker request: ${result.lastBrokerRequestAt ?? "unknown"}`,
+    `Pending warnings: ${String(result.pendingWarnings)}  Reconciliation required: ${String(result.reconciliationRequiredOperations)}`,
   ].join("\n");
 }
 
@@ -585,14 +593,13 @@ export function addDerivativeCommands(
     .command("doctor")
     .description("Run read-only broker trading diagnostics")
     .option("--broker <name>", "Broker to use: schwab or ibkr", "ibkr")
-    .option("--account <id>", "Exact account ID; defaults to IBKR_ACCOUNT_ID")
     .option("--trading", "Include trading-session and advisory permission diagnostics")
     .option("--json", "Emit a stable JSON DTO")
     .action(
-      async (options: { broker: string; account?: string; trading?: boolean; json?: boolean }) => {
+      async (options: { broker: string; trading?: boolean; json?: boolean }) => {
         const result = await (
           await previewService(broker(options.broker))
-        ).getTradingDiagnostics(accountId(options.account));
+        ).getTradingDiagnostics();
         const safeResult: TradingDiagnostics = {
           ...result,
           accountId: maskAccountId(result.accountId),

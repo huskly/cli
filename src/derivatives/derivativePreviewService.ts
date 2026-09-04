@@ -1,3 +1,5 @@
+import { requireObservation } from "#src/brokers/brokerClient.js";
+import type { Observation } from "#src/brokers/brokerClient.js";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -195,6 +197,18 @@ export function maskAccountId(accountId: string): string {
   return `${accountId[0] ?? "*"}***${accountId.slice(-3)}`;
 }
 
+
+function requireResolvedContract(
+  observation: Observation<DerivativeContract | null>,
+  strike: number
+): DerivativeContract {
+  const resolved = requireObservation("resolveDerivativeContract", observation);
+  if (resolved.value === null) {
+    throw new Error(`No exact derivative contract returned for strike ${String(strike)}`);
+  }
+  return resolved.value;
+}
+
 /** Short-lived, process-local preview registry reusable by CLI and MCP. */
 export class DerivativePreviewService {
   constructor(
@@ -205,8 +219,8 @@ export class DerivativePreviewService {
     private readonly store: PreviewStore = new InMemoryPreviewStore()
   ) {}
 
-  getTradingDiagnostics(accountId: string): Promise<TradingDiagnostics> {
-    return this.preview.getTradingDiagnostics(accountId);
+  getTradingDiagnostics(): Promise<TradingDiagnostics> {
+    return this.preview.getTradingDiagnostics();
   }
 
   async previewVertical(request: PreviewVerticalRequest): Promise<SpreadPreviewDto> {
@@ -225,10 +239,16 @@ export class DerivativePreviewService {
       ...(request.tradingClass !== undefined ? { tradingClass: request.tradingClass } : {}),
       ...(request.exchange !== undefined ? { exchange: request.exchange } : {}),
     };
-    const [longContract, shortContract] = await Promise.all([
+    const [longContractResult, shortContractResult] = await Promise.all([
       this.discovery.resolveContract({ ...base, strike: request.longStrike }),
       this.discovery.resolveContract({ ...base, strike: request.shortStrike }),
     ]);
+    const longContract = requireResolvedContract(longContractResult, request.longStrike);
+    const shortContract = requireResolvedContract(shortContractResult, request.shortStrike);
+    const diagnostics = await this.preview.getTradingDiagnostics();
+    if (diagnostics.accountId !== request.accountId) {
+      throw new Error("What-If account does not match the configured gateway account");
+    }
     const result = await this.preview.previewDerivativeCombo({
       accountId: request.accountId,
       legs: [

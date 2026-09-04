@@ -1,3 +1,4 @@
+import { requireObservation } from "#src/brokers/brokerClient.js";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -410,26 +411,30 @@ export class DerivativeExecutionService {
   private async assertContractsUnchanged(preview: SpreadPreviewDto): Promise<void> {
     for (const leg of preview.order.legs) {
       const identity = leg.contract.identity;
-      const current = await this.discovery.resolveContract({
-        assetClass: identity.assetClass,
-        underlying: identity.underlying,
-        expiration: identity.expiration,
-        strike: identity.strike,
-        right: identity.right,
-        tradingClass: identity.tradingClass,
-        exchange: identity.exchange,
-      });
-      if (JSON.stringify(current) !== JSON.stringify(leg.contract)) {
+      const current = requireObservation(
+        "resolveDerivativeContract",
+        await this.discovery.resolveContract({
+          assetClass: identity.assetClass,
+          underlying: identity.underlying,
+          expiration: identity.expiration,
+          strike: identity.strike,
+          right: identity.right,
+          tradingClass: identity.tradingClass,
+          exchange: identity.exchange,
+        })
+      );
+      if (current.value === null || JSON.stringify(current.value) !== JSON.stringify(leg.contract)) {
         throw new Error("Resolved contract drifted since preview");
       }
     }
   }
 
   private async safeDiagnostics(accountId: string) {
-    const diagnostics = await this.previewClient.getTradingDiagnostics(accountId);
+    const diagnostics = await this.previewClient.getTradingDiagnostics();
     if (
       !diagnostics.authenticated ||
       diagnostics.competingSession ||
+      diagnostics.accountId !== accountId ||
       diagnostics.selectedAccountId !== accountId
     ) {
       throw new Error("Broker account/session is not safe for execution");

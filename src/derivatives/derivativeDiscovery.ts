@@ -1,4 +1,7 @@
-import type { BrokerName } from "#src/brokers/brokerClient.js";
+import type {
+  BrokerName,
+  Observation,
+} from "#src/brokers/brokerClient.js";
 
 export type DerivativeAssetClass = "OPT" | "FOP";
 export type DerivativeRight = "CALL" | "PUT";
@@ -89,11 +92,11 @@ export interface DerivativeReferenceQuote {
 
 /** Read-only derivative capability kept separate from the shared account client. */
 export interface DerivativeDiscoveryClient {
-  getExpiries(request: DerivativeExpiryRequest): Promise<DerivativeExpiry[]>;
-  getContracts(request: DerivativeContractRequest): Promise<DerivativeContract[]>;
+  getExpiries(request: DerivativeExpiryRequest): Promise<Observation<DerivativeExpiry[]>>;
+  getContracts(request: DerivativeContractRequest): Promise<Observation<DerivativeContract[]>>;
   resolveContract(
     request: DerivativeContractRequest & { right: DerivativeRight; strike: number }
-  ): Promise<DerivativeContract>;
-  getChain(request: DerivativeContractRequest): Promise<DerivativeQuote[]>;
-  getReferenceQuote(contract: DerivativeContract): Promise<DerivativeReferenceQuote>;
+  ): Promise<Observation<DerivativeContract | null>>;
+  getChain(request: DerivativeContractRequest): Promise<Observation<DerivativeQuote[]>>;
+  getReferenceQuote(contract: DerivativeContract): Promise<Observation<DerivativeReferenceQuote>>;
 }

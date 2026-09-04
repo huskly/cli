@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { observe } from "#src/brokers/brokerClient.js";
 import type {
   DerivativeContract,
   DerivativeDiscoveryClient,
@@ -26,29 +27,45 @@ function contract(strike: number): DerivativeContract {
       tradingClass: "QN3",
       exchange: "CME",
       multiplier: 20,
+      settlement: "PM",
+      exerciseStyle: "AMERICAN",
     },
     brokerReference: { broker: "ibkr", contractId: strike === 26400 ? "892767804" : "892767774" },
   };
 }
 
 const discovery: DerivativeDiscoveryClient = {
-  getExpiries: () => Promise.resolve([]),
-  getContracts: () => Promise.resolve([]),
-  resolveContract: (request) => Promise.resolve(contract(request.strike)),
-  getChain: () => Promise.resolve([]),
+  getExpiries: () => Promise.resolve(observe([], "empty", "2026-07-29T12:00:00.000Z")),
+  getContracts: () => Promise.resolve(observe([], "empty", "2026-07-29T12:00:00.000Z")),
+  resolveContract: (request) =>
+    Promise.resolve(observe(contract(request.strike), "available", "2026-07-29T12:00:00.000Z")),
+  getChain: () => Promise.resolve(observe([], "empty", "2026-07-29T12:00:00.000Z")),
   getReferenceQuote: () => Promise.reject(new Error("not used")),
 };
 
 const preview: DerivativePreviewClient = {
-  getTradingDiagnostics: (accountId) =>
+  getTradingDiagnostics: () =>
     Promise.resolve({
-      accountId,
-      selectedAccountId: accountId,
+      accountId: "U1234567",
+      selectedAccountId: "U1234567",
       environment: "paper",
       authenticated: true,
       competingSession: false,
       marketDataAvailable: true,
-      advisoryAssetPermissions: ["STK"],
+      advisoryAssetPermissions: [],
+      state: "ready",
+      readReady: true,
+      newMutationReady: false,
+      recoveryMutationReady: false,
+      lockOwned: true,
+      accountVerified: true,
+      connected: true,
+      lastTickleAt: null,
+      nextRenewalAt: null,
+      lastBrokerRequestAt: null,
+      readQueueDepth: 0,
+      pendingWarnings: 0,
+      reconciliationRequiredOperations: 0,
     }),
   previewDerivativeCombo: (request) =>
     Promise.resolve({

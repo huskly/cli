@@ -1,3 +1,7 @@
+import {
+  requireObservation,
+  type Observation,
+} from "#src/brokers/brokerClient.js";
 import type {
   DerivativeContract,
   DerivativeContractRequest,
@@ -13,13 +17,13 @@ import {
 } from "./verticalSpread.js";
 
 export interface OptionResolution {
-  contract: DerivativeContract;
-  referenceQuote: DerivativeReferenceQuote;
+  contract: Observation<DerivativeContract>;
+  referenceQuote: Observation<DerivativeReferenceQuote>;
 }
 
 export interface OptionDiscoveryResearch {
-  contracts: DerivativeContract[];
-  referenceQuote: DerivativeReferenceQuote | null;
+  contracts: Observation<DerivativeContract[]>;
+  referenceQuote: Observation<DerivativeReferenceQuote> | null;
 }
 
 export interface OptionChainRequest extends DerivativeContractRequest {
@@ -28,9 +32,9 @@ export interface OptionChainRequest extends DerivativeContractRequest {
 }
 
 export interface OptionChainResearch {
-  referenceQuote: DerivativeReferenceQuote | null;
+  referenceQuote: Observation<DerivativeReferenceQuote> | null;
   center: number | null;
-  quotes: DerivativeQuote[];
+  quotes: Observation<DerivativeQuote[]>;
 }
 
 export interface VerticalSpreadResearchRequest {
@@ -47,7 +51,7 @@ export interface VerticalSpreadResearchRequest {
 }
 
 export interface VerticalSpreadResearch {
-  referenceQuote: DerivativeReferenceQuote;
+  referenceQuote: Observation<DerivativeReferenceQuote>;
   spread: VerticalSpreadQuote;
   pricingNotice: string;
 }
@@ -117,7 +121,8 @@ export class DerivativeResearchService {
 
   async discover(request: DerivativeContractRequest): Promise<OptionDiscoveryResearch> {
     const contracts = await this.client.getContracts(request);
-    const first = contracts[0];
+    requireObservation("queryDerivativeContracts", contracts);
+    const first = contracts.value[0];
     return {
       contracts,
       referenceQuote: first === undefined ? null : await this.client.getReferenceQuote(first),
@@ -127,27 +132,39 @@ export class DerivativeResearchService {
   async resolve(
     request: DerivativeContractRequest & { right: DerivativeRight; strike: number }
   ): Promise<OptionResolution> {
-    const contract = await this.client.resolveContract(request);
+    const contract = requireObservation(
+      "resolveDerivativeContract",
+      await this.client.resolveContract(request)
+    );
+    if (contract.value === null) {
+      throw new Error(
+        `No exact derivative contract returned for ${request.underlying} ${request.expiration} ${String(request.strike)} ${request.right}`
+      );
+    }
     return {
-      contract,
-      referenceQuote: await this.client.getReferenceQuote(contract),
+      contract: { ...contract, value: contract.value },
+      referenceQuote: await this.client.getReferenceQuote(contract.value),
     };
   }
 
   async chain(request: OptionChainRequest): Promise<OptionChainResearch> {
     const { around, strikes, ...contractRequest } = request;
-    const quotes = await this.client.getChain(contractRequest);
-    if (quotes.length === 0) {
-      return { referenceQuote: null, center: around ?? null, quotes: [] };
+    const quotes = requireObservation("queryDerivativeQuotes", await this.client.getChain(contractRequest));
+    if (quotes.value.length === 0) {
+      return { referenceQuote: null, center: around ?? null, quotes };
     }
-    const first = quotes[0];
+    const first = quotes.value[0];
     if (first === undefined) throw new Error("Derivative chain unexpectedly has no first quote");
     const referenceQuote = await this.client.getReferenceQuote(first.contract);
-    const center = around ?? quoteCenter(referenceQuote);
+    const center =
+      around ?? quoteCenter(requireObservation("queryDerivativeReferenceQuote", referenceQuote).value);
     return {
       referenceQuote,
       center,
-      quotes: filterAround(quotes, center, strikes),
+      quotes: {
+        ...quotes,
+        value: filterAround(quotes.value, center, strikes),
+      },
     };
   }
 
@@ -165,7 +182,10 @@ export class DerivativeResearchService {
       this.exactQuote({ ...base, strike: request.longStrike }),
       this.exactQuote({ ...base, strike: request.shortStrike }),
     ]);
-    const referenceQuote = await this.client.getReferenceQuote(longQuote.contract);
+    const referenceQuote = requireObservation(
+      "queryDerivativeReferenceQuote",
+      await this.client.getReferenceQuote(longQuote.contract)
+    );
     return {
       referenceQuote,
       spread: buildVerticalSpread({
@@ -183,9 +203,18 @@ export class DerivativeResearchService {
   private async exactQuote(
     request: DerivativeContractRequest & { right: DerivativeRight; strike: number }
   ): Promise<DerivativeQuote> {
-    const contract = await this.client.resolveContract(request);
-    const quotes = await this.client.getChain(request);
-    const quote = quotes.find((candidate) => sameContract(candidate.contract, contract));
+    const contract = requireObservation(
+      "resolveDerivativeContract",
+      await this.client.resolveContract(request)
+    );
+    if (contract.value === null) {
+      throw new Error(
+        `No exact derivative contract returned for ${request.underlying} ${request.expiration} ${String(request.strike)} ${request.right}`
+      );
+    }
+    const quotes = requireObservation("queryDerivativeQuotes", await this.client.getChain(request));
+    const resolvedContract = contract.value;
+    const quote = quotes.value.find((candidate) => sameContract(candidate.contract, resolvedContract));
     if (quote === undefined) {
       throw new Error(
         `No market quote returned for ${request.underlying} ${request.expiration} ${String(request.strike)} ${request.right}`

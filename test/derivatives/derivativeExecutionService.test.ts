@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { observe } from "#src/brokers/brokerClient.js";
 import type {
   DerivativeContract,
   DerivativeDiscoveryClient,
@@ -35,6 +36,8 @@ function contract(strike: number, drift = false): DerivativeContract {
       tradingClass: "QN3",
       exchange: "CME",
       multiplier: 20,
+      settlement: "PM",
+      exerciseStyle: "AMERICAN",
     },
     brokerReference: {
       broker: "ibkr",
@@ -45,27 +48,40 @@ function contract(strike: number, drift = false): DerivativeContract {
 
 class FakeDiscovery implements DerivativeDiscoveryClient {
   drift = false;
-  getExpiries = () => Promise.resolve([]);
-  getContracts = () => Promise.resolve([]);
-  getChain = () => Promise.resolve([]);
+  getExpiries = () => Promise.resolve(observe([], "empty", "2026-07-29T12:00:00.000Z"));
+  getContracts = () => Promise.resolve(observe([], "empty", "2026-07-29T12:00:00.000Z"));
+  getChain = () => Promise.resolve(observe([], "empty", "2026-07-29T12:00:00.000Z"));
   getReferenceQuote = () => Promise.reject(new Error("not used"));
   resolveContract = (request: { strike: number }) =>
-    Promise.resolve(contract(request.strike, this.drift));
+    Promise.resolve(observe(contract(request.strike, this.drift), "available", "2026-07-29T12:00:00.000Z"));
 }
 
 class FakePreviewClient implements DerivativePreviewClient {
   environment: "paper" | "live" = "paper";
   selectedAccountId = "U1234567";
 
-  getTradingDiagnostics(accountId: string) {
+  getTradingDiagnostics() {
     return Promise.resolve({
-      accountId,
+      accountId: "U1234567",
       selectedAccountId: this.selectedAccountId,
       environment: this.environment,
       authenticated: true,
       competingSession: false,
       marketDataAvailable: true,
-      advisoryAssetPermissions: ["STK"],
+      advisoryAssetPermissions: [],
+      state: "ready" as const,
+      readReady: true,
+      newMutationReady: false,
+      recoveryMutationReady: false,
+      lockOwned: true,
+      accountVerified: true,
+      connected: true,
+      lastTickleAt: null,
+      nextRenewalAt: null,
+      lastBrokerRequestAt: null,
+      readQueueDepth: 0,
+      pendingWarnings: 0,
+      reconciliationRequiredOperations: 0,
     });
   }
 

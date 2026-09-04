@@ -10,6 +10,19 @@ export interface TradingDiagnostics {
   competingSession: boolean;
   marketDataAvailable: boolean | null;
   advisoryAssetPermissions: string[];
+  state: "starting" | "ready" | "degraded" | "draining" | "stopped";
+  readReady: boolean;
+  newMutationReady: boolean;
+  recoveryMutationReady: boolean;
+  lockOwned: boolean;
+  accountVerified: boolean;
+  connected: boolean | null;
+  lastTickleAt: string | null;
+  nextRenewalAt: string | null;
+  lastBrokerRequestAt: string | null;
+  readQueueDepth: number;
+  pendingWarnings: number;
+  reconciliationRequiredOperations: number;
 }
 
 export interface DerivativeComboPreviewRequest {
@@ -45,7 +58,7 @@ export interface DerivativeComboPreviewResult {
 }
 
 export interface DerivativePreviewClient {
-  getTradingDiagnostics(accountId: string): Promise<TradingDiagnostics>;
+  getTradingDiagnostics(): Promise<TradingDiagnostics>;
   previewDerivativeCombo(
     request: DerivativeComboPreviewRequest
   ): Promise<DerivativeComboPreviewResult>;
