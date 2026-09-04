@@ -54,7 +54,11 @@ function formatColumn(value: string, width: number, align: "left" | "right" = "l
   return align === "right" ? truncated.padStart(width) : truncated.padEnd(width);
 }
 
-function getStatusColor(status: string | undefined): (text: string) => string {
+function accountHeading(accountNumber: string | undefined): string {
+  return accountNumber ? `Account ${accountNumber}` : "Account";
+}
+
+function getStatusColor(status: string | null | undefined): (text: string) => string {
   switch (status) {
     case "FILLED":
       return chalk.green;
@@ -139,7 +143,7 @@ export function renderOrdersObservation(
   }
 
   for (const account of accountOrders) {
-    lines.push(chalk.bold(`Account ${account.accountNumber}`));
+    lines.push(chalk.bold(accountHeading(account.accountNumber)));
     const orders = [...account.orders].sort((a, b) => {
       const aDate = parseOrderDate(a).getTime();
       const bDate = parseOrderDate(b).getTime();

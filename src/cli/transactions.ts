@@ -87,17 +87,29 @@ function formatColumn(value: string, width: number, align: "left" | "right" = "l
   return align === "right" ? truncated.padStart(width) : truncated.padEnd(width);
 }
 
+function displayText(value: string | null | undefined, fallback = ""): string {
+  return value ?? fallback;
+}
+
+function accountHeading(accountNumber: string | undefined): string {
+  return accountNumber ? `Account ${accountNumber}` : "Account";
+}
+
 function collectTransactions(
   histories: BrokerTransactionHistory[],
   type?: string
-): { accountNumber: string; transaction: BrokerTransaction }[] {
-  const allTransactions: { accountNumber: string; transaction: BrokerTransaction }[] = [];
+): { accountNumber?: string; transaction: BrokerTransaction }[] {
+  const allTransactions: { accountNumber?: string; transaction: BrokerTransaction }[] = [];
   for (const history of histories) {
     for (const transaction of history.transactions) {
-      if (type && transaction.type.toUpperCase() !== type.toUpperCase()) {
+      if (type && displayText(transaction.type).toUpperCase() !== type.toUpperCase()) {
         continue;
       }
-      allTransactions.push({ accountNumber: history.accountNumber, transaction });
+      allTransactions.push(
+        history.accountNumber === undefined
+          ? { transaction }
+          : { accountNumber: history.accountNumber, transaction }
+      );
     }
   }
   allTransactions.sort((a, b) => {
@@ -153,13 +165,15 @@ export function renderTransactionObservation(
         primaryItem?.transferItemType ??
         "";
       const details =
-        transaction.status !== "VALID" ? `[${transaction.status}] ${baseDetails}` : baseDetails;
+        transaction.status !== "VALID"
+          ? `[${displayText(transaction.status, "UNKNOWN")}] ${baseDetails}`
+          : baseDetails;
       lines.push(
         [
-          escapeCsv(accountNumber),
-          escapeCsv(String(transaction.activityId)),
+          escapeCsv(accountNumber ?? ""),
+          escapeCsv(String(transaction.activityId ?? "")),
           escapeCsv(dateLabel),
-          escapeCsv(transaction.type),
+          escapeCsv(displayText(transaction.type)),
           escapeCsv(symbol),
           quantity,
           amount,
@@ -181,9 +195,9 @@ export function renderTransactionObservation(
   }
 
   for (const history of histories) {
-    lines.push(chalk.bold(`Account ${history.accountNumber}`));
+    lines.push(chalk.bold(accountHeading(history.accountNumber)));
     const transactions = [...history.transactions]
-      .filter((t) => !options.type || t.type.toUpperCase() === options.type.toUpperCase())
+      .filter((t) => !options.type || displayText(t.type).toUpperCase() === options.type.toUpperCase())
       .sort((a, b) => {
         const aDate = parseTransactionDate(a).getTime();
         const bDate = parseTransactionDate(b).getTime();
@@ -225,10 +239,10 @@ export function renderTransactionObservation(
         primaryItem?.transferItemType ??
         "";
       const detailsSource =
-        transaction.status !== "VALID" ? `[${transaction.status}] ${baseDetails}` : baseDetails;
+        transaction.status !== "VALID" ? `[${displayText(transaction.status, "UNKNOWN")}] ${baseDetails}` : baseDetails;
       const details = formatColumn(detailsSource, COLUMN_WIDTHS.details);
-      const idLabel = formatColumn(String(transaction.activityId), COLUMN_WIDTHS.id);
-      const typeLabel = formatColumn(transaction.type, COLUMN_WIDTHS.type);
+      const idLabel = formatColumn(String(transaction.activityId ?? "-"), COLUMN_WIDTHS.id);
+      const typeLabel = formatColumn(displayText(transaction.type, "-"), COLUMN_WIDTHS.type);
       const symbolLabel = formatColumn(symbol, COLUMN_WIDTHS.symbol);
       const quantityLabel = formatColumn(quantity, COLUMN_WIDTHS.quantity, "right");
       const amountLabel = formatColumn(amount, COLUMN_WIDTHS.amount, "right");

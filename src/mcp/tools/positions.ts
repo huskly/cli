@@ -41,9 +41,13 @@ export function registerGetPositionsTool(server: McpServer): void {
           const assetType = pos.instrument.assetType;
           const isOption = assetType === "OPTION";
           const contractMultiplier = isOption ? 100 : 1;
-          const symbolLabel = isOption
-            ? parseOccSymbol(pos.instrument.symbol)
-            : pos.instrument.symbol;
+          const symbol = pos.instrument.symbol;
+          const symbolLabel =
+            symbol === null
+              ? null
+              : isOption
+                ? parseOccSymbol(symbol)
+                : symbol;
           const quantity =
             pos.longQuantity !== null && pos.longQuantity > 0 ? pos.longQuantity : pos.shortQuantity;
           const currentPrice =

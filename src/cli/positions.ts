@@ -54,6 +54,18 @@ function formatSignedCurrency(value: number | null | undefined): string {
   return value >= 0 ? `+$${value.toFixed(2)}` : `-$${Math.abs(value).toFixed(2)}`;
 }
 
+function displayText(value: string | null | undefined): string {
+  return value ?? "-";
+}
+
+function displaySymbol(position: BrokerPosition): string {
+  const symbol = position.instrument.symbol;
+  if (symbol === null) {
+    return "-";
+  }
+  return position.instrument.assetType === "OPTION" ? parseOccSymbol(symbol) : symbol;
+}
+
 function calculateCurrentPrice(position: BrokerPosition): number | null {
   const quantity = isPositive(position.longQuantity) ? position.longQuantity : position.shortQuantity;
   const marketValue = position.marketValue;
@@ -113,7 +125,7 @@ export function renderPositionsObservation(
   }
 
   const sortedPositions = [...positions].sort((a, b) =>
-    a.instrument.symbol.localeCompare(b.instrument.symbol)
+    displayText(a.instrument.symbol).localeCompare(displayText(b.instrument.symbol))
   );
   const lines: string[] = [];
 
@@ -122,9 +134,8 @@ export function renderPositionsObservation(
       "Symbol,Type,Long Qty,Short Qty,Avg Price,Cur Price,Market Value,Day P/L,P/L Open,P/L %"
     );
     for (const pos of sortedPositions) {
-      const assetType = pos.instrument.assetType;
-      const isOption = assetType === "OPTION";
-      const posSymbol = isOption ? parseOccSymbol(pos.instrument.symbol) : pos.instrument.symbol;
+      const assetType = displayText(pos.instrument.assetType);
+      const posSymbol = displaySymbol(pos);
       const longQty = isPositive(pos.longQuantity) ? String(pos.longQuantity) : "0";
       const shortQty = isPositive(pos.shortQuantity) ? String(pos.shortQuantity) : "0";
       const curPrice = calculateCurrentPrice(pos);
@@ -163,9 +174,8 @@ export function renderPositionsObservation(
   lines.push(chalk.gray("-".repeat(SEPARATOR_LENGTH)));
 
   for (const pos of sortedPositions) {
-    const assetType = pos.instrument.assetType;
-    const isOption = assetType === "OPTION";
-    const posSymbol = isOption ? parseOccSymbol(pos.instrument.symbol) : pos.instrument.symbol;
+    const assetType = displayText(pos.instrument.assetType);
+    const posSymbol = displaySymbol(pos);
     const longQty = isPositive(pos.longQuantity) ? String(pos.longQuantity) : "-";
     const shortQty = isPositive(pos.shortQuantity) ? String(pos.shortQuantity) : "-";
     const curPrice = calculateCurrentPrice(pos);

@@ -87,19 +87,19 @@ export interface BrokerFundamentalInstrument {
 }
 
 export interface BrokerInstrument {
-  cusip?: string;
-  brokerId?: string;
-  symbol?: string;
-  description?: string;
-  exchange?: string;
-  assetType?: string;
+  cusip?: string | null;
+  brokerId?: string | null;
+  symbol?: string | null;
+  description?: string | null;
+  exchange?: string | null;
+  assetType?: string | null;
   fundamental?: BrokerFundamentalInstrument;
 }
 
 export interface BrokerQuoteReference {
-  description?: string;
-  exchange?: string;
-  exchangeName?: string;
+  description?: string | null;
+  exchange?: string | null;
+  exchangeName?: string | null;
 }
 
 export interface BrokerQuoteData {
@@ -142,7 +142,7 @@ export interface AccountBalances {
 }
 
 export interface BrokerPosition {
-  instrument: { assetType: string; symbol: string };
+  instrument: { assetType: string | null; symbol: string | null };
   longQuantity: number | null;
   shortQuantity: number | null;
   averagePrice: number | null;
@@ -157,45 +157,45 @@ export interface BrokerPosition {
 
 export interface BrokerTransferItem {
   instrument?: {
-    assetType?: string;
-    symbol?: string;
-    description?: string;
-  };
+    assetType?: string | null;
+    symbol?: string | null;
+    description?: string | null;
+  } | null;
   amount?: number | null;
   cost?: number | null;
-  transferItemType?: string;
-  feeType?: string;
+  transferItemType?: string | null;
+  feeType?: string | null;
 }
 
 export interface BrokerTransaction {
-  activityId: string | number;
-  time: string;
-  type: string;
-  status: string;
-  subAccount?: string;
-  description?: string;
+  activityId: string | number | null;
+  time: string | null;
+  type: string | null;
+  status: string | null;
+  subAccount?: string | null;
+  description?: string | null;
   netAmount: number | null;
   transferItems?: BrokerTransferItem[];
 }
 
 export interface BrokerTransactionHistory {
-  accountNumber: string;
+  accountNumber?: string;
   transactions: BrokerTransaction[];
 }
 
 export interface BrokerOrderLeg {
   instrument?: {
-    symbol?: string;
-  };
-  instruction?: string;
+    symbol?: string | null;
+  } | null;
+  instruction?: string | null;
 }
 
 export interface BrokerOrder {
-  orderId?: string | number;
-  enteredTime?: string;
-  status?: string;
-  orderType?: string;
-  complexOrderStrategyType?: string;
+  orderId?: string | number | null;
+  enteredTime?: string | null;
+  status?: string | null;
+  orderType?: string | null;
+  complexOrderStrategyType?: string | null;
   quantity?: number | null;
   filledQuantity?: number | null;
   remainingQuantity?: number | null;
@@ -212,7 +212,7 @@ export interface BrokerOrdersOptions {
 }
 
 export interface BrokerAccountOrders {
-  accountNumber: string;
+  accountNumber?: string;
   orders: BrokerOrder[];
 }
 

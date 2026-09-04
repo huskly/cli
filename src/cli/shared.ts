@@ -1,12 +1,14 @@
 import { HusklyDeviceAuth } from "#src/auth/husklyDeviceAuth.js";
 import { ensure } from "#src/helpers.js";
 import { SchwabClient } from "@huskly/schwab-client";
-import { IbkrClient, buildOauthConfig } from "@huskly/ibkr-client";
-import { CachedIbkrClient } from "#src/cachedIbkrClient.js";
+import { cliGatewayTransport } from "#src/gateway/gatewayTransport.js";
 import { CachedSchwabClient } from "#src/cachedSchwabClient.js";
 import type { BrokerClient, BrokerName } from "#src/brokers/brokerClient.js";
 import { SchwabBrokerAdapter } from "#src/brokers/schwabBrokerAdapter.js";
-import { IbkrBrokerAdapter } from "#src/brokers/ibkrBrokerAdapter.js";
+import {
+  createIbkrGatewayReadApi,
+  IbkrBrokerAdapter,
+} from "#src/brokers/ibkrBrokerAdapter.js";
 import * as asciichart from "asciichart";
 
 export { asciichart };
@@ -30,8 +32,7 @@ export async function apiClient(): Promise<CachedSchwabClient> {
 /**
  * Resolve a normalized {@link BrokerClient} for the shared commands
  * (`account`, `positions`, `transactions`, `orders`). Schwab goes through the
- * cached client; IBKR uses its native OAuth 1.0a handshake behind a lazy cache
- * wrapper so repeated read commands can avoid session startup entirely.
+ * cached client; IBKR uses the lazy gateway transport singleton.
  */
 export async function brokerClient(broker: BrokerName): Promise<BrokerClient> {
   const existing = brokerClientPromises.get(broker);
@@ -39,13 +40,7 @@ export async function brokerClient(broker: BrokerName): Promise<BrokerClient> {
 
   const promise =
     broker === "ibkr"
-      ? Promise.resolve(
-          new CachedIbkrClient(async () => {
-            const client = new IbkrClient(buildOauthConfig());
-            await client.init();
-            return new IbkrBrokerAdapter(client);
-          })
-        )
+      ? cliGatewayTransport().then((transport) => new IbkrBrokerAdapter(createIbkrGatewayReadApi(transport)))
       : apiClient().then((client) => new SchwabBrokerAdapter(client));
 
   brokerClientPromises.set(broker, promise);
