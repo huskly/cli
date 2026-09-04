@@ -4,6 +4,18 @@ import type { IbkrClient } from "@huskly/ibkr-client";
 import { IbkrBrokerAdapter } from "#src/brokers/ibkrBrokerAdapter.js";
 
 describe("IbkrBrokerAdapter", () => {
+  it("maps quote symbols to upstream request objects", async () => {
+    const quotes = {};
+    const client = {
+      getQuotes: (requests: Parameters<IbkrClient["getQuotes"]>[0]) => {
+        assert.deepEqual(requests, [{ symbol: "AAPL" }, { symbol: "MSFT" }]);
+        return Promise.resolve(quotes);
+      },
+    } as unknown as IbkrClient;
+
+    assert.equal(await new IbkrBrokerAdapter(client).getQuotes(["AAPL", "MSFT"]), quotes);
+  });
+
   it("maps upstream balances and positions to the CLI presentation contract", async () => {
     const client = {
       getAccountBalances: () =>

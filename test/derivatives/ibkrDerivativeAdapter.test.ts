@@ -231,6 +231,7 @@ void test("IBKR adapter keeps combo conids behind the explicit preview boundary"
     fakeApi({
       previewDerivativeCombo: (request) => {
         received = request;
+        assert.equal(Reflect.get(request, "orderType"), "LMT");
         return Promise.resolve({
           accountId: request.accountId,
           environment: "paper",
@@ -285,4 +286,43 @@ void test("IBKR adapter keeps combo conids behind the explicit preview boundary"
       [892767774, -1],
     ]
   );
+});
+
+void test("IBKR adapter submits combos as limit orders", async () => {
+  const adapter = new IbkrDerivativeAdapter(
+    fakeApi({
+      submitDerivativeCombo: (request) => {
+        assert.equal(Reflect.get(request, "orderType"), "LMT");
+        assert.equal(request.limit, 39);
+        assert.equal(request.clientOrderId, "combo-1");
+        assert.equal(request.legs[0].contract.conid, 892767774);
+        return Promise.resolve({ state: "warning", warnings: [] });
+      },
+    })
+  );
+  const contract = await adapter.resolveContract({
+    assetClass: "FOP",
+    underlying: "NQ",
+    expiration: "2026-08-21",
+    right: "PUT",
+    strike: 26600,
+  });
+  await adapter.submitDerivativeCombo({
+    accountId: "U123",
+    legs: [
+      { contract, ratio: 1 },
+      {
+        contract: { ...contract, brokerReference: { broker: "ibkr", contractId: "892767804" } },
+        ratio: -1,
+      },
+    ],
+    quantity: 1,
+    priceEffect: "CREDIT",
+    limit: 39,
+    tif: "DAY",
+    session: "REGULAR",
+    clientOrderId: "combo-1",
+    extOperator: "operator",
+    manualIndicator: false,
+  });
 });

@@ -41,7 +41,7 @@ export class IbkrBrokerAdapter implements BrokerClient {
   }
 
   async getQuotes(symbols: string[]): Promise<Record<string, BrokerQuote>> {
-    return this.client.getQuotes(symbols);
+    return this.client.getQuotes(symbols.map((symbol) => ({ symbol })));
   }
 
   async searchInstruments(

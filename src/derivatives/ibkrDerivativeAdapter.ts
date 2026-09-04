@@ -100,6 +100,7 @@ export interface IbkrDerivativeDiscoveryApi {
   ): Promise<IbkrDerivativeReferenceQuote>;
   getTradingDiagnostics(accountId: string): Promise<TradingDiagnostics>;
   previewDerivativeCombo(request: {
+    orderType: "LMT";
     accountId: string;
     legs: [
       { contract: IbkrDerivativeContract; ratio: 1 | -1 },
@@ -112,6 +113,7 @@ export interface IbkrDerivativeDiscoveryApi {
     session: "REGULAR" | "OVERNIGHT";
   }): Promise<DerivativeComboPreviewResult>;
   submitDerivativeCombo(request: {
+    orderType: "LMT";
     accountId: string;
     legs: [
       { contract: IbkrDerivativeContract; ratio: 1 | -1 },
@@ -296,6 +298,7 @@ export class IbkrDerivativeAdapter
   ): Promise<DerivativeComboPreviewResult> {
     return this.client.previewDerivativeCombo({
       ...request,
+      orderType: "LMT",
       legs: request.legs.map(({ contract, ratio }) => ({
         contract: ibkrContract(contract),
         ratio,
@@ -311,6 +314,7 @@ export class IbkrDerivativeAdapter
   ): Promise<DerivativeOrderSubmissionResult> {
     return this.client.submitDerivativeCombo({
       ...request,
+      orderType: "LMT",
       legs: request.legs.map(({ contract, ratio }) => ({
         contract: ibkrContract(contract),
         ratio,

@@ -25,14 +25,9 @@ jobs:
           cache: "yarn"
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
-
+        run: yarn install --immutable
       - name: Check formatting
         run: yarn format:check
 
-      - name: Lint
-        run: yarn lint
-      - name: Type check
-        run: yarn typecheck
-      - name: Build
-        run: yarn build
+      - name: Check all
+        run: yarn check
