@@ -67,7 +67,9 @@ interface StoredPreviewRecord {
   previewResult: DerivativeComboPreviewResult;
 }
 
-const marginSchema = z.strictObject({ current: z.number(), change: z.number(), after: z.number() }).nullable();
+const marginSchema = z
+  .strictObject({ current: z.number(), change: z.number(), after: z.number() })
+  .nullable();
 const identitySchema = z.strictObject({
   assetClass: z.enum(["OPT", "FOP"]),
   underlying: z.string(),
@@ -86,7 +88,7 @@ const contractSchema = z.strictObject({
     .strictObject({ broker: z.enum(["schwab", "ibkr"]), contractId: z.string() })
     .optional(),
 });
-const canonicalComboIntentSchema = z.strictObject({
+export const canonicalComboIntentSchema = z.strictObject({
   legs: z.tuple([
     z.strictObject({ contract: contractSchema, ratio: z.literal(1) }),
     z.strictObject({ contract: contractSchema, ratio: z.literal(-1) }),
@@ -113,7 +115,10 @@ export const spreadPreviewDtoSchema = z.strictObject({
   previewId: z.string().regex(/^[a-f0-9]{64}$/),
   createdAt: z.iso.datetime(),
   expiresAt: z.iso.datetime(),
-  account: z.strictObject({ maskedId: z.string().nullable(), environment: z.enum(["live", "paper"]) }),
+  account: z.strictObject({
+    maskedId: z.string().nullable(),
+    environment: z.enum(["live", "paper"]),
+  }),
   order: z.strictObject({
     kind: z.enum(["call-debit", "call-credit", "put-debit", "put-credit"]),
     gateway: canonicalComboIntentSchema,
@@ -144,7 +149,10 @@ const storedPreviewRecordSchema = z.strictObject({
   previewId: z.string().regex(/^[a-f0-9]{64}$/),
   createdAt: z.iso.datetime(),
   expiresAt: z.iso.datetime(),
-  account: z.strictObject({ maskedId: z.string().nullable(), environment: z.enum(["live", "paper"]) }),
+  account: z.strictObject({
+    maskedId: z.string().nullable(),
+    environment: z.enum(["live", "paper"]),
+  }),
   canonicalIntent: canonicalComboIntentSchema,
   previewResult: derivativeComboPreviewResultSchema,
 });
@@ -177,7 +185,7 @@ export class InMemoryPreviewStore implements PreviewStore {
 export class FilePreviewStore implements PreviewStore {
   constructor(
     private readonly directory = process.env["HUSKLY_PREVIEW_DIR"] ??
-      join(homedir(), ".cache", "huskly-cli", "previews"),
+      join(homedir(), ".cache", "huskly-cli", "previews")
   ) {}
 
   async save(previewId: string, preview: StoredPreviewRecord): Promise<void> {
@@ -229,7 +237,7 @@ export function maskAccountId(accountId: string): string {
 
 function requireResolvedContract(
   observation: Observation<DerivativeContract | null>,
-  strike: number,
+  strike: number
 ): DerivativeContract {
   const resolved = requireObservation("resolveDerivativeContract", observation);
   if (resolved.value === null) {
@@ -286,7 +294,7 @@ export class DerivativePreviewService {
     private readonly preview: DerivativePreviewClient,
     private readonly now: () => Date = () => new Date(),
     private readonly ttlMs = 5 * 60 * 1000,
-    private readonly store: PreviewStore = new InMemoryPreviewStore(),
+    private readonly store: PreviewStore = new InMemoryPreviewStore()
   ) {}
 
   getTradingDiagnostics(): Promise<TradingDiagnostics> {
@@ -353,7 +361,7 @@ export class DerivativePreviewService {
           canonicalIntent,
           previewResult,
           account,
-        }),
+        })
       )
       .digest("hex");
     const record: StoredPreviewRecord = {

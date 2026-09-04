@@ -155,7 +155,7 @@ void test("sends one generated request per call and does not replay a 401 or 403
   assert.doesNotMatch(JSON.stringify(transport), /client-secret|bearer-token|order payload/u);
 });
 
-void test("maps stable gateway failures and recovery-required outcomes without leaking raw details", async () => {
+void test("maps stable gateway failures and preserves successful recovery-required evidence", async () => {
   const fixture = createTransportFixture();
   const transport = await fixture.create();
 
@@ -234,15 +234,12 @@ void test("maps stable gateway failures and recovery-required outcomes without l
       latestTransitionAt: "2026-09-04T00:00:01.000Z",
     })
   );
-  await assert.rejects(
-    transport.call("createOrderOperation", (client) =>
-      client.createOrderOperation(orderIntent, "key-4")
-    ),
-    (error: unknown) =>
-      error instanceof ConsumerError &&
-      error.code === "recovery_required" &&
-      !error.message.includes("private broker detail")
+  const recovery = await transport.call("createOrderOperation", (client) =>
+    client.createOrderOperation(orderIntent, "key-4")
   );
+  assert.equal(recovery.result?.kind, "recovery_required");
+  assert.equal(recovery.reconciliation?.status, "incomplete");
+  assert.deepEqual(recovery.result.reasonCategories, ["broker"]);
 });
 
 void test("maps version and transport failures to fixed consumer errors", async () => {

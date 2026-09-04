@@ -7,7 +7,6 @@ import {
 import {
   ConsumerError,
   createAuthenticationFailureError,
-  createRecoveryRequiredError,
   toConsumerError,
 } from "#src/gateway/gatewayErrors.js";
 import {
@@ -130,14 +129,7 @@ export async function callGateway<T>(
   return dependencies.tokenStore.run(token, () =>
     dependencies.responseMetadataStore.run({ retryAfterSeconds: undefined }, async () => {
       try {
-        const result = await invoke(dependencies.client);
-        if (isRecoveryRequiredResult(result)) {
-          throw createRecoveryRequiredError(
-            operation,
-            metadataFromStore(dependencies.responseMetadataStore.getStore())
-          );
-        }
-        return result;
+        return await invoke(dependencies.client);
       } catch (error: unknown) {
         if (error instanceof ConsumerError) {
           throw error;
@@ -208,18 +200,4 @@ function parseRetryAfter(value: string | null, now: () => number): number | unde
   }
 
   return Math.max(0, Math.ceil((retryAt - now()) / 1000));
-}
-
-function isRecoveryRequiredResult(value: unknown): boolean {
-  if (typeof value !== "object" || value === null || !("result" in value)) {
-    return false;
-  }
-
-  const result = value.result;
-  return (
-    typeof result === "object" &&
-    result !== null &&
-    "kind" in result &&
-    result.kind === "recovery_required"
-  );
 }
