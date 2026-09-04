@@ -28,7 +28,8 @@ export function registerGetQuoteTool(server: McpServer): void {
       runTool(async () => {
         const resolvedBroker = resolveToolBroker(broker);
         const api = await brokerClient(resolvedBroker);
-        const quotes = await api.getQuotes(symbols);
+        const quoteObservation = await api.getQuotes(symbols);
+        const quotes = quoteObservation.value;
 
         const results = symbols.map((symbol) => {
           const quote = quotes[symbol] ?? quotes[symbol.toUpperCase()];

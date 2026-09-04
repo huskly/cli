@@ -4,16 +4,16 @@ import type {
   BrokerClient,
   BrokerInstrumentSearchProjection,
   BrokerOrdersOptions,
-  BrokerQuote,
+  Observation,
 } from "#src/brokers/brokerClient.js";
 
 interface OrdersCache {
-  get(key: string): Promise<BrokerAccountOrders[] | null>;
-  set(key: string, value: BrokerAccountOrders[], ttl: number): Promise<void>;
+  get(key: string): Promise<Observation<BrokerAccountOrders[]> | null>;
+  set(key: string, value: Observation<BrokerAccountOrders[]>, ttl: number): Promise<void>;
 }
 
 const redisOrdersCache: OrdersCache = {
-  get: (key) => cacheGet<BrokerAccountOrders[]>(key),
+  get: (key) => cacheGet<Observation<BrokerAccountOrders[]>>(key),
   set: async (key, value, ttl) => {
     await cacheSet(key, value, ttl);
   },
@@ -63,35 +63,13 @@ export class CachedIbkrClient implements BrokerClient {
   }
 
   async getQuotes(symbols: string[]) {
-    const quotes: Record<string, BrokerQuote> = {};
     const uniqueSymbols = [...new Set(symbols.map((symbol) => symbol.trim()).filter(Boolean))];
-    const cachedQuotes = await Promise.all(
-      uniqueSymbols.map(async (symbol) => ({
-        symbol,
-        quote: await cacheGet<BrokerQuote>(this.quoteKey(symbol)),
-      }))
+    const quoteKey = `ibkr:quotes:${uniqueSymbols.map((symbol) => symbol.toUpperCase()).sort().join(',')}`;
+    return cacheFetch(
+      quoteKey,
+      () => this.client().then((client) => client.getQuotes(uniqueSymbols)),
+      CACHE_TTL.QUOTES
     );
-    const missingSymbols: string[] = [];
-
-    for (const { symbol, quote } of cachedQuotes) {
-      if (quote === null) {
-        missingSymbols.push(symbol);
-        continue;
-      }
-      this.addQuoteResult(quotes, symbol, quote);
-    }
-
-    if (missingSymbols.length > 0) {
-      const fetchedQuotes = await this.client().then((client) => client.getQuotes(missingSymbols));
-      for (const symbol of missingSymbols) {
-        const quote = fetchedQuotes[symbol] ?? fetchedQuotes[symbol.toUpperCase()];
-        if (quote === undefined) continue;
-        this.addQuoteResult(quotes, symbol, quote);
-        await cacheSet(this.quoteKey(symbol), quote, CACHE_TTL.QUOTES);
-      }
-    }
-
-    return quotes;
   }
 
   async searchInstruments(symbol: string, projection: BrokerInstrumentSearchProjection) {
@@ -123,7 +101,7 @@ export class CachedIbkrClient implements BrokerClient {
     if (cached !== null) return cached;
 
     const accountOrders = await this.client().then((client) => client.fetchOrders(options));
-    if (accountOrders.some(({ orders }) => orders.length > 0)) {
+    if (accountOrders.value.some(({ orders }) => orders.length > 0)) {
       await this.ordersCache.set(key, accountOrders, CACHE_TTL.ORDERS);
     }
     return accountOrders;
@@ -132,19 +110,5 @@ export class CachedIbkrClient implements BrokerClient {
   private client(): Promise<BrokerClient> {
     this.clientPromise ??= this.createClient();
     return this.clientPromise;
-  }
-
-  private addQuoteResult(
-    quotes: Record<string, BrokerQuote>,
-    requestedSymbol: string,
-    quote: BrokerQuote
-  ): void {
-    quotes[requestedSymbol] = quote;
-    quotes[requestedSymbol.toUpperCase()] = quote;
-    quotes[quote.symbol] = quote;
-  }
-
-  private quoteKey(symbol: string): string {
-    return `ibkr:quote:${symbol.trim().toUpperCase()}`;
   }
 }

@@ -45,8 +45,8 @@ export function registerSearchSymbolTool(server: McpServer): void {
           );
         }
         const api = await brokerClient(resolvedBroker);
-        const instruments = await api.searchInstruments(query, projection);
-        return jsonResult({ broker: resolvedBroker, query, projection, instruments });
+        const observation = await api.searchInstruments(query, projection);
+        return jsonResult({ broker: resolvedBroker, query, projection, observedAt: observation.observedAt, completeness: observation.completeness, instruments: observation.value });
       })
   );
 }

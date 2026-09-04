@@ -2,92 +2,100 @@ import chalk from "chalk";
 import { brokerClient } from "./shared.js";
 import { formatNumber, formatVolume } from "../format.js";
 import { ensure } from "#src/helpers.js";
-import type { BrokerName, BrokerQuote } from "#src/brokers/brokerClient.js";
+import {
+  isPartialObservation,
+  requireObservation,
+  type BrokerName,
+  type BrokerQuote,
+  type Observation,
+} from "#src/brokers/brokerClient.js";
 
-function formatChange(change: number | undefined, percentChange: number | undefined): string {
-  if (change === undefined) return "-";
+function formatChange(
+  change: number | null | undefined,
+  percentChange: number | null | undefined
+): string {
+  if (change === undefined || change === null) return "-";
   const sign = change >= 0 ? "+" : "";
-  const pctStr = percentChange !== undefined ? ` (${sign}${percentChange.toFixed(2)}%)` : "";
+  const pctStr =
+    percentChange !== undefined && percentChange !== null
+      ? ` (${sign}${percentChange.toFixed(2)}%)`
+      : "";
   return sign + formatNumber(change) + pctStr;
 }
 
-function getChangeColor(change: number | undefined): typeof chalk {
-  if (change === undefined || change === 0) return chalk.white;
+function getChangeColor(change: number | null | undefined): typeof chalk {
+  if (change === undefined || change === null || change === 0) return chalk.white;
   return change > 0 ? chalk.green : chalk.red;
 }
 
-function printQuote(quote: BrokerQuote): void {
+function printQuoteLines(quote: BrokerQuote): string[] {
   const q = quote.quote;
   const ref = quote.reference;
   const change = q.netChange;
   const changeColor = getChangeColor(change);
+  const lines = [
+    `${chalk.cyan.bold(quote.symbol)} ${chalk.gray("·")} ${chalk.white(ref.description ?? "-")}`,
+    chalk.gray(`  ${ref.exchangeName ?? ref.exchange ?? "-"}`),
+    `  ${chalk.bold("Last:")} ${chalk.white("$" + formatNumber(q.mark ?? q.lastPrice))} ${changeColor(formatChange(change, q.netPercentChange))}`,
+  ];
 
-  // Header with symbol and description
-  console.log(
-    `${chalk.cyan.bold(quote.symbol)} ${chalk.gray("·")} ${chalk.white(ref.description ?? "-")}`
-  );
-  console.log(chalk.gray(`  ${ref.exchangeName ?? ref.exchange ?? "-"}`));
-
-  // Price and change
-  const lastPrice = q.mark ?? q.lastPrice;
-  console.log(
-    `  ${chalk.bold("Last:")} ${chalk.white("$" + formatNumber(lastPrice))} ` +
-      changeColor(formatChange(change, q.netPercentChange))
-  );
-
-  // Bid/Ask
   if (q.bidPrice !== undefined || q.askPrice !== undefined) {
-    console.log(
+    lines.push(
       `  ${chalk.bold("Bid/Ask:")} $${formatNumber(q.bidPrice)} / $${formatNumber(q.askPrice)}`
     );
   }
-
-  // Open/High/Low
   if (q.openPrice !== undefined || q.highPrice !== undefined || q.lowPrice !== undefined) {
-    console.log(
-      `  ${chalk.bold("Open:")} $${formatNumber(q.openPrice)}  ` +
-        `${chalk.bold("High:")} $${formatNumber(q.highPrice)}  ` +
-        `${chalk.bold("Low:")} $${formatNumber(q.lowPrice)}`
+    lines.push(
+      `  ${chalk.bold("Open:")} $${formatNumber(q.openPrice)}  ${chalk.bold("High:")} $${formatNumber(q.highPrice)}  ${chalk.bold("Low:")} $${formatNumber(q.lowPrice)}`
     );
   }
-
-  // Previous close
   if (q.closePrice !== undefined) {
-    console.log(`  ${chalk.bold("Prev Close:")} $${formatNumber(q.closePrice)}`);
+    lines.push(`  ${chalk.bold("Prev Close:")} $${formatNumber(q.closePrice)}`);
   }
-
-  // Volume
   if (q.totalVolume !== undefined) {
-    console.log(`  ${chalk.bold("Volume:")} ${formatVolume(q.totalVolume)}`);
+    lines.push(`  ${chalk.bold("Volume:")} ${formatVolume(q.totalVolume)}`);
   }
-
-  // 52-week range
   if (q["52WeekHigh"] !== undefined || q["52WeekLow"] !== undefined) {
-    console.log(
+    lines.push(
       `  ${chalk.bold("52W Range:")} $${formatNumber(q["52WeekLow"])} - $${formatNumber(q["52WeekHigh"])}`
     );
   }
 
-  // Fundamentals (if available)
   const f = quote.fundamental;
   if (f) {
     const fundamentals: string[] = [];
-    if (f.peRatio && f.peRatio > 0) fundamentals.push(`P/E: ${formatNumber(f.peRatio)}`);
-    if (f.eps && f.eps !== 0) fundamentals.push(`EPS: $${formatNumber(f.eps)}`);
-    if (f.divYield && f.divYield > 0) fundamentals.push(`Div Yield: ${formatNumber(f.divYield)}%`);
+    if (f.peRatio !== undefined && f.peRatio !== null && f.peRatio > 0) {
+      fundamentals.push(`P/E: ${formatNumber(f.peRatio)}`);
+    }
+    if (f.eps !== undefined && f.eps !== null && f.eps !== 0) {
+      fundamentals.push(`EPS: $${formatNumber(f.eps)}`);
+    }
+    if (f.divYield !== undefined && f.divYield !== null && f.divYield > 0) {
+      fundamentals.push(`Div Yield: ${formatNumber(f.divYield)}%`);
+    }
     if (fundamentals.length > 0) {
-      console.log(`  ${chalk.bold("Fundamentals:")} ${fundamentals.join("  ")}`);
+      lines.push(`  ${chalk.bold("Fundamentals:")} ${fundamentals.join("  ")}`);
     }
   }
 
-  console.log();
+  return lines;
 }
 
-export async function handleQuote(broker: BrokerName, symbols: string[]): Promise<void> {
-  console.log(chalk.bold("\n📈 Market Quotes\n"));
-  console.log(chalk.gray("─".repeat(60)));
-  const api = await brokerClient(broker);
-  const quotes = await api.getQuotes(symbols);
+export function renderQuoteObservation(
+  observation: Observation<Record<string, BrokerQuote>>,
+  symbols: string[],
+  json = false
+): string {
+  const safeObservation = requireObservation("getQuotes", observation);
+  if (json) {
+    return JSON.stringify(safeObservation, null, 2);
+  }
+
+  const quotes = safeObservation.value;
+  const lines = [chalk.bold("\n📈 Market Quotes\n"), chalk.gray("─".repeat(60))];
+  if (isPartialObservation(safeObservation)) {
+    lines.push(chalk.yellow("Warning: Broker data is partial."));
+  }
 
   for (const symbol of symbols) {
     try {
@@ -95,10 +103,21 @@ export async function handleQuote(broker: BrokerName, symbols: string[]): Promis
         quotes[symbol] ?? quotes[symbol.toUpperCase()],
         `No quote data available for ${symbol}`
       );
-      printQuote(quote);
+      lines.push(...printQuoteLines(quote), "");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.log(`${chalk.cyan(symbol.padEnd(10))} ${chalk.red(message)}\n`);
+      lines.push(`${chalk.cyan(symbol.padEnd(10))} ${chalk.red(message)}`, "");
     }
   }
+
+  return lines.join("\n").trimEnd();
+}
+
+export async function handleQuote(
+  broker: BrokerName,
+  symbols: string[],
+  json = false
+): Promise<void> {
+  const api = await brokerClient(broker);
+  console.log(renderQuoteObservation(await api.getQuotes(symbols), symbols, json));
 }

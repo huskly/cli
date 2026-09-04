@@ -29,7 +29,8 @@ export function registerGetPositionsTool(server: McpServer): void {
       runTool(async () => {
         const resolvedBroker = resolveToolBroker(broker);
         const api = await brokerClient(resolvedBroker);
-        let positions = await api.getPositions(symbol);
+        const positionObservation = await api.getPositions(symbol);
+        let positions = positionObservation.value;
 
         if (type) {
           const upperType = type.toUpperCase();
@@ -43,13 +44,24 @@ export function registerGetPositionsTool(server: McpServer): void {
           const symbolLabel = isOption
             ? parseOccSymbol(pos.instrument.symbol)
             : pos.instrument.symbol;
-          const quantity = pos.longQuantity > 0 ? pos.longQuantity : pos.shortQuantity;
+          const quantity =
+            pos.longQuantity !== null && pos.longQuantity > 0 ? pos.longQuantity : pos.shortQuantity;
           const currentPrice =
-            quantity !== 0 ? Math.abs(pos.marketValue / quantity / contractMultiplier) : 0;
+            quantity !== null && quantity !== 0 && pos.marketValue !== null
+              ? Math.abs(pos.marketValue / quantity / contractMultiplier)
+              : null;
           const openProfitLoss =
-            pos.longQuantity > 0 ? pos.longOpenProfitLoss : pos.shortOpenProfitLoss;
-          const costBasis = pos.averagePrice * quantity * contractMultiplier;
-          const openProfitLossPercent = costBasis !== 0 ? (openProfitLoss / costBasis) * 100 : 0;
+            pos.longQuantity !== null && pos.longQuantity > 0
+              ? pos.longOpenProfitLoss
+              : pos.shortOpenProfitLoss;
+          const costBasis =
+            pos.averagePrice !== null && quantity !== null
+              ? pos.averagePrice * quantity * contractMultiplier
+              : null;
+          const openProfitLossPercent =
+            costBasis !== null && costBasis !== 0 && openProfitLoss !== null
+              ? (openProfitLoss / costBasis) * 100
+              : null;
 
           return {
             symbol: symbolLabel,

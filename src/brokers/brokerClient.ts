@@ -12,36 +12,78 @@
 
 export type BrokerName = "ibkr" | "schwab";
 
+export type ObservationCompleteness =
+  | "available"
+  | "partial"
+  | "empty"
+  | "unavailable"
+  | "unspecified";
+
+export interface Observation<T> {
+  readonly observedAt: string | null;
+  readonly completeness: ObservationCompleteness;
+  readonly value: T;
+}
+
+export class BrokerDataUnavailableError extends Error {
+  public readonly code = "broker_data_unavailable" as const;
+  public readonly operation: string;
+
+  public constructor(operation: string) {
+    super("Broker data is unavailable");
+    this.name = "BrokerDataUnavailableError";
+    this.operation = operation;
+  }
+}
+
+export function observe<T>(value: T, completeness: ObservationCompleteness, observedAt: string | null): Observation<T> {
+  return { observedAt, completeness, value };
+}
+
+export function requireObservation<T>(
+  operation: string,
+  observation: Observation<T>
+): Observation<T> {
+  if (observation.completeness === "unavailable") {
+    throw new BrokerDataUnavailableError(operation);
+  }
+  return observation;
+}
+
+export function isPartialObservation<T>(observation: Observation<T>): boolean {
+  return observation.completeness === "partial";
+}
+
 export type BrokerInstrumentSearchProjection =
   "symbol-search" | "symbol-regex" | "desc-search" | "desc-regex" | "search" | "fundamental";
 
 export interface BrokerFundamentalInstrument {
-  peRatio?: number;
-  pegRatio?: number;
-  pbRatio?: number;
-  prRatio?: number;
-  pcfRatio?: number;
-  marketCap?: number;
-  sharesOutstanding?: number;
-  marketCapFloat?: number;
-  eps?: number;
-  epsTTM?: number;
-  epsChangePercentTTM?: number;
-  dividendYield?: number;
-  dividendAmount?: number;
-  dividendPayAmount?: number;
-  dividendFreq?: number;
-  high52?: number;
-  low52?: number;
-  grossMarginTTM?: number;
-  operatingMarginTTM?: number;
-  netProfitMarginTTM?: number;
-  returnOnEquity?: number;
-  returnOnAssets?: number;
-  returnOnInvestment?: number;
-  beta?: number;
-  shortIntToFloat?: number;
-  shortIntDayToCover?: number;
+  peRatio?: number | null;
+  pegRatio?: number | null;
+  pbRatio?: number | null;
+  prRatio?: number | null;
+  pcfRatio?: number | null;
+  marketCap?: number | null;
+  sharesOutstanding?: number | null;
+  marketCapFloat?: number | null;
+  eps?: number | null;
+  epsTTM?: number | null;
+  epsChangePercentTTM?: number | null;
+  dividendYield?: number | null;
+  dividendAmount?: number | null;
+  dividendPayAmount?: number | null;
+  dividendFreq?: number | null;
+  high52?: number | null;
+  low52?: number | null;
+  grossMarginTTM?: number | null;
+  operatingMarginTTM?: number | null;
+  netProfitMarginTTM?: number | null;
+  returnOnEquity?: number | null;
+  returnOnAssets?: number | null;
+  returnOnInvestment?: number | null;
+  beta?: number | null;
+  shortIntToFloat?: number | null;
+  shortIntDayToCover?: number | null;
 }
 
 export interface BrokerInstrument {
@@ -61,25 +103,25 @@ export interface BrokerQuoteReference {
 }
 
 export interface BrokerQuoteData {
-  "52WeekHigh"?: number;
-  "52WeekLow"?: number;
-  askPrice?: number;
-  bidPrice?: number;
-  closePrice?: number;
-  highPrice?: number;
-  lowPrice?: number;
-  lastPrice?: number;
-  mark?: number;
-  netChange?: number;
-  netPercentChange?: number;
-  openPrice?: number;
-  totalVolume?: number;
+  "52WeekHigh"?: number | null;
+  "52WeekLow"?: number | null;
+  askPrice?: number | null;
+  bidPrice?: number | null;
+  closePrice?: number | null;
+  highPrice?: number | null;
+  lowPrice?: number | null;
+  lastPrice?: number | null;
+  mark?: number | null;
+  netChange?: number | null;
+  netPercentChange?: number | null;
+  openPrice?: number | null;
+  totalVolume?: number | null;
 }
 
 export interface BrokerQuoteFundamental {
-  divYield?: number;
-  eps?: number;
-  peRatio?: number;
+  divYield?: number | null;
+  eps?: number | null;
+  peRatio?: number | null;
 }
 
 export interface BrokerQuote {
@@ -90,27 +132,27 @@ export interface BrokerQuote {
 }
 
 export interface AccountBalances {
-  liquidationValue: number;
-  cashBalance: number;
+  liquidationValue: number | null;
+  cashBalance: number | null;
   /** Schwab exposes this debt metric; IBKR has no direct equivalent. */
-  marginBalance?: number;
-  availableFunds: number;
-  buyingPower: number;
-  equity: number;
+  marginBalance?: number | null;
+  availableFunds: number | null;
+  buyingPower: number | null;
+  equity: number | null;
 }
 
 export interface BrokerPosition {
   instrument: { assetType: string; symbol: string };
-  longQuantity: number;
-  shortQuantity: number;
-  averagePrice: number;
-  marketValue: number;
+  longQuantity: number | null;
+  shortQuantity: number | null;
+  averagePrice: number | null;
+  marketValue: number | null;
   /** P/L for the current trading day. */
-  currentDayProfitLoss: number;
+  currentDayProfitLoss: number | null;
   /** Unrealized open P/L attributed to the long leg. */
-  longOpenProfitLoss: number;
+  longOpenProfitLoss: number | null;
   /** Unrealized open P/L attributed to the short leg. */
-  shortOpenProfitLoss: number;
+  shortOpenProfitLoss: number | null;
 }
 
 export interface BrokerTransferItem {
@@ -119,8 +161,8 @@ export interface BrokerTransferItem {
     symbol?: string;
     description?: string;
   };
-  amount?: number;
-  cost?: number;
+  amount?: number | null;
+  cost?: number | null;
   transferItemType?: string;
   feeType?: string;
 }
@@ -132,7 +174,7 @@ export interface BrokerTransaction {
   status: string;
   subAccount?: string;
   description?: string;
-  netAmount: number;
+  netAmount: number | null;
   transferItems?: BrokerTransferItem[];
 }
 
@@ -154,11 +196,11 @@ export interface BrokerOrder {
   status?: string;
   orderType?: string;
   complexOrderStrategyType?: string;
-  quantity?: number;
-  filledQuantity?: number;
-  remainingQuantity?: number;
-  price?: number;
-  stopPrice?: number;
+  quantity?: number | null;
+  filledQuantity?: number | null;
+  remainingQuantity?: number | null;
+  price?: number | null;
+  stopPrice?: number | null;
   orderLegCollection?: BrokerOrderLeg[];
 }
 
@@ -180,13 +222,16 @@ export interface BrokerAccountOrders {
  * client directly.
  */
 export interface BrokerClient {
-  getAccountBalances(): Promise<AccountBalances>;
-  getPositions(symbol?: string): Promise<BrokerPosition[]>;
-  getQuotes(symbols: string[]): Promise<Record<string, BrokerQuote>>;
+  getAccountBalances(): Promise<Observation<AccountBalances>>;
+  getPositions(symbol?: string): Promise<Observation<BrokerPosition[]>>;
+  getQuotes(symbols: string[]): Promise<Observation<Record<string, BrokerQuote>>>;
   searchInstruments(
     symbol: string,
     projection: BrokerInstrumentSearchProjection
-  ): Promise<BrokerInstrument[]>;
-  fetchTransactionHistory(startDate: Date, endDate: Date): Promise<BrokerTransactionHistory[]>;
-  fetchOrders(options: BrokerOrdersOptions): Promise<BrokerAccountOrders[]>;
+  ): Promise<Observation<BrokerInstrument[]>>;
+  fetchTransactionHistory(
+    startDate: Date,
+    endDate: Date
+  ): Promise<Observation<BrokerTransactionHistory[]>>;
+  fetchOrders(options: BrokerOrdersOptions): Promise<Observation<BrokerAccountOrders[]>>;
 }

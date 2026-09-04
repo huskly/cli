@@ -81,8 +81,9 @@ program
   .command("quote")
   .description("Get current price quotes for one or more symbols")
   .argument("<symbols...>", "Stock symbols to quote")
-  .action(async (symbols: string[]) => {
-    await handleQuote(broker(), symbols);
+  .option("--json", "Emit a stable JSON DTO")
+  .action(async (symbols: string[], options: { json?: boolean }) => {
+    await handleQuote(broker(), symbols, options.json);
   });
 
 program
@@ -94,7 +95,8 @@ program
     "Search type: symbol-search, symbol-regex, desc-search, desc-regex, search, fundamental",
     "symbol-search"
   )
-  .action(async (symbol: string, options: { projection: string }) => {
+  .option("--json", "Emit a stable JSON DTO")
+  .action(async (symbol: string, options: { projection: string; json?: boolean }) => {
     await handleSearch(broker(), symbol, options);
   });
 
@@ -177,8 +179,9 @@ addDerivativeCommands(program, broker);
 program
   .command("account")
   .description("Show account equity/net liquidation value")
-  .action(async () => {
-    await handleAccount(broker());
+  .option("--json", "Emit a stable JSON DTO")
+  .action(async (options: { json?: boolean }) => {
+    await handleAccount(broker(), options.json);
   });
 
 program
@@ -195,8 +198,9 @@ program
   .argument("[symbol]", "Optional symbol to filter positions", undefined)
   .option("-t, --type <type>", "Filter by asset type (e.g., OPTION, EQUITY)")
   .option("--csv", "Output in CSV format instead of table")
-  .action(async (symbol: string | undefined, options: { type?: string; csv?: boolean }) => {
-    await handlePositions(broker(), symbol, options.type, options.csv);
+  .option("--json", "Emit a stable JSON DTO")
+  .action(async (symbol: string | undefined, options: { type?: string; csv?: boolean; json?: boolean }) => {
+    await handlePositions(broker(), symbol, options.type, options.csv, options.json);
   });
 
 program
@@ -206,7 +210,8 @@ program
   .option("-e, --end <date>", "End date (YYYY-MM-DD)")
   .option("-t, --type <type>", "Filter by transaction type (e.g., TRADE, DIVIDEND)")
   .option("--csv", "Output in CSV format instead of table")
-  .action(async (options: { start?: string; end?: string; type?: string; csv?: boolean }) => {
+  .option("--json", "Emit a stable JSON DTO")
+  .action(async (options: { start?: string; end?: string; type?: string; csv?: boolean; json?: boolean }) => {
     await handleTransactions(broker(), options);
   });
 
@@ -217,7 +222,8 @@ program
   .option("-t, --to <date>", "To entered time (YYYY-MM-DD)")
   .option("-s, --status <status>", "Filter by order status (FILLED, WORKING, CANCELED, etc.)")
   .option("-m, --max-results <n>", "Maximum number of orders to retrieve")
-  .action(async (options: { from?: string; to?: string; status?: string; maxResults?: string }) => {
+  .option("--json", "Emit a stable JSON DTO")
+  .action(async (options: { from?: string; to?: string; status?: string; maxResults?: string; json?: boolean }) => {
     await handleOrders(broker(), options);
   });
 

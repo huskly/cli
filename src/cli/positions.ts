@@ -2,7 +2,13 @@ import chalk from "chalk";
 import { brokerClient } from "./shared.js";
 import { parseOccSymbol } from "#src/helpers.js";
 import { currencyFormatUsd } from "#src/format.js";
-import type { BrokerName } from "#src/brokers/brokerClient.js";
+import {
+  isPartialObservation,
+  requireObservation,
+  type BrokerName,
+  type BrokerPosition,
+  type Observation,
+} from "#src/brokers/brokerClient.js";
 
 /** Escapes a value for CSV output by wrapping in quotes if it contains special characters. */
 function escapeCsv(value: string): string {
@@ -35,122 +41,170 @@ function formatColumn(value: string, width: number, align: "left" | "right" = "l
   return align === "right" ? truncated.padStart(width) : truncated.padEnd(width);
 }
 
-export async function handlePositions(
-  broker: BrokerName,
-  symbol?: string,
-  type?: string,
-  csv?: boolean
-): Promise<void> {
-  const api = await brokerClient(broker);
-  let positions = await api.getPositions(symbol);
+function isPositive(value: number | null | undefined): value is number {
+  return value !== null && value !== undefined && value > 0;
+}
 
-  // Filter by asset type if specified
-  if (type) {
-    const upperType = type.toUpperCase();
+function formatFixed(value: number | null | undefined): string {
+  return value === null || value === undefined ? "-" : value.toFixed(2);
+}
+
+function formatSignedCurrency(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "-";
+  return value >= 0 ? `+$${value.toFixed(2)}` : `-$${Math.abs(value).toFixed(2)}`;
+}
+
+function calculateCurrentPrice(position: BrokerPosition): number | null {
+  const quantity = isPositive(position.longQuantity) ? position.longQuantity : position.shortQuantity;
+  const marketValue = position.marketValue;
+  if (quantity === null || marketValue === null || quantity === 0) {
+    return null;
+  }
+  const contractMultiplier = position.instrument.assetType === "OPTION" ? 100 : 1;
+  return Math.abs(marketValue / quantity / contractMultiplier);
+}
+
+function calculateOpenProfitLoss(position: BrokerPosition): number | null {
+  return isPositive(position.longQuantity)
+    ? position.longOpenProfitLoss
+    : position.shortOpenProfitLoss;
+}
+
+function calculateProfitLossPercent(position: BrokerPosition, plOpen: number | null): number | null {
+  const quantity = isPositive(position.longQuantity) ? position.longQuantity : position.shortQuantity;
+  const averagePrice = position.averagePrice;
+  if (
+    quantity === null ||
+    averagePrice === null ||
+    plOpen === null ||
+    quantity === 0
+  ) {
+    return null;
+  }
+  const contractMultiplier = position.instrument.assetType === "OPTION" ? 100 : 1;
+  const costBasis = averagePrice * quantity * contractMultiplier;
+  return costBasis !== 0 ? (plOpen / costBasis) * 100 : null;
+}
+
+export interface PositionsRenderOptions {
+  symbol?: string;
+  type?: string;
+  csv?: boolean;
+  json?: boolean;
+}
+
+export function renderPositionsObservation(
+  observation: Observation<BrokerPosition[]>,
+  options: PositionsRenderOptions = {}
+): string {
+  const safeObservation = requireObservation("getPositions", observation);
+  if (options.json) {
+    return JSON.stringify(safeObservation, null, 2);
+  }
+
+  let positions = safeObservation.value;
+  if (options.type) {
+    const upperType = options.type.toUpperCase();
     positions = positions.filter((pos) => pos.instrument.assetType === upperType);
   }
 
   if (positions.length === 0) {
-    if (csv) {
-      // No output for CSV when empty
-      return;
-    }
-    console.log(chalk.yellow("No positions found"));
-    return;
+    return options.csv ? "" : chalk.yellow("No positions found");
   }
 
-  const sortedPositions = positions.sort((a, b) =>
+  const sortedPositions = [...positions].sort((a, b) =>
     a.instrument.symbol.localeCompare(b.instrument.symbol)
   );
+  const lines: string[] = [];
 
-  if (csv) {
-    // Output CSV header
-    console.log(
+  if (options.csv) {
+    lines.push(
       "Symbol,Type,Long Qty,Short Qty,Avg Price,Cur Price,Market Value,Day P/L,P/L Open,P/L %"
     );
-
     for (const pos of sortedPositions) {
       const assetType = pos.instrument.assetType;
       const isOption = assetType === "OPTION";
-      const contractMultiplier = isOption ? 100 : 1;
       const posSymbol = isOption ? parseOccSymbol(pos.instrument.symbol) : pos.instrument.symbol;
-      const longQty = pos.longQuantity > 0 ? pos.longQuantity : 0;
-      const shortQty = pos.shortQuantity > 0 ? pos.shortQuantity : 0;
-      const quantity = pos.longQuantity > 0 ? pos.longQuantity : pos.shortQuantity;
-      const curPrice =
-        quantity !== 0 ? Math.abs(pos.marketValue / quantity / contractMultiplier) : 0;
-      const plOpen = pos.longQuantity > 0 ? pos.longOpenProfitLoss : pos.shortOpenProfitLoss;
-      const costBasis = pos.averagePrice * quantity * contractMultiplier;
-      const plPct = costBasis !== 0 ? (plOpen / costBasis) * 100 : 0;
-
-      console.log(
+      const longQty = isPositive(pos.longQuantity) ? String(pos.longQuantity) : "0";
+      const shortQty = isPositive(pos.shortQuantity) ? String(pos.shortQuantity) : "0";
+      const curPrice = calculateCurrentPrice(pos);
+      const plOpen = calculateOpenProfitLoss(pos);
+      const plPct = calculateProfitLossPercent(pos, plOpen);
+      lines.push(
         [
           escapeCsv(posSymbol),
           escapeCsv(assetType),
           longQty,
           shortQty,
-          pos.averagePrice.toFixed(2),
-          curPrice.toFixed(2),
-          pos.marketValue.toFixed(2),
-          pos.currentDayProfitLoss.toFixed(2),
-          plOpen.toFixed(2),
-          plPct.toFixed(2),
+          formatFixed(pos.averagePrice),
+          formatFixed(curPrice),
+          formatFixed(pos.marketValue),
+          formatFixed(pos.currentDayProfitLoss),
+          formatFixed(plOpen),
+          plPct === null ? "-" : plPct.toFixed(2),
         ].join(",")
       );
     }
-    return;
+    return lines.join("\n");
   }
 
-  // Table output (default)
   const filters: string[] = [];
-  if (symbol) filters.push(symbol.toUpperCase());
-  if (type) filters.push(type.toUpperCase());
+  if (options.symbol) filters.push(options.symbol.toUpperCase());
+  if (options.type) filters.push(options.type.toUpperCase());
   const filterText = filters.length > 0 ? `: ${filters.join(", ")}` : "";
-  console.log(chalk.bold(`\n Account Positions${filterText}\n`));
-
-  console.log(chalk.gray("-".repeat(SEPARATOR_LENGTH)));
-  console.log(
+  lines.push(chalk.bold(`\n Account Positions${filterText}\n`));
+  if (isPartialObservation(safeObservation)) {
+    lines.push(chalk.yellow("Warning: Broker data is partial."));
+  }
+  lines.push(chalk.gray("-".repeat(SEPARATOR_LENGTH)));
+  lines.push(
     `${chalk.gray(formatColumn("Symbol", COLUMN_WIDTHS.symbol))} ${chalk.gray(formatColumn("Type", COLUMN_WIDTHS.type))} ${chalk.gray(formatColumn("Long", COLUMN_WIDTHS.longQty, "right"))} ${chalk.gray(formatColumn("Short", COLUMN_WIDTHS.shortQty, "right"))} ${chalk.gray(formatColumn("Avg Price", COLUMN_WIDTHS.avgPrice, "right"))} ${chalk.gray(formatColumn("Cur Price", COLUMN_WIDTHS.curPrice, "right"))} ${chalk.gray(formatColumn("Mkt Value", COLUMN_WIDTHS.marketValue, "right"))} ${chalk.gray(formatColumn("Day P/L", COLUMN_WIDTHS.dayPL, "right"))} ${chalk.gray(formatColumn("P/L Open", COLUMN_WIDTHS.plOpen, "right"))} ${chalk.gray(formatColumn("P/L %", COLUMN_WIDTHS.plPct, "right"))}`
   );
-  console.log(chalk.gray("-".repeat(SEPARATOR_LENGTH)));
+  lines.push(chalk.gray("-".repeat(SEPARATOR_LENGTH)));
 
   for (const pos of sortedPositions) {
     const assetType = pos.instrument.assetType;
     const isOption = assetType === "OPTION";
-    const contractMultiplier = isOption ? 100 : 1;
     const posSymbol = isOption ? parseOccSymbol(pos.instrument.symbol) : pos.instrument.symbol;
-    const longQty = pos.longQuantity > 0 ? String(pos.longQuantity) : "-";
-    const shortQty = pos.shortQuantity > 0 ? String(pos.shortQuantity) : "-";
-    const avgPrice = `$${pos.averagePrice.toFixed(2)}`;
-    const quantity = pos.longQuantity > 0 ? pos.longQuantity : pos.shortQuantity;
-    const curPrice = quantity !== 0 ? Math.abs(pos.marketValue / quantity / contractMultiplier) : 0;
-    const curPriceStr = `$${curPrice.toFixed(2)}`;
-    const marketValue = currencyFormatUsd(pos.marketValue);
+    const longQty = isPositive(pos.longQuantity) ? String(pos.longQuantity) : "-";
+    const shortQty = isPositive(pos.shortQuantity) ? String(pos.shortQuantity) : "-";
+    const curPrice = calculateCurrentPrice(pos);
     const dayPL = pos.currentDayProfitLoss;
-    const dayPLValue = dayPL >= 0 ? `+$${dayPL.toFixed(2)}` : `-$${Math.abs(dayPL).toFixed(2)}`;
-
-    // P/L Open: use long or short open P/L based on position type
-    const plOpen = pos.longQuantity > 0 ? pos.longOpenProfitLoss : pos.shortOpenProfitLoss;
-    const plOpenValue = plOpen >= 0 ? `+$${plOpen.toFixed(2)}` : `-$${Math.abs(plOpen).toFixed(2)}`;
-
-    // P/L %: calculate percentage based on cost basis
-    const costBasis = pos.averagePrice * quantity * contractMultiplier;
-    const plPct = costBasis !== 0 ? (plOpen / costBasis) * 100 : 0;
-    const plPctValue = `${plPct >= 0 ? "+" : ""}${plPct.toFixed(2)}%`;
+    const plOpen = calculateOpenProfitLoss(pos);
+    const plPct = calculateProfitLossPercent(pos, plOpen);
 
     const symbolLabel = formatColumn(posSymbol, COLUMN_WIDTHS.symbol);
     const typeLabel = formatColumn(assetType, COLUMN_WIDTHS.type);
     const longQtyLabel = formatColumn(longQty, COLUMN_WIDTHS.longQty, "right");
     const shortQtyLabel = formatColumn(shortQty, COLUMN_WIDTHS.shortQty, "right");
-    const avgPriceLabel = formatColumn(avgPrice, COLUMN_WIDTHS.avgPrice, "right");
-    const curPriceLabel = formatColumn(curPriceStr, COLUMN_WIDTHS.curPrice, "right");
-    const marketValueLabel = formatColumn(marketValue, COLUMN_WIDTHS.marketValue, "right");
-    const dayPLLabel = formatColumn(dayPLValue, COLUMN_WIDTHS.dayPL, "right");
-    const plOpenLabel = formatColumn(plOpenValue, COLUMN_WIDTHS.plOpen, "right");
-    const plPctLabel = formatColumn(plPctValue, COLUMN_WIDTHS.plPct, "right");
-    console.log(
-      `${chalk.cyan(symbolLabel)} ${chalk.white(typeLabel)} ${chalk.green(longQtyLabel)} ${chalk.red(shortQtyLabel)} ${chalk.white(avgPriceLabel)} ${chalk.white(curPriceLabel)} ${chalk.yellow(marketValueLabel)} ${dayPL >= 0 ? chalk.green(dayPLLabel) : chalk.red(dayPLLabel)} ${plOpen >= 0 ? chalk.green(plOpenLabel) : chalk.red(plOpenLabel)} ${plPct >= 0 ? chalk.green(plPctLabel) : chalk.red(plPctLabel)}`
+    const avgPriceLabel = formatColumn(currencyFormatUsd(pos.averagePrice), COLUMN_WIDTHS.avgPrice, "right");
+    const curPriceLabel = formatColumn(currencyFormatUsd(curPrice), COLUMN_WIDTHS.curPrice, "right");
+    const marketValueLabel = formatColumn(currencyFormatUsd(pos.marketValue), COLUMN_WIDTHS.marketValue, "right");
+    const dayPLLabel = formatColumn(formatSignedCurrency(dayPL), COLUMN_WIDTHS.dayPL, "right");
+    const plOpenLabel = formatColumn(formatSignedCurrency(plOpen), COLUMN_WIDTHS.plOpen, "right");
+    const plPctLabel = formatColumn(plPct === null ? "-" : `${plPct >= 0 ? "+" : ""}${plPct.toFixed(2)}%`, COLUMN_WIDTHS.plPct, "right");
+    lines.push(
+      `${chalk.cyan(symbolLabel)} ${chalk.white(typeLabel)} ${chalk.green(longQtyLabel)} ${chalk.red(shortQtyLabel)} ${chalk.white(avgPriceLabel)} ${chalk.white(curPriceLabel)} ${chalk.yellow(marketValueLabel)} ${dayPL !== null && dayPL < 0 ? chalk.red(dayPLLabel) : chalk.green(dayPLLabel)} ${plOpen !== null && plOpen < 0 ? chalk.red(plOpenLabel) : chalk.green(plOpenLabel)} ${plPct !== null && plPct < 0 ? chalk.red(plPctLabel) : chalk.green(plPctLabel)}`
     );
   }
-  console.log();
+  return lines.join("\n");
+}
+
+export async function handlePositions(
+  broker: BrokerName,
+  symbol?: string,
+  type?: string,
+  csv?: boolean,
+  json?: boolean
+): Promise<void> {
+  const api = await brokerClient(broker);
+  const renderOptions: PositionsRenderOptions = {};
+  if (symbol !== undefined) renderOptions.symbol = symbol;
+  if (type !== undefined) renderOptions.type = type;
+  if (csv !== undefined) renderOptions.csv = csv;
+  if (json !== undefined) renderOptions.json = json;
+  const output = renderPositionsObservation(await api.getPositions(symbol), renderOptions);
+  if (output.length > 0) {
+    console.log(output);
+  }
 }
