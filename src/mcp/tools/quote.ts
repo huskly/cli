@@ -1,10 +1,60 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { BrokerClient, BrokerName } from "#src/brokers/brokerClient.js";
 import { z } from "zod";
-import { brokerClient } from "#src/cli/shared.js";
-import { resolveToolBroker } from "#src/mcp/defaultBroker.js";
-import { jsonResult, runTool } from "#src/mcp/toolResult.js";
+import { mcpBrokerClient, resolveToolBroker } from "#src/mcp/defaultBroker.js";
+import { observationResult, runTool } from "#src/mcp/toolResult.js";
 
-export function registerGetQuoteTool(server: McpServer): void {
+export interface QuoteToolDependencies {
+  readonly resolveBrokerClient?: (broker: BrokerName) => Promise<BrokerClient>;
+}
+
+export function createGetQuoteHandler(
+  dependencies: QuoteToolDependencies = {}
+): (input: {
+  symbols: string[];
+  broker?: "schwab" | "ibkr" | undefined;
+}) => Promise<CallToolResult> {
+  return async ({ symbols, broker }) =>
+    runTool(async () => {
+      const resolvedBroker = resolveToolBroker(broker);
+      const api = await (dependencies.resolveBrokerClient ?? mcpBrokerClient)(resolvedBroker);
+      const quoteObservation = await api.getQuotes(symbols);
+      const quotes = quoteObservation.value;
+
+      const results = symbols.map((symbol) => {
+        const quote = quotes[symbol] ?? quotes[symbol.toUpperCase()];
+        if (!quote) {
+          return { symbol, error: `No quote data available for ${symbol}` };
+        }
+        const q = quote.quote;
+        return {
+          symbol: quote.symbol,
+          description: quote.reference.description,
+          exchange: quote.reference.exchangeName ?? quote.reference.exchange,
+          lastPrice: q.mark ?? q.lastPrice,
+          change: q.netChange,
+          percentChange: q.netPercentChange,
+          bid: q.bidPrice,
+          ask: q.askPrice,
+          open: q.openPrice,
+          high: q.highPrice,
+          low: q.lowPrice,
+          previousClose: q.closePrice,
+          volume: q.totalVolume,
+          week52High: q["52WeekHigh"],
+          week52Low: q["52WeekLow"],
+        };
+      });
+
+      return observationResult(quoteObservation, { broker: resolvedBroker, quotes: results });
+    });
+}
+
+export function registerGetQuoteTool(
+  server: McpServer,
+  dependencies: QuoteToolDependencies = {}
+): void {
   server.registerTool(
     "get_quote",
     {
@@ -24,38 +74,6 @@ export function registerGetQuoteTool(server: McpServer): void {
           ),
       },
     },
-    async ({ symbols, broker }) =>
-      runTool(async () => {
-        const resolvedBroker = resolveToolBroker(broker);
-        const api = await brokerClient(resolvedBroker);
-        const quotes = await api.getQuotes(symbols);
-
-        const results = symbols.map((symbol) => {
-          const quote = quotes[symbol] ?? quotes[symbol.toUpperCase()];
-          if (!quote) {
-            return { symbol, error: `No quote data available for ${symbol}` };
-          }
-          const q = quote.quote;
-          return {
-            symbol: quote.symbol,
-            description: quote.reference.description,
-            exchange: quote.reference.exchangeName ?? quote.reference.exchange,
-            lastPrice: q.mark ?? q.lastPrice,
-            change: q.netChange,
-            percentChange: q.netPercentChange,
-            bid: q.bidPrice,
-            ask: q.askPrice,
-            open: q.openPrice,
-            high: q.highPrice,
-            low: q.lowPrice,
-            previousClose: q.closePrice,
-            volume: q.totalVolume,
-            week52High: q["52WeekHigh"],
-            week52Low: q["52WeekLow"],
-          };
-        });
-
-        return jsonResult({ broker: resolvedBroker, quotes: results });
-      })
+    createGetQuoteHandler(dependencies)
   );
 }

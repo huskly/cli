@@ -1,3 +1,4 @@
+import { requireObservation, type Observation } from "#src/brokers/brokerClient.js";
 import type {
   DerivativeContract,
   DerivativeContractRequest,
@@ -13,13 +14,13 @@ import {
 } from "./verticalSpread.js";
 
 export interface OptionResolution {
-  contract: DerivativeContract;
-  referenceQuote: DerivativeReferenceQuote;
+  contract: Observation<DerivativeContract>;
+  referenceQuote: Observation<DerivativeReferenceQuote>;
 }
 
 export interface OptionDiscoveryResearch {
-  contracts: DerivativeContract[];
-  referenceQuote: DerivativeReferenceQuote | null;
+  contracts: Observation<DerivativeContract[]>;
+  referenceQuote: Observation<DerivativeReferenceQuote> | null;
 }
 
 export interface OptionChainRequest extends DerivativeContractRequest {
@@ -28,9 +29,9 @@ export interface OptionChainRequest extends DerivativeContractRequest {
 }
 
 export interface OptionChainResearch {
-  referenceQuote: DerivativeReferenceQuote | null;
+  referenceQuote: Observation<DerivativeReferenceQuote> | null;
   center: number | null;
-  quotes: DerivativeQuote[];
+  quotes: Observation<DerivativeQuote[]>;
 }
 
 export interface VerticalSpreadResearchRequest {
@@ -47,7 +48,10 @@ export interface VerticalSpreadResearchRequest {
 }
 
 export interface VerticalSpreadResearch {
-  referenceQuote: DerivativeReferenceQuote;
+  referenceQuote: Observation<DerivativeReferenceQuote>;
+  longQuote: Observation<DerivativeQuote>;
+  shortQuote: Observation<DerivativeQuote>;
+  observation: Observation<VerticalSpreadQuote>;
   spread: VerticalSpreadQuote;
   pricingNotice: string;
 }
@@ -99,7 +103,15 @@ function filterAround(
 }
 
 function sameContract(left: DerivativeContract, right: DerivativeContract): boolean {
+  const leftReference = left.brokerReference;
+  const rightReference = right.brokerReference;
+  const referencesMatch =
+    leftReference === undefined && rightReference === undefined
+      ? true
+      : leftReference?.broker === rightReference?.broker &&
+        leftReference?.contractId === rightReference?.contractId;
   return (
+    referencesMatch &&
     left.identity.assetClass === right.identity.assetClass &&
     left.identity.underlying === right.identity.underlying &&
     left.identity.expiration === right.identity.expiration &&
@@ -107,8 +119,41 @@ function sameContract(left: DerivativeContract, right: DerivativeContract): bool
     left.identity.right === right.identity.right &&
     left.identity.tradingClass === right.identity.tradingClass &&
     left.identity.exchange === right.identity.exchange &&
-    left.identity.multiplier === right.identity.multiplier
+    left.identity.multiplier === right.identity.multiplier &&
+    left.identity.settlement === right.identity.settlement &&
+    left.identity.exerciseStyle === right.identity.exerciseStyle
   );
+}
+
+const completenessStrength = {
+  unavailable: 0,
+  empty: 1,
+  partial: 2,
+  unspecified: 3,
+  available: 4,
+} as const;
+
+function combineObservation<T>(
+  value: T,
+  observations: readonly Observation<unknown>[]
+): Observation<T> {
+  const weakest = observations.reduce((selected, observation) =>
+    completenessStrength[observation.completeness] < completenessStrength[selected.completeness]
+      ? observation
+      : selected
+  );
+  const observedAt =
+    observations
+      .map((observation) => observation.observedAt)
+      .filter((timestamp): timestamp is string => timestamp !== null)
+      .sort()[0] ?? null;
+  const warnings = [...new Set(observations.flatMap((observation) => observation.warnings ?? []))];
+  return {
+    value,
+    completeness: weakest.completeness,
+    observedAt,
+    ...(warnings.length === 0 ? {} : { warnings }),
+  };
 }
 
 /** Read-only option and spread research shared by CLI and MCP presentation layers. */
@@ -117,7 +162,8 @@ export class DerivativeResearchService {
 
   async discover(request: DerivativeContractRequest): Promise<OptionDiscoveryResearch> {
     const contracts = await this.client.getContracts(request);
-    const first = contracts[0];
+    requireObservation("queryDerivativeContracts", contracts);
+    const first = contracts.value[0];
     return {
       contracts,
       referenceQuote: first === undefined ? null : await this.client.getReferenceQuote(first),
@@ -127,27 +173,43 @@ export class DerivativeResearchService {
   async resolve(
     request: DerivativeContractRequest & { right: DerivativeRight; strike: number }
   ): Promise<OptionResolution> {
-    const contract = await this.client.resolveContract(request);
+    const contract = requireObservation(
+      "resolveDerivativeContract",
+      await this.client.resolveContract(request)
+    );
+    if (contract.value === null) {
+      throw new Error(
+        `No exact derivative contract returned for ${request.underlying} ${request.expiration} ${String(request.strike)} ${request.right}`
+      );
+    }
     return {
-      contract,
-      referenceQuote: await this.client.getReferenceQuote(contract),
+      contract: { ...contract, value: contract.value },
+      referenceQuote: await this.client.getReferenceQuote(contract.value),
     };
   }
 
   async chain(request: OptionChainRequest): Promise<OptionChainResearch> {
     const { around, strikes, ...contractRequest } = request;
-    const quotes = await this.client.getChain(contractRequest);
-    if (quotes.length === 0) {
-      return { referenceQuote: null, center: around ?? null, quotes: [] };
+    const quotes = requireObservation(
+      "queryDerivativeQuotes",
+      await this.client.getChain(contractRequest)
+    );
+    if (quotes.value.length === 0) {
+      return { referenceQuote: null, center: around ?? null, quotes };
     }
-    const first = quotes[0];
+    const first = quotes.value[0];
     if (first === undefined) throw new Error("Derivative chain unexpectedly has no first quote");
     const referenceQuote = await this.client.getReferenceQuote(first.contract);
-    const center = around ?? quoteCenter(referenceQuote);
+    const center =
+      around ??
+      quoteCenter(requireObservation("queryDerivativeReferenceQuote", referenceQuote).value);
     return {
       referenceQuote,
       center,
-      quotes: filterAround(quotes, center, strikes),
+      quotes: {
+        ...quotes,
+        value: filterAround(quotes.value, center, strikes),
+      },
     };
   }
 
@@ -165,16 +227,23 @@ export class DerivativeResearchService {
       this.exactQuote({ ...base, strike: request.longStrike }),
       this.exactQuote({ ...base, strike: request.shortStrike }),
     ]);
-    const referenceQuote = await this.client.getReferenceQuote(longQuote.contract);
+    const referenceQuote = requireObservation(
+      "queryDerivativeReferenceQuote",
+      await this.client.getReferenceQuote(longQuote.value.contract)
+    );
+    const spread = buildVerticalSpread({
+      kind: request.kind,
+      quantity: request.quantity,
+      longQuote: longQuote.value,
+      shortQuote: shortQuote.value,
+      ...(request.limit !== undefined ? { limit: request.limit } : {}),
+    });
     return {
       referenceQuote,
-      spread: buildVerticalSpread({
-        kind: request.kind,
-        quantity: request.quantity,
-        longQuote,
-        shortQuote,
-        ...(request.limit !== undefined ? { limit: request.limit } : {}),
-      }),
+      longQuote,
+      shortQuote,
+      observation: combineObservation(spread, [longQuote, shortQuote, referenceQuote]),
+      spread,
       pricingNotice:
         "Natural and midpoint prices are synthesized from individual leg markets; they are not a broker combo NBBO or executable preview.",
     };
@@ -182,15 +251,30 @@ export class DerivativeResearchService {
 
   private async exactQuote(
     request: DerivativeContractRequest & { right: DerivativeRight; strike: number }
-  ): Promise<DerivativeQuote> {
-    const contract = await this.client.resolveContract(request);
-    const quotes = await this.client.getChain(request);
-    const quote = quotes.find((candidate) => sameContract(candidate.contract, contract));
-    if (quote === undefined) {
+  ): Promise<Observation<DerivativeQuote>> {
+    const contract = requireObservation(
+      "resolveDerivativeContract",
+      await this.client.resolveContract(request)
+    );
+    if (contract.value === null) {
       throw new Error(
-        `No market quote returned for ${request.underlying} ${request.expiration} ${String(request.strike)} ${request.right}`
+        `No exact derivative contract returned for ${request.underlying} ${request.expiration} ${String(request.strike)} ${request.right}`
       );
     }
-    return quote;
+    const quotes = requireObservation("queryDerivativeQuotes", await this.client.getChain(request));
+    const resolvedContract = contract.value;
+    const matches = quotes.value.filter((candidate) =>
+      sameContract(candidate.contract, resolvedContract)
+    );
+    if (matches.length !== 1) {
+      throw new Error(
+        matches.length === 0
+          ? `No exact market quote returned for ${request.underlying} ${request.expiration} ${String(request.strike)} ${request.right}`
+          : `Ambiguous exact market quotes returned for ${request.underlying} ${request.expiration} ${String(request.strike)} ${request.right}`
+      );
+    }
+    const quote = matches[0];
+    if (quote === undefined) throw new Error("Exact derivative quote is missing");
+    return combineObservation(quote, [contract, quotes]);
   }
 }

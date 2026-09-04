@@ -1,5 +1,21 @@
 import type {
-  DerivativeAssetClass,
+  GetDiagnosticsResponse,
+  QueryDerivativeContractsRequest,
+  QueryDerivativeContractsResponse,
+  QueryDerivativeExpiriesRequest,
+  QueryDerivativeExpiriesResponse,
+  QueryDerivativeQuotesRequest,
+  QueryDerivativeQuotesResponse,
+  QueryDerivativeReferenceQuoteRequest,
+  QueryDerivativeReferenceQuoteResponse,
+  ResolveDerivativeContractRequest,
+  ResolveDerivativeContractResponse,
+} from "@huskly/ibkr-gateway-client";
+import { z } from "zod";
+import { observe, requireObservation, type Observation } from "#src/brokers/brokerClient.js";
+import { parseGatewayResponse } from "#src/gateway/gatewayValidation.js";
+import type { GatewayTransport } from "#src/gateway/gatewayTransport.js";
+import type {
   DerivativeContract,
   DerivativeContractRequest,
   DerivativeDataAvailability,
@@ -10,204 +26,360 @@ import type {
   DerivativeReferenceQuote,
   DerivativeRight,
 } from "./derivativeDiscovery.js";
-import type {
-  DerivativeComboPreviewRequest,
-  DerivativeComboPreviewResult,
-  DerivativePreviewClient,
-  TradingDiagnostics,
-} from "./derivativePreview.js";
-import type {
-  DerivativeComboExecutionRequest,
-  DerivativeExecutionClient,
-  DerivativeOrderLifecycle,
-  DerivativeOrderSubmissionResult,
-} from "./derivativeExecution.js";
+import type { DerivativePreviewClient, TradingDiagnostics } from "./derivativePreview.js";
 
-type IbkrOptionRight = "C" | "P";
+const readStatusSchema = z.enum(["available", "partial", "empty", "unavailable"]);
+const derivativeAvailabilitySchema = z
+  .enum(["live", "delayed", "frozen", "frozen-delayed", "unavailable"])
+  .nullable();
+const derivativeRightSchema = z.enum(["C", "P"]).nullable();
+const derivativeAssetClassSchema = z.enum(["OPT", "FOP"]).nullable();
+const brokerIdSchema = z.number().int().positive().nullable();
 
-interface IbkrDerivativeExpiry {
-  assetClass: DerivativeAssetClass;
-  underlying: string;
-  expiration: string;
-  tradingClass: string;
-  exchange: string;
-  multiplier: number;
-}
+const diagnosticsSchema = z
+  .object({
+    version: z.string(),
+    state: z.enum(["starting", "ready", "degraded", "draining", "stopped"]),
+    readReady: z.boolean(),
+    newMutationReady: z.boolean(),
+    recoveryMutationReady: z.boolean(),
+    lockOwned: z.boolean(),
+    accountVerified: z.boolean(),
+    account: z.string(),
+    environment: z.enum(["paper", "live"]),
+    authenticated: z.boolean().nullable(),
+    connected: z.boolean().nullable(),
+    competingSession: z.boolean().nullable(),
+    lastTickleAt: z.string().nullable(),
+    nextRenewalAt: z.string().nullable(),
+    lastBrokerRequestAt: z.string().nullable(),
+    readQueueDepth: z.number(),
+    pendingWarnings: z.number(),
+    reconciliationRequiredOperations: z.number(),
+  })
+  .strict() satisfies z.ZodType<GetDiagnosticsResponse>;
 
-interface IbkrDerivativeContract extends IbkrDerivativeExpiry {
-  conid: number;
-  strike: number;
-  right: IbkrOptionRight;
-  settlement?: string;
-  exerciseStyle?: string;
-}
+const derivativeExpirySchema = z
+  .object({
+    assetClass: derivativeAssetClassSchema,
+    underlying: z.string().nullable(),
+    expiration: z.string().nullable(),
+    tradingClass: z.string().nullable(),
+    exchange: z.string().nullable(),
+    multiplier: z.number().nullable(),
+  })
+  .strict();
 
-interface IbkrDerivativeQuote {
-  contract: IbkrDerivativeContract;
-  availability: DerivativeDataAvailability;
-  timestamp: string | null;
-  bid: number | null;
-  ask: number | null;
-  last: number | null;
-  mark: number | null;
-  delta: number | null;
-  impliedVolatility: number | null;
-  volume: number | null;
-  openInterest: number | null;
-}
+const derivativeContractSchema = z
+  .object({
+    brokerId: brokerIdSchema,
+    symbol: z.string().nullable(),
+    assetClass: derivativeAssetClassSchema,
+    underlying: z.string().nullable(),
+    expiration: z.string().nullable(),
+    tradingClass: z.string().nullable(),
+    exchange: z.string().nullable(),
+    multiplier: z.number().nullable(),
+    strike: z.number().nullable(),
+    right: derivativeRightSchema,
+    settlement: z.string().nullable(),
+    exerciseStyle: z.string().nullable(),
+  })
+  .strict();
 
-interface IbkrDerivativeReferenceQuote {
-  conid: number;
-  symbol: string;
-  availability: DerivativeDataAvailability;
-  timestamp: string | null;
-  bid: number | null;
-  ask: number | null;
-  last: number | null;
-  mark: number | null;
-}
+const derivativeQuoteSchema = z
+  .object({
+    brokerId: brokerIdSchema,
+    symbol: z.string().nullable(),
+    assetClass: derivativeAssetClassSchema,
+    underlying: z.string().nullable(),
+    expiration: z.string().nullable(),
+    tradingClass: z.string().nullable(),
+    exchange: z.string().nullable(),
+    multiplier: z.number().nullable(),
+    strike: z.number().nullable(),
+    right: derivativeRightSchema,
+    settlement: z.string().nullable(),
+    exerciseStyle: z.string().nullable(),
+    bid: z.number().nullable(),
+    ask: z.number().nullable(),
+    last: z.number().nullable(),
+    close: z.number().nullable(),
+    mark: z.number().nullable(),
+    delta: z.number().nullable(),
+    impliedVolatility: z.number().nullable(),
+    volume: z.number().nullable(),
+    openInterest: z.number().nullable(),
+    availability: derivativeAvailabilitySchema,
+    timestamp: z.string().nullable(),
+  })
+  .strict();
 
-interface IbkrContractQuery {
-  assetClass: DerivativeAssetClass;
-  underlying: string;
-  expiration: string;
-  exchange?: string;
-  tradingClass?: string;
-  right?: IbkrOptionRight;
-  strike?: number;
-}
+const derivativeReferenceContractSchema = z
+  .object({
+    brokerId: z.number().int().positive(),
+    symbol: z.string().nullable(),
+    assetClass: z.enum(["OPT", "FOP"]),
+    underlying: z.string(),
+    expiration: z.string(),
+    tradingClass: z.string(),
+    exchange: z.string(),
+    multiplier: z.number(),
+    strike: z.number(),
+    right: z.enum(["C", "P"]),
+    settlement: z.string(),
+    exerciseStyle: z.string(),
+  })
+  .strict();
 
-interface IbkrExpiryQuery {
-  assetClass: DerivativeAssetClass;
-  underlying: string;
-  from: string;
-  to: string;
-  exchange?: string;
-  tradingClass?: string;
-  right?: IbkrOptionRight;
-}
+const derivativeReferenceQuoteSchema = z
+  .object({
+    brokerId: z.number().int().positive(),
+    symbol: z.string(),
+    bid: z.number().nullable(),
+    ask: z.number().nullable(),
+    last: z.number().nullable(),
+    close: z.number().nullable(),
+    mark: z.number().nullable(),
+    availability: derivativeAvailabilitySchema,
+    timestamp: z.string().nullable(),
+  })
+  .strict();
 
-/** Structural boundary implemented by @huskly/ibkr-client's read-only capability. */
-export interface IbkrDerivativeDiscoveryApi {
-  getDerivativeExpiries(query: IbkrExpiryQuery): Promise<IbkrDerivativeExpiry[]>;
-  getDerivativeContracts(query: IbkrContractQuery): Promise<IbkrDerivativeContract[]>;
+const derivativeExpiryResponseSchema = z
+  .object({
+    observedAt: z.string(),
+    status: readStatusSchema,
+    expiries: z.array(derivativeExpirySchema),
+  })
+  .strict() satisfies z.ZodType<QueryDerivativeExpiriesResponse>;
+
+const derivativeContractsResponseSchema = z
+  .object({
+    observedAt: z.string(),
+    status: readStatusSchema,
+    contracts: z.array(derivativeContractSchema),
+  })
+  .strict() satisfies z.ZodType<QueryDerivativeContractsResponse>;
+
+const derivativeContractResponseSchema = z
+  .object({
+    observedAt: z.string(),
+    status: readStatusSchema,
+    contract: derivativeContractSchema.nullable(),
+  })
+  .strict() satisfies z.ZodType<ResolveDerivativeContractResponse>;
+
+const derivativeQuotesResponseSchema = z
+  .object({
+    observedAt: z.string(),
+    status: readStatusSchema,
+    quotes: z.array(derivativeQuoteSchema),
+  })
+  .strict() satisfies z.ZodType<QueryDerivativeQuotesResponse>;
+
+const derivativeReferenceQuoteResponseSchema = z
+  .object({
+    observedAt: z.string(),
+    status: readStatusSchema,
+    derivativeContract: derivativeReferenceContractSchema,
+    referenceQuote: derivativeReferenceQuoteSchema,
+  })
+  .strict() satisfies z.ZodType<QueryDerivativeReferenceQuoteResponse>;
+
+export interface IbkrGatewayDerivativeReadApi {
+  getDiagnostics(): Promise<GetDiagnosticsResponse>;
+  queryDerivativeExpiries(
+    body: QueryDerivativeExpiriesRequest
+  ): Promise<QueryDerivativeExpiriesResponse>;
+  queryDerivativeContracts(
+    body: QueryDerivativeContractsRequest
+  ): Promise<QueryDerivativeContractsResponse>;
   resolveDerivativeContract(
-    query: IbkrContractQuery & { right: IbkrOptionRight; strike: number }
-  ): Promise<IbkrDerivativeContract>;
-  getDerivativeChain(query: IbkrContractQuery): Promise<IbkrDerivativeQuote[]>;
-  getDerivativeReferenceQuote(
-    contract: IbkrDerivativeContract
-  ): Promise<IbkrDerivativeReferenceQuote>;
-  getTradingDiagnostics(accountId: string): Promise<TradingDiagnostics>;
-  previewDerivativeCombo(request: {
-    orderType: "LMT";
-    accountId: string;
-    legs: [
-      { contract: IbkrDerivativeContract; ratio: 1 | -1 },
-      { contract: IbkrDerivativeContract; ratio: 1 | -1 },
-    ];
-    quantity: number;
-    priceEffect: "CREDIT" | "DEBIT";
-    limit: number;
-    tif: "DAY" | "GTC";
-    session: "REGULAR" | "OVERNIGHT";
-  }): Promise<DerivativeComboPreviewResult>;
-  submitDerivativeCombo(request: {
-    orderType: "LMT";
-    accountId: string;
-    legs: [
-      { contract: IbkrDerivativeContract; ratio: 1 | -1 },
-      { contract: IbkrDerivativeContract; ratio: 1 | -1 },
-    ];
-    quantity: number;
-    priceEffect: "CREDIT" | "DEBIT";
-    limit: number;
-    tif: "DAY" | "GTC";
-    session: "REGULAR" | "OVERNIGHT";
-    clientOrderId: string;
-    extOperator: string;
-    manualIndicator: boolean;
-  }): Promise<DerivativeOrderSubmissionResult>;
-  acknowledgeOrderWarning(input: {
-    replyId: string;
-    confirmed: true;
-  }): Promise<DerivativeOrderSubmissionResult>;
-  getDerivativeOrderStatus(accountId: string, orderId: string): Promise<DerivativeOrderLifecycle>;
-  cancelDerivativeOrder(input: {
-    accountId: string;
-    orderId: string;
-    assetClass: DerivativeAssetClass;
-    extOperator: string;
-    manualIndicator: boolean;
-  }): Promise<{
-    state: "requested";
-    accountId: string;
-    orderId: string;
-    message: string | null;
-  }>;
+    body: ResolveDerivativeContractRequest
+  ): Promise<ResolveDerivativeContractResponse>;
+  queryDerivativeQuotes(body: QueryDerivativeQuotesRequest): Promise<QueryDerivativeQuotesResponse>;
+  queryDerivativeReferenceQuote(
+    body: QueryDerivativeReferenceQuoteRequest
+  ): Promise<QueryDerivativeReferenceQuoteResponse>;
 }
 
-function toIbkrRight(right: DerivativeRight): IbkrOptionRight {
-  return right === "CALL" ? "C" : "P";
-}
-
-function fromIbkrRight(right: IbkrOptionRight): DerivativeRight {
-  return right === "C" ? "CALL" : "PUT";
-}
-
-function contractQuery(request: DerivativeContractRequest): IbkrContractQuery {
+export function createIbkrGatewayDerivativeReadApi(
+  transport: GatewayTransport
+): IbkrGatewayDerivativeReadApi {
   return {
-    assetClass: request.assetClass,
-    underlying: request.underlying,
-    expiration: request.expiration,
-    ...(request.exchange !== undefined ? { exchange: request.exchange } : {}),
-    ...(request.tradingClass !== undefined ? { tradingClass: request.tradingClass } : {}),
-    ...(request.right !== undefined ? { right: toIbkrRight(request.right) } : {}),
-    ...(request.strike !== undefined ? { strike: request.strike } : {}),
+    getDiagnostics: () => transport.call("getDiagnostics", (client) => client.getDiagnostics()),
+    queryDerivativeExpiries: (body) =>
+      transport.call("queryDerivativeExpiries", (client) => client.queryDerivativeExpiries(body)),
+    queryDerivativeContracts: (body) =>
+      transport.call("queryDerivativeContracts", (client) => client.queryDerivativeContracts(body)),
+    resolveDerivativeContract: (body) =>
+      transport.call("resolveDerivativeContract", (client) =>
+        client.resolveDerivativeContract(body)
+      ),
+    queryDerivativeQuotes: (body) =>
+      transport.call("queryDerivativeQuotes", (client) => client.queryDerivativeQuotes(body)),
+    queryDerivativeReferenceQuote: (body) =>
+      transport.call("queryDerivativeReferenceQuote", (client) =>
+        client.queryDerivativeReferenceQuote(body)
+      ),
   };
 }
 
-function expiryQuery(request: DerivativeExpiryRequest): IbkrExpiryQuery {
+function toGatewayRight(right: DerivativeRight): "C" | "P" {
+  return right === "CALL" ? "C" : "P";
+}
+
+function fromGatewayRight(right: "C" | "P"): DerivativeRight {
+  return right === "C" ? "CALL" : "PUT";
+}
+
+function mapDataAvailability(value: string | null): DerivativeDataAvailability {
+  switch (value) {
+    case "live":
+    case "delayed":
+    case "frozen":
+    case "frozen-delayed":
+    case "unavailable":
+      return value;
+    default:
+      return "unavailable";
+  }
+}
+
+function requireField<T>(value: T | null, message: string): T {
+  if (value === null) {
+    throw new Error(message);
+  }
+  return value;
+}
+
+function toExpiryQuery(request: DerivativeExpiryRequest): QueryDerivativeExpiriesRequest {
   return {
     assetClass: request.assetClass,
     underlying: request.underlying,
     from: request.from,
     to: request.to,
-    ...(request.exchange !== undefined ? { exchange: request.exchange } : {}),
-    ...(request.tradingClass !== undefined ? { tradingClass: request.tradingClass } : {}),
-    ...(request.right !== undefined ? { right: toIbkrRight(request.right) } : {}),
+    right: request.right === undefined ? null : toGatewayRight(request.right),
+    tradingClass: request.tradingClass ?? null,
+    exchange: request.exchange ?? null,
   };
 }
 
-function normalizeExpiry(expiry: IbkrDerivativeExpiry): DerivativeExpiry {
-  return { ...expiry };
+function toContractsQuery(request: DerivativeContractRequest): QueryDerivativeContractsRequest {
+  return {
+    assetClass: request.assetClass,
+    underlying: request.underlying,
+    expiration: request.expiration,
+    right: request.right === undefined ? null : toGatewayRight(request.right),
+    strike: request.strike ?? null,
+    tradingClass: request.tradingClass ?? null,
+    exchange: request.exchange ?? null,
+  };
 }
 
-function normalizeContract(contract: IbkrDerivativeContract): DerivativeContract {
-  if (!Number.isSafeInteger(contract.conid) || contract.conid <= 0) {
-    throw new Error("IBKR returned an invalid broker-local derivative contract reference");
-  }
+function toQuotesQuery(request: DerivativeContractRequest): QueryDerivativeQuotesRequest {
+  return {
+    assetClass: request.assetClass,
+    underlying: request.underlying,
+    expiration: request.expiration,
+    right: request.right === undefined ? null : toGatewayRight(request.right),
+    tradingClass: request.tradingClass ?? null,
+    exchange: request.exchange ?? null,
+  };
+}
+
+function toResolveQuery(
+  request: DerivativeContractRequest & { right: DerivativeRight; strike: number }
+): ResolveDerivativeContractRequest {
+  return {
+    by: "query",
+    assetClass: request.assetClass,
+    underlying: request.underlying,
+    expiration: request.expiration,
+    right: toGatewayRight(request.right),
+    strike: request.strike,
+    ...(request.exchange === undefined ? {} : { exchange: request.exchange }),
+    ...(request.tradingClass === undefined ? {} : { tradingClass: request.tradingClass }),
+  };
+}
+
+function normalizeExpiry(expiry: z.infer<typeof derivativeExpirySchema>): DerivativeExpiry {
+  return {
+    assetClass: requireField(
+      expiry.assetClass,
+      "Gateway returned an incomplete derivative expiry asset class"
+    ),
+    underlying: requireField(
+      expiry.underlying,
+      "Gateway returned an incomplete derivative expiry underlying"
+    ),
+    expiration: requireField(
+      expiry.expiration,
+      "Gateway returned an incomplete derivative expiry date"
+    ),
+    tradingClass: requireField(
+      expiry.tradingClass,
+      "Gateway returned an incomplete derivative expiry trading class"
+    ),
+    exchange: requireField(
+      expiry.exchange,
+      "Gateway returned an incomplete derivative expiry exchange"
+    ),
+    multiplier: requireField(
+      expiry.multiplier,
+      "Gateway returned an incomplete derivative expiry multiplier"
+    ),
+  };
+}
+
+function normalizeContract(contract: z.infer<typeof derivativeContractSchema>): DerivativeContract {
   return {
     identity: {
-      assetClass: contract.assetClass,
-      underlying: contract.underlying,
-      expiration: contract.expiration,
-      strike: contract.strike,
-      right: fromIbkrRight(contract.right),
-      tradingClass: contract.tradingClass,
-      exchange: contract.exchange,
-      multiplier: contract.multiplier,
-      ...(contract.settlement !== undefined ? { settlement: contract.settlement } : {}),
-      ...(contract.exerciseStyle !== undefined ? { exerciseStyle: contract.exerciseStyle } : {}),
+      assetClass: requireField(
+        contract.assetClass,
+        "Gateway returned an incomplete derivative contract asset class"
+      ),
+      underlying: requireField(
+        contract.underlying,
+        "Gateway returned an incomplete derivative contract underlying"
+      ),
+      expiration: requireField(
+        contract.expiration,
+        "Gateway returned an incomplete derivative contract expiration"
+      ),
+      strike: requireField(
+        contract.strike,
+        "Gateway returned an incomplete derivative contract strike"
+      ),
+      right: fromGatewayRight(
+        requireField(contract.right, "Gateway returned an incomplete derivative contract right")
+      ),
+      tradingClass: requireField(
+        contract.tradingClass,
+        "Gateway returned an incomplete derivative contract trading class"
+      ),
+      exchange: requireField(
+        contract.exchange,
+        "Gateway returned an incomplete derivative contract exchange"
+      ),
+      multiplier: requireField(
+        contract.multiplier,
+        "Gateway returned an incomplete derivative contract multiplier"
+      ),
+      ...(contract.settlement === null ? {} : { settlement: contract.settlement }),
+      ...(contract.exerciseStyle === null ? {} : { exerciseStyle: contract.exerciseStyle }),
     },
-    brokerReference: { broker: "ibkr", contractId: String(contract.conid) },
+    ...(contract.brokerId === null
+      ? {}
+      : { brokerReference: { broker: "ibkr" as const, contractId: String(contract.brokerId) } }),
   };
 }
 
-function normalizeQuote(quote: IbkrDerivativeQuote): DerivativeQuote {
+function normalizeQuote(quote: z.infer<typeof derivativeQuoteSchema>): DerivativeQuote {
   return {
-    contract: normalizeContract(quote.contract),
-    dataAvailability: quote.availability,
+    contract: normalizeContract(quote),
+    dataAvailability: mapDataAvailability(quote.availability),
     timestamp: quote.timestamp,
     bid: quote.bid,
     ask: quote.ask,
@@ -220,129 +392,254 @@ function normalizeQuote(quote: IbkrDerivativeQuote): DerivativeQuote {
   };
 }
 
-function ibkrContract(contract: DerivativeContract): IbkrDerivativeContract {
-  const reference = contract.brokerReference;
-  const conid = Number(reference?.contractId);
-  if (reference?.broker !== "ibkr" || !Number.isSafeInteger(conid) || conid <= 0) {
-    throw new Error("Derivative contract does not contain a valid IBKR broker reference");
-  }
+function normalizeReferenceQuote(
+  quote: z.infer<typeof derivativeReferenceQuoteSchema>
+): DerivativeReferenceQuote {
   return {
-    conid,
-    assetClass: contract.identity.assetClass,
-    underlying: contract.identity.underlying,
-    expiration: contract.identity.expiration,
-    strike: contract.identity.strike,
-    right: toIbkrRight(contract.identity.right),
-    tradingClass: contract.identity.tradingClass,
-    exchange: contract.identity.exchange,
-    multiplier: contract.identity.multiplier,
-    ...(contract.identity.settlement !== undefined
-      ? { settlement: contract.identity.settlement }
-      : {}),
-    ...(contract.identity.exerciseStyle !== undefined
-      ? { exerciseStyle: contract.identity.exerciseStyle }
-      : {}),
+    brokerReference: { broker: "ibkr", contractId: String(quote.brokerId) },
+    symbol: quote.symbol,
+    dataAvailability: mapDataAvailability(quote.availability),
+    timestamp: quote.timestamp,
+    bid: quote.bid,
+    ask: quote.ask,
+    last: quote.last,
+    mark: quote.mark,
   };
 }
 
-/** Maps broker-local conids and C/P codes into the CLI's durable semantic model. */
-export class IbkrDerivativeAdapter
-  implements DerivativeDiscoveryClient, DerivativePreviewClient, DerivativeExecutionClient
-{
-  constructor(private readonly client: IbkrDerivativeDiscoveryApi) {}
+function normalizeCollection<Source, Target>(
+  source: readonly Source[],
+  normalize: (item: Source) => Target,
+  status: z.infer<typeof readStatusSchema>,
+  observedAt: string,
+  itemName: string
+): Observation<Target[]> {
+  const value: Target[] = [];
+  let omittedCount = 0;
+  for (const item of source) {
+    try {
+      value.push(normalize(item));
+    } catch {
+      omittedCount += 1;
+    }
+  }
+  const completeness = omittedCount === 0 || status === "unavailable" ? status : "partial";
+  return observe(value, completeness, observedAt, {
+    sourceCount: source.length,
+    omittedCount,
+    ...(omittedCount === 0
+      ? {}
+      : { warnings: [`Omitted ${String(omittedCount)} incomplete ${itemName} item(s).`] }),
+  });
+}
 
-  async getExpiries(request: DerivativeExpiryRequest): Promise<DerivativeExpiry[]> {
-    return (await this.client.getDerivativeExpiries(expiryQuery(request))).map(normalizeExpiry);
+function normalizeDiagnostics(response: GetDiagnosticsResponse): TradingDiagnostics {
+  const diagnostics = parseGatewayResponse("getDiagnostics", diagnosticsSchema, response);
+  return {
+    accountId: diagnostics.account,
+    environment: diagnostics.environment,
+    authenticated: diagnostics.authenticated === true,
+    competingSession: diagnostics.competingSession === true,
+    marketDataAvailable: diagnostics.connected,
+    advisoryAssetPermissions: [],
+    state: diagnostics.state,
+    readReady: diagnostics.readReady,
+    newMutationReady: diagnostics.newMutationReady,
+    recoveryMutationReady: diagnostics.recoveryMutationReady,
+    lockOwned: diagnostics.lockOwned,
+    accountVerified: diagnostics.accountVerified,
+    connected: diagnostics.connected,
+    lastTickleAt: diagnostics.lastTickleAt,
+    nextRenewalAt: diagnostics.nextRenewalAt,
+    lastBrokerRequestAt: diagnostics.lastBrokerRequestAt,
+    readQueueDepth: diagnostics.readQueueDepth,
+    pendingWarnings: diagnostics.pendingWarnings,
+    reconciliationRequiredOperations: diagnostics.reconciliationRequiredOperations,
+  };
+}
+
+function toReferenceContractRequest(
+  contract: DerivativeContract
+): ResolveDerivativeContractRequest {
+  return {
+    by: "query",
+    assetClass: contract.identity.assetClass,
+    underlying: contract.identity.underlying,
+    expiration: contract.identity.expiration,
+    right: toGatewayRight(contract.identity.right),
+    strike: contract.identity.strike,
+    exchange: contract.identity.exchange,
+    tradingClass: contract.identity.tradingClass,
+  };
+}
+
+function isReferenceContractComplete(contract: DerivativeContract): boolean {
+  return (
+    contract.brokerReference?.broker === "ibkr" &&
+    contract.identity.settlement !== undefined &&
+    contract.identity.exerciseStyle !== undefined
+  );
+}
+
+export class IbkrDerivativeAdapter
+  implements DerivativeDiscoveryClient, Pick<DerivativePreviewClient, "getTradingDiagnostics">
+{
+  constructor(private readonly api: IbkrGatewayDerivativeReadApi) {}
+
+  async getExpiries(request: DerivativeExpiryRequest): Promise<Observation<DerivativeExpiry[]>> {
+    const response = parseGatewayResponse(
+      "queryDerivativeExpiries",
+      derivativeExpiryResponseSchema,
+      await this.api.queryDerivativeExpiries(toExpiryQuery(request))
+    );
+    return normalizeCollection(
+      response.expiries,
+      normalizeExpiry,
+      response.status,
+      response.observedAt,
+      "derivative expiry"
+    );
   }
 
-  async getContracts(request: DerivativeContractRequest): Promise<DerivativeContract[]> {
-    return (await this.client.getDerivativeContracts(contractQuery(request))).map(
-      normalizeContract
+  async getContracts(
+    request: DerivativeContractRequest
+  ): Promise<Observation<DerivativeContract[]>> {
+    const response = parseGatewayResponse(
+      "queryDerivativeContracts",
+      derivativeContractsResponseSchema,
+      await this.api.queryDerivativeContracts(toContractsQuery(request))
+    );
+    return normalizeCollection(
+      response.contracts,
+      normalizeContract,
+      response.status,
+      response.observedAt,
+      "derivative contract"
     );
   }
 
   async resolveContract(
     request: DerivativeContractRequest & { right: DerivativeRight; strike: number }
+  ): Promise<Observation<DerivativeContract | null>> {
+    const response = parseGatewayResponse(
+      "resolveDerivativeContract",
+      derivativeContractResponseSchema,
+      await this.api.resolveDerivativeContract(toResolveQuery(request))
+    );
+    if (response.contract === null) {
+      return observe(null, response.status, response.observedAt);
+    }
+    try {
+      return observe(normalizeContract(response.contract), response.status, response.observedAt);
+    } catch {
+      return observe(
+        null,
+        response.status === "unavailable" ? "unavailable" : "partial",
+        response.observedAt,
+        {
+          sourceCount: 1,
+          omittedCount: 1,
+          warnings: ["Omitted an incomplete exact derivative contract."],
+        }
+      );
+    }
+  }
+
+  async getChain(request: DerivativeContractRequest): Promise<Observation<DerivativeQuote[]>> {
+    const response = parseGatewayResponse(
+      "queryDerivativeQuotes",
+      derivativeQuotesResponseSchema,
+      await this.api.queryDerivativeQuotes(toQuotesQuery(request))
+    );
+    return normalizeCollection(
+      response.quotes,
+      normalizeQuote,
+      response.status,
+      response.observedAt,
+      "derivative quote"
+    );
+  }
+
+  async getReferenceQuote(
+    contract: DerivativeContract
+  ): Promise<Observation<DerivativeReferenceQuote>> {
+    const completeContract = await this.completeReferenceContract(contract);
+    const request: QueryDerivativeReferenceQuoteRequest = {
+      derivativeContract: {
+        brokerId: Number(completeContract.brokerReference?.contractId),
+        symbol: null,
+        assetClass: completeContract.identity.assetClass,
+        underlying: completeContract.identity.underlying,
+        expiration: completeContract.identity.expiration,
+        tradingClass: completeContract.identity.tradingClass,
+        exchange: completeContract.identity.exchange,
+        multiplier: completeContract.identity.multiplier,
+        strike: completeContract.identity.strike,
+        right: toGatewayRight(completeContract.identity.right),
+        settlement: completeContract.identity.settlement ?? "",
+        exerciseStyle: completeContract.identity.exerciseStyle ?? "",
+      },
+    };
+    const response = parseGatewayResponse(
+      "queryDerivativeReferenceQuote",
+      derivativeReferenceQuoteResponseSchema,
+      await this.api.queryDerivativeReferenceQuote(request)
+    );
+    return observe(
+      normalizeReferenceQuote(response.referenceQuote),
+      response.status,
+      response.observedAt
+    );
+  }
+
+  async getTradingDiagnostics(): Promise<TradingDiagnostics> {
+    return normalizeDiagnostics(await this.api.getDiagnostics());
+  }
+
+  private async completeReferenceContract(
+    contract: DerivativeContract
   ): Promise<DerivativeContract> {
-    const query = contractQuery(request) as IbkrContractQuery & {
-      right: IbkrOptionRight;
-      strike: number;
-    };
-    return normalizeContract(await this.client.resolveDerivativeContract(query));
+    if (isReferenceContractComplete(contract)) {
+      return contract;
+    }
+    const resolved = requireObservation(
+      "resolveDerivativeContract",
+      await this.apiToObservation(
+        this.api.resolveDerivativeContract(toReferenceContractRequest(contract))
+      )
+    );
+    if (resolved.value === null) {
+      throw new Error("Derivative contract could not be resolved for a reference quote");
+    }
+    const complete = resolved.value;
+    if (!isReferenceContractComplete(complete)) {
+      throw new Error("Derivative contract is incomplete for a reference quote");
+    }
+    return complete;
   }
 
-  async getChain(request: DerivativeContractRequest): Promise<DerivativeQuote[]> {
-    return (await this.client.getDerivativeChain(contractQuery(request))).map(normalizeQuote);
-  }
-
-  async getReferenceQuote(contract: DerivativeContract): Promise<DerivativeReferenceQuote> {
-    const quote = await this.client.getDerivativeReferenceQuote(ibkrContract(contract));
-    return {
-      brokerReference: { broker: "ibkr", contractId: String(quote.conid) },
-      symbol: quote.symbol,
-      dataAvailability: quote.availability,
-      timestamp: quote.timestamp,
-      bid: quote.bid,
-      ask: quote.ask,
-      last: quote.last,
-      mark: quote.mark,
-    };
-  }
-
-  getTradingDiagnostics(accountId: string): Promise<TradingDiagnostics> {
-    return this.client.getTradingDiagnostics(accountId);
-  }
-
-  previewDerivativeCombo(
-    request: DerivativeComboPreviewRequest
-  ): Promise<DerivativeComboPreviewResult> {
-    return this.client.previewDerivativeCombo({
-      ...request,
-      orderType: "LMT",
-      legs: request.legs.map(({ contract, ratio }) => ({
-        contract: ibkrContract(contract),
-        ratio,
-      })) as [
-        { contract: IbkrDerivativeContract; ratio: 1 | -1 },
-        { contract: IbkrDerivativeContract; ratio: 1 | -1 },
-      ],
-    });
-  }
-
-  submitDerivativeCombo(
-    request: DerivativeComboExecutionRequest
-  ): Promise<DerivativeOrderSubmissionResult> {
-    return this.client.submitDerivativeCombo({
-      ...request,
-      orderType: "LMT",
-      legs: request.legs.map(({ contract, ratio }) => ({
-        contract: ibkrContract(contract),
-        ratio,
-      })) as [
-        { contract: IbkrDerivativeContract; ratio: 1 | -1 },
-        { contract: IbkrDerivativeContract; ratio: 1 | -1 },
-      ],
-    });
-  }
-
-  acknowledgeOrderWarning(input: {
-    replyId: string;
-    confirmed: true;
-  }): Promise<DerivativeOrderSubmissionResult> {
-    return this.client.acknowledgeOrderWarning(input);
-  }
-
-  getDerivativeOrderStatus(accountId: string, orderId: string): Promise<DerivativeOrderLifecycle> {
-    return this.client.getDerivativeOrderStatus(accountId, orderId);
-  }
-
-  async cancelDerivativeOrder(input: {
-    accountId: string;
-    orderId: string;
-    assetClass: DerivativeAssetClass;
-    extOperator: string;
-    manualIndicator: boolean;
-  }): Promise<void> {
-    await this.client.cancelDerivativeOrder(input);
+  private async apiToObservation(
+    responsePromise: Promise<ResolveDerivativeContractResponse>
+  ): Promise<Observation<DerivativeContract | null>> {
+    const response = parseGatewayResponse(
+      "resolveDerivativeContract",
+      derivativeContractResponseSchema,
+      await responsePromise
+    );
+    if (response.contract === null) return observe(null, response.status, response.observedAt);
+    try {
+      return observe(normalizeContract(response.contract), response.status, response.observedAt);
+    } catch {
+      return observe(
+        null,
+        response.status === "unavailable" ? "unavailable" : "partial",
+        response.observedAt,
+        {
+          sourceCount: 1,
+          omittedCount: 1,
+          warnings: ["Omitted an incomplete exact derivative contract."],
+        }
+      );
+    }
   }
 }

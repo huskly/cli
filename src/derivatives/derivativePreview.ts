@@ -4,16 +4,28 @@ export type BrokerEnvironment = "live" | "paper";
 
 export interface TradingDiagnostics {
   accountId: string;
-  selectedAccountId: string | null;
+  maskedAccountDisplay?: string | null;
   environment: BrokerEnvironment;
   authenticated: boolean;
   competingSession: boolean;
   marketDataAvailable: boolean | null;
   advisoryAssetPermissions: string[];
+  state: "starting" | "ready" | "degraded" | "draining" | "stopped";
+  readReady: boolean;
+  newMutationReady: boolean;
+  recoveryMutationReady: boolean;
+  lockOwned: boolean;
+  accountVerified: boolean;
+  connected: boolean | null;
+  lastTickleAt: string | null;
+  nextRenewalAt: string | null;
+  lastBrokerRequestAt: string | null;
+  readQueueDepth: number;
+  pendingWarnings: number;
+  reconciliationRequiredOperations: number;
 }
 
 export interface DerivativeComboPreviewRequest {
-  accountId: string;
   legs: readonly [
     { contract: DerivativeContract; ratio: 1 | -1 },
     { contract: DerivativeContract; ratio: 1 | -1 },
@@ -25,6 +37,19 @@ export interface DerivativeComboPreviewRequest {
   session: "REGULAR" | "OVERNIGHT";
 }
 
+export interface CanonicalComboIntent {
+  legs: readonly [
+    { contract: DerivativeContract; ratio: 1 },
+    { contract: DerivativeContract; ratio: -1 },
+  ];
+  quantity: number;
+  tif: "DAY" | "GTC";
+  session: "REGULAR" | "OVERNIGHT";
+  priceEffect: "CREDIT" | "DEBIT";
+  orderType: "LMT";
+  limit: number;
+}
+
 export interface MarginImpact {
   current: number;
   change: number;
@@ -32,7 +57,6 @@ export interface MarginImpact {
 }
 
 export interface DerivativeComboPreviewResult {
-  accountId: string;
   environment: BrokerEnvironment;
   accepted: boolean;
   submitted: false;
@@ -45,7 +69,7 @@ export interface DerivativeComboPreviewResult {
 }
 
 export interface DerivativePreviewClient {
-  getTradingDiagnostics(accountId: string): Promise<TradingDiagnostics>;
+  getTradingDiagnostics(): Promise<TradingDiagnostics>;
   previewDerivativeCombo(
     request: DerivativeComboPreviewRequest
   ): Promise<DerivativeComboPreviewResult>;

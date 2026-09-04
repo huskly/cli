@@ -1,95 +1,25 @@
-import type { DerivativeComboPreviewRequest } from "./derivativePreview.js";
-import type { DerivativeAssetClass } from "./derivativeDiscovery.js";
+import type { OrderOperation, ReconciliationResponse } from "@huskly/ibkr-gateway-client";
+import type { CanonicalComboIntent, DerivativeComboPreviewResult } from "./derivativePreview.js";
 
-export interface DerivativeComboExecutionRequest extends DerivativeComboPreviewRequest {
-  clientOrderId: string;
-  extOperator: string;
-  manualIndicator: boolean;
-}
+export type OrderOperationView = OrderOperation;
+export type OrderReconciliationView = ReconciliationResponse;
+export type OperationKind = "combo";
 
-export interface OrderWarning {
-  replyId: string;
-  messages: string[];
-  messageIds: string[];
-  known: boolean;
-}
-
-export interface DerivativeSubmittedOrder {
-  orderId: string;
-  status: DerivativeOrderStatus;
-  clientOrderId: string | null;
-}
-
-export interface BrokerErrorDetail {
-  message: string;
-  code: string | null;
-  statusCode: number | null;
-  details: Readonly<Record<string, unknown>>;
-}
-
-export type DerivativeOrderStatus =
-  | "WARNING_PENDING"
-  | "PENDING"
-  | "WORKING"
-  | "PARTIALLY_FILLED"
-  | "FILLED"
-  | "CANCELED"
-  | "REJECTED"
-  | "UNKNOWN";
-
-export type DerivativeOrderSubmissionResult =
-  | {
-      state: "accepted";
-      orderId: string;
-      status: DerivativeOrderStatus;
-      clientOrderId: string | null;
-      warnings: OrderWarning[];
-    }
-  | { state: "warning"; warnings: OrderWarning[] }
-  | {
-      state: "rejected";
-      reasons: string[];
-      errors?: BrokerErrorDetail[];
-      orders?: DerivativeSubmittedOrder[];
-    }
-  | {
-      state: "recovery_required";
-      reasons: string[];
-      orders: DerivativeSubmittedOrder[];
-      warnings: OrderWarning[];
-      errors: BrokerErrorDetail[];
-      unrecognizedResponses: unknown[];
-    };
-
-export interface DerivativeOrderLifecycle {
-  accountId: string;
-  orderId: string;
-  clientOrderId: string | null;
-  status: DerivativeOrderStatus;
-  quantity: number;
-  filledQuantity: number;
-  remainingQuantity: number;
-  averagePrice: number | null;
-  limitPrice: number | null;
-  commissionAndFees: number | null;
-  legs: { conid: number; ratio: number }[];
-  updatedAt: string | null;
-}
-
+/** The narrow durable mutation boundary. It never accepts an account or client-order ID. */
 export interface DerivativeExecutionClient {
-  submitDerivativeCombo(
-    request: DerivativeComboExecutionRequest
-  ): Promise<DerivativeOrderSubmissionResult>;
-  acknowledgeOrderWarning(input: {
-    replyId: string;
-    confirmed: true;
-  }): Promise<DerivativeOrderSubmissionResult>;
-  getDerivativeOrderStatus(accountId: string, orderId: string): Promise<DerivativeOrderLifecycle>;
-  cancelDerivativeOrder(input: {
-    accountId: string;
-    orderId: string;
-    assetClass: DerivativeAssetClass;
-    extOperator: string;
-    manualIndicator: boolean;
-  }): Promise<void>;
+  preview(intent: CanonicalComboIntent): Promise<DerivativeComboPreviewResult>;
+  create(
+    intent: CanonicalComboIntent,
+    idempotencyKey: string,
+    operator: string
+  ): Promise<OrderOperationView>;
+  lookup(kind: OperationKind, idempotencyKey: string): Promise<OrderOperationView>;
+  get(operationId: string): Promise<OrderOperationView>;
+  acknowledge(
+    operationId: string,
+    replyId: string,
+    idempotencyKey: string
+  ): Promise<OrderOperationView>;
+  reconcile(operationId: string): Promise<OrderReconciliationView>;
+  cancel(operationId: string, idempotencyKey: string): Promise<OrderOperationView>;
 }

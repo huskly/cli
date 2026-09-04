@@ -22,12 +22,16 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node-version }}
-          cache: "yarn"
 
-      - name: Install dependencies
-        run: yarn install --immutable
-      - name: Check formatting
-        run: yarn format:check
+      - name: Install the pinned package manager
+        run: |
+          npm install --global corepack@0.34.5
+          corepack enable
+          corepack prepare yarn@4.18.0 --activate
+          yarn install --immutable
 
       - name: Check all
-        run: yarn check
+        run: yarn run check
+
+      - name: Build
+        run: yarn run build

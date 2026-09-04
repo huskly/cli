@@ -27,9 +27,7 @@ npm-debug.log*
 .env
 .env.local
 .env.*.local
-
-# IBKR OAuth 1.0a private keys / DH params
-*.pem
+.env.*
 
 # Coverage
 coverage/
@@ -38,4 +36,6 @@ coverage/
 .eslintcache
 .prettiercache
 *.tsbuildinfo
-.env.*
+
+# Isolated development worktrees
+/.worktrees/

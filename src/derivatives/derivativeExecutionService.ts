@@ -1,496 +1,752 @@
+import { ConsumerError } from "#src/gateway/gatewayErrors.js";
+import { PrivateJsonFile } from "#src/storage/privateJsonFile.js";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import type { DerivativeDiscoveryClient } from "./derivativeDiscovery.js";
 import type {
-  BrokerErrorDetail,
   DerivativeExecutionClient,
-  DerivativeOrderLifecycle,
-  DerivativeOrderSubmissionResult,
-  DerivativeSubmittedOrder,
-  OrderWarning,
+  OrderOperationView,
+  OrderReconciliationView,
 } from "./derivativeExecution.js";
-import type { BrokerEnvironment, DerivativePreviewClient } from "./derivativePreview.js";
-import { maskAccountId, spreadPreviewDtoSchema } from "./derivativePreviewService.js";
-import type { DerivativePreviewService, SpreadPreviewDto } from "./derivativePreviewService.js";
+import type {
+  BrokerEnvironment,
+  CanonicalComboIntent,
+  DerivativePreviewClient,
+} from "./derivativePreview.js";
+import {
+  canonicalComboIntentSchema,
+  type DerivativePreviewService,
+} from "./derivativePreviewService.js";
 
-interface PendingWarning {
-  replyId: string;
-  previewId: string;
-  accountDigest: string;
-  environment: BrokerEnvironment;
-  warning: OrderWarning;
-  clientOrderId: string;
+export type SubmissionState = "submission_pending" | "submission_uncertain" | "operation_known";
+
+export interface SubmissionRecord {
+  readonly schemaVersion: 1;
+  readonly previewId: string;
+  readonly operationKind: "combo";
+  readonly idempotencyKey: string;
+  readonly canonicalIntent: CanonicalComboIntent;
+  readonly account: { readonly maskedId: string | null; readonly environment: BrokerEnvironment };
+  readonly state: SubmissionState;
+  readonly operationId: string | null;
+  readonly operation: OrderOperationView | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
-interface OrderExpectation {
-  orderId: string;
-  previewId: string;
-  accountDigest: string;
-  environment: BrokerEnvironment;
-  clientOrderId: string;
-  preview: SpreadPreviewDto;
+export interface ActionRecord {
+  readonly schemaVersion: 1;
+  readonly operationId: string;
+  readonly action: "warning_acknowledgement" | "cancellation";
+  readonly warningSequence: number | null;
+  readonly replyId: string | null;
+  readonly idempotencyKey: string;
+  readonly state: "pending" | "uncertain" | "completed";
+  readonly operation: OrderOperationView | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
 export interface ExecutionStateStore {
-  saveWarning(value: PendingWarning): Promise<void>;
-  loadWarning(replyId: string): Promise<PendingWarning | undefined>;
-  deleteWarning(replyId: string): Promise<void>;
-  saveOrder(value: OrderExpectation): Promise<void>;
-  loadOrder(orderId: string): Promise<OrderExpectation | undefined>;
+  reserveSubmission(value: SubmissionRecord): Promise<boolean>;
+  saveSubmission(value: SubmissionRecord): Promise<void>;
+  loadSubmission(previewId: string): Promise<SubmissionRecord | undefined>;
+  loadSubmissionByOperation(operationId: string): Promise<SubmissionRecord | undefined>;
+  reserveAction(value: ActionRecord): Promise<boolean>;
+  saveAction(value: ActionRecord): Promise<void>;
+  loadAction(
+    operationId: string,
+    action: ActionRecord["action"],
+    warningSequence?: number | null,
+    replyId?: string | null
+  ): Promise<ActionRecord | undefined>;
+}
+
+function actionIdentity(
+  operationId: string,
+  action: ActionRecord["action"],
+  warningSequence: number | null,
+  replyId: string | null
+): string {
+  return action === "cancellation"
+    ? `${operationId}:cancellation`
+    : `${operationId}:warning_acknowledgement:${String(warningSequence)}:${replyId ?? ""}`;
 }
 
 export class InMemoryExecutionStateStore implements ExecutionStateStore {
-  private readonly warnings = new Map<string, PendingWarning>();
-  private readonly orders = new Map<string, OrderExpectation>();
+  private readonly submissions = new Map<string, SubmissionRecord>();
+  private readonly operationIndex = new Map<string, string>();
+  private readonly actions = new Map<string, ActionRecord>();
 
-  saveWarning(value: PendingWarning): Promise<void> {
-    this.warnings.set(value.replyId, value);
+  reserveSubmission(value: SubmissionRecord): Promise<boolean> {
+    if (this.submissions.has(value.previewId)) return Promise.resolve(false);
+    this.submissions.set(value.previewId, value);
+    return Promise.resolve(true);
+  }
+  saveSubmission(value: SubmissionRecord): Promise<void> {
+    this.submissions.set(value.previewId, value);
+    if (value.operationId !== null) this.operationIndex.set(value.operationId, value.previewId);
     return Promise.resolve();
   }
-
-  loadWarning(replyId: string): Promise<PendingWarning | undefined> {
-    return Promise.resolve(this.warnings.get(replyId));
+  loadSubmission(previewId: string): Promise<SubmissionRecord | undefined> {
+    return Promise.resolve(this.submissions.get(previewId));
   }
-
-  deleteWarning(replyId: string): Promise<void> {
-    this.warnings.delete(replyId);
+  loadSubmissionByOperation(operationId: string): Promise<SubmissionRecord | undefined> {
+    const previewId = this.operationIndex.get(operationId);
+    if (previewId !== undefined) return Promise.resolve(this.submissions.get(previewId));
+    const record = [...this.submissions.values()].find((item) => item.operationId === operationId);
+    if (record !== undefined) this.operationIndex.set(operationId, record.previewId);
+    return Promise.resolve(record);
+  }
+  reserveAction(value: ActionRecord): Promise<boolean> {
+    const identity = actionIdentity(
+      value.operationId,
+      value.action,
+      value.warningSequence,
+      value.replyId
+    );
+    if (this.actions.has(identity)) return Promise.resolve(false);
+    this.actions.set(identity, value);
+    return Promise.resolve(true);
+  }
+  saveAction(value: ActionRecord): Promise<void> {
+    this.actions.set(
+      actionIdentity(value.operationId, value.action, value.warningSequence, value.replyId),
+      value
+    );
     return Promise.resolve();
   }
-
-  saveOrder(value: OrderExpectation): Promise<void> {
-    this.orders.set(value.orderId, value);
-    return Promise.resolve();
-  }
-
-  loadOrder(orderId: string): Promise<OrderExpectation | undefined> {
-    return Promise.resolve(this.orders.get(orderId));
+  loadAction(
+    operationId: string,
+    action: ActionRecord["action"],
+    warningSequence: number | null = null,
+    replyId: string | null = null
+  ): Promise<ActionRecord | undefined> {
+    return Promise.resolve(
+      this.actions.get(actionIdentity(operationId, action, warningSequence, replyId))
+    );
   }
 }
 
-const warningSchema = z.object({
-  replyId: z.string(),
-  previewId: z.string().regex(/^[a-f0-9]{64}$/),
-  accountDigest: z.string().regex(/^[a-f0-9]{64}$/),
-  environment: z.enum(["live", "paper"]),
-  warning: z.object({
-    replyId: z.string(),
-    messages: z.array(z.string()),
-    messageIds: z.array(z.string()),
-    known: z.boolean(),
+const brokerOrderSchema = z.strictObject({
+  memberId: z.string(),
+  parentMemberId: z.string().nullable(),
+  orderId: z.string().nullable(),
+  parentOrderId: z.string().nullable(),
+  clientOrderId: z.string().nullable(),
+  status: z.enum([
+    "WARNING_PENDING",
+    "PENDING",
+    "WORKING",
+    "PARTIALLY_FILLED",
+    "FILLED",
+    "CANCELED",
+    "REJECTED",
+    "UNKNOWN",
+  ]),
+});
+const outcomeBase = { orders: z.array(brokerOrderSchema), warningCount: z.number() };
+const reasonCategories = z.array(
+  z.enum([
+    "validation",
+    "risk",
+    "permissions",
+    "session",
+    "market",
+    "duplicate",
+    "broker",
+    "unknown",
+  ])
+);
+const operationSchema = z.strictObject({
+  operationId: z.string(),
+  kind: z.enum(["single", "combo", "graph"]),
+  action: z.literal("submission"),
+  parentOperationId: z.string().nullable(),
+  intentSchemaVersion: z.literal(1),
+  intentHash: z.string(),
+  state: z.enum([
+    "received",
+    "rejected_before_submission",
+    "broker_attempt_started",
+    "accepted",
+    "warning_pending",
+    "cancelled",
+    "broker_refused",
+    "unknown_outcome",
+    "reconciliation_required",
+  ]),
+  correlations: z.array(
+    z.strictObject({
+      memberId: z.string(),
+      parentMemberId: z.string().nullable(),
+      clientOrderId: z.string(),
+    })
+  ),
+  children: z.array(
+    z.strictObject({
+      operationId: z.string(),
+      action: z.enum(["warning_acknowledgement", "cancellation"]),
+      state: z.enum([
+        "received",
+        "rejected_before_submission",
+        "broker_attempt_started",
+        "accepted",
+        "warning_pending",
+        "cancelled",
+        "broker_refused",
+        "unknown_outcome",
+        "reconciliation_required",
+      ]),
+      createdAt: z.iso.datetime(),
+      latestTransitionAt: z.iso.datetime(),
+    })
+  ),
+  pendingWarning: z.strictObject({ sequence: z.number(), replyId: z.string() }).nullable(),
+  reconciliation: z
+    .strictObject({
+      observedAt: z.iso.datetime(),
+      status: z.enum(["matched", "incomplete", "conflicting", "unavailable"]),
+      reason: z.string(),
+    })
+    .nullable(),
+  result: z
+    .discriminatedUnion("kind", [
+      z.strictObject({ kind: z.literal("accepted"), ...outcomeBase }),
+      z.strictObject({ kind: z.literal("warning"), ...outcomeBase }),
+      z.strictObject({ kind: z.literal("refused"), ...outcomeBase, reasonCategories }),
+      z.strictObject({ kind: z.literal("recovery_required"), ...outcomeBase, reasonCategories }),
+    ])
+    .nullable(),
+  createdAt: z.iso.datetime(),
+  latestTransitionAt: z.iso.datetime(),
+}) satisfies z.ZodType<OrderOperationView>;
+const submissionSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  previewId: z.string().regex(/^[a-f0-9]{64}$/u),
+  operationKind: z.literal("combo"),
+  idempotencyKey: z.string().min(1).max(128),
+  canonicalIntent: canonicalComboIntentSchema,
+  account: z.strictObject({
+    maskedId: z.string().nullable(),
+    environment: z.enum(["paper", "live"]),
   }),
-  clientOrderId: z.string(),
-});
-const orderExpectationSchema = z.object({
-  orderId: z.string(),
-  previewId: z.string().regex(/^[a-f0-9]{64}$/),
-  accountDigest: z.string().regex(/^[a-f0-9]{64}$/),
-  environment: z.enum(["live", "paper"]),
-  clientOrderId: z.string(),
-  preview: spreadPreviewDtoSchema,
-});
+  state: z.enum(["submission_pending", "submission_uncertain", "operation_known"]),
+  operationId: z.string().nullable(),
+  operation: operationSchema.nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+}) as unknown as z.ZodType<SubmissionRecord>;
+const actionSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  operationId: z.string().min(1),
+  action: z.enum(["warning_acknowledgement", "cancellation"]),
+  warningSequence: z.number().int().positive().nullable(),
+  replyId: z.string().nullable(),
+  idempotencyKey: z.string().min(1).max(128),
+  state: z.enum(["pending", "uncertain", "completed"]),
+  operation: operationSchema.nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+}) as unknown as z.ZodType<ActionRecord>;
 
-/** Owner-readable workflow state; full account identifiers are never persisted. */
+const operationIndexSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  operationId: z.string().min(1),
+  previewId: z.string().regex(/^[a-f0-9]{64}$/u),
+});
+/** Atomic owner-private state shared by separate CLI invocations. */
 export class FileExecutionStateStore implements ExecutionStateStore {
-  constructor(
+  public constructor(
     private readonly directory = process.env["HUSKLY_EXECUTION_DIR"] ??
-      join(homedir(), ".cache", "huskly-cli", "execution")
+      join(homedir(), ".cache", "huskly-cli", "execution"),
+    private readonly beforeOperationIndexWrite?: () => Promise<void>
   ) {}
 
-  saveWarning(value: PendingWarning): Promise<void> {
-    return this.write("warnings", value.replyId, value);
+  reserveSubmission(value: SubmissionRecord): Promise<boolean> {
+    return this.file("submissions", value.previewId, submissionSchema).create(value);
   }
-
-  async loadWarning(replyId: string): Promise<PendingWarning | undefined> {
-    const value = await this.read("warnings", replyId);
-    return value === undefined ? undefined : warningSchema.parse(value);
+  async saveSubmission(value: SubmissionRecord): Promise<void> {
+    await this.file("submissions", value.previewId, submissionSchema).save(value);
+    if (value.operationId !== null) {
+      await this.beforeOperationIndexWrite?.();
+      await this.file("operations", value.operationId, operationIndexSchema).save({
+        schemaVersion: 1,
+        operationId: value.operationId,
+        previewId: value.previewId,
+      });
+    }
   }
-
-  deleteWarning(replyId: string): Promise<void> {
-    return this.delete("warnings", replyId);
+  loadSubmission(previewId: string): Promise<SubmissionRecord | undefined> {
+    return this.file("submissions", previewId, submissionSchema).load();
   }
-
-  saveOrder(value: OrderExpectation): Promise<void> {
-    return this.write("orders", value.orderId, value);
+  async loadSubmissionByOperation(operationId: string): Promise<SubmissionRecord | undefined> {
+    const index = await this.file("operations", operationId, operationIndexSchema).load();
+    if (index !== undefined) {
+      const indexed = await this.loadSubmission(index.previewId);
+      if (indexed?.operationId === operationId) return indexed;
+    }
+    const derived = await this.deriveSubmission(operationId);
+    if (derived !== undefined) await this.saveSubmission(derived);
+    return derived;
   }
-
-  async loadOrder(orderId: string): Promise<OrderExpectation | undefined> {
-    const value = await this.read("orders", orderId);
-    return value === undefined
-      ? undefined
-      : (orderExpectationSchema.parse(value) as unknown as OrderExpectation);
+  reserveAction(value: ActionRecord): Promise<boolean> {
+    return this.actionFile(
+      value.operationId,
+      value.action,
+      value.warningSequence,
+      value.replyId
+    ).create(value);
   }
-
-  private async write(kind: string, id: string, value: object): Promise<void> {
-    const directory = join(this.directory, kind);
-    await mkdir(directory, { recursive: true, mode: 0o700 });
-    await writeFile(join(directory, this.filename(id)), JSON.stringify(value), {
-      encoding: "utf8",
-      mode: 0o600,
-    });
+  saveAction(value: ActionRecord): Promise<void> {
+    return this.actionFile(
+      value.operationId,
+      value.action,
+      value.warningSequence,
+      value.replyId
+    ).save(value);
   }
-
-  private async read(kind: string, id: string): Promise<unknown> {
+  loadAction(
+    operationId: string,
+    action: ActionRecord["action"],
+    warningSequence: number | null = null,
+    replyId: string | null = null
+  ): Promise<ActionRecord | undefined> {
+    return this.actionFile(operationId, action, warningSequence, replyId).load();
+  }
+  private actionFile(
+    operationId: string,
+    action: ActionRecord["action"],
+    warningSequence: number | null,
+    replyId: string | null
+  ): PrivateJsonFile<ActionRecord> {
+    return this.file(
+      "actions",
+      actionIdentity(operationId, action, warningSequence, replyId),
+      actionSchema
+    );
+  }
+  private async deriveSubmission(operationId: string): Promise<SubmissionRecord | undefined> {
+    const directory = join(this.directory, "submissions");
+    let names: string[];
     try {
-      return JSON.parse(
-        await readFile(join(this.directory, kind, this.filename(id)), "utf8")
-      ) as unknown;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      names = await readdir(directory);
+    } catch (error: unknown) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
       throw error;
     }
-  }
-
-  private async delete(kind: string, id: string): Promise<void> {
-    try {
-      await unlink(join(this.directory, kind, this.filename(id)));
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    if (names.length > 4096) throw new Error("Execution submission directory is too large");
+    for (const name of names) {
+      if (!/^[a-f0-9]{64}\.json$/u.test(name)) continue;
+      const record = await new PrivateJsonFile({
+        directory,
+        filename: name,
+        schema: submissionSchema,
+        maxBytes: 256 * 1024,
+      }).load();
+      if (record?.operationId === operationId) return record;
     }
+    return undefined;
   }
-
-  private filename(id: string): string {
-    return `${createHash("sha256").update(id).digest("hex")}.json`;
+  private file<T>(kind: string, id: string, schema: z.ZodType<T>): PrivateJsonFile<T> {
+    const filename = `${createHash("sha256").update(id).digest("hex")}.json`;
+    return new PrivateJsonFile({
+      directory: join(this.directory, kind),
+      filename,
+      schema,
+      maxBytes: 256 * 1024,
+    });
   }
 }
 
 export interface SubmissionDto {
-  state: "accepted" | "warning" | "rejected" | "recovery_required";
-  account: { maskedId: string; environment: BrokerEnvironment };
-  previewId: string;
-  orderId?: string;
-  clientOrderId?: string;
-  status?: DerivativeOrderLifecycle["status"];
-  updatedAt?: string | null;
-  warnings: OrderWarning[];
-  rejectionReasons: string[];
-  recovery?: {
-    reasons: string[];
-    orders: DerivativeSubmittedOrder[];
-    errors: BrokerErrorDetail[];
-    unrecognizedResponses: unknown[];
+  readonly state: "accepted" | "warning" | "rejected" | "recovery_required";
+  readonly previewId: string;
+  readonly operationId: string;
+  readonly operation: OrderOperationView;
+  readonly account: {
+    readonly maskedId: string | null;
+    readonly environment: BrokerEnvironment | null;
   };
+  readonly orderId: string | null;
+  readonly clientOrderId: string | null;
+  readonly status: NonNullable<OrderOperationView["result"]>["orders"][number]["status"] | null;
+  readonly updatedAt: string | null;
+  readonly warnings: readonly {
+    readonly sequence: number;
+    readonly replyId: string;
+    readonly messages: string[];
+    readonly messageIds: string[];
+    readonly known: boolean;
+  }[];
+  readonly rejectionReasons: readonly string[];
 }
 
-export interface OrderLifecycleDto extends Omit<DerivativeOrderLifecycle, "accountId"> {
-  account: { maskedId: string; environment: BrokerEnvironment };
-  verifiedAgainstPreview: true;
+export interface OrderLifecycleDto extends SubmissionDto {
+  readonly verifiedAgainstPreview: true;
+  readonly quantity: number | null;
+  readonly filledQuantity: number | null;
+  readonly remainingQuantity: number | null;
+  readonly averagePrice: number | null;
+  readonly limitPrice: number | null;
+  readonly commissionAndFees: number | null;
 }
 
-interface LiveExecutionPolicy {
-  enabled: boolean;
-  accountAllowlist: string[];
-}
+const terminalStates = new Set(["accepted", "cancelled", "broker_refused"]);
+const defaultDelay = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
-const terminalStatuses = new Set(["FILLED", "CANCELED", "REJECTED"]);
-const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
-/** Guarded execution workflow shared by CLI and MCP handlers. */
+/** Durable gateway operation workflow. Account and client-order identity stay gateway-owned. */
 export class DerivativeExecutionService {
-  constructor(
-    private readonly discovery: DerivativeDiscoveryClient,
-    private readonly previewClient: DerivativePreviewClient,
+  public constructor(
+    _discovery: DerivativeDiscoveryClient,
+    _previewClient: DerivativePreviewClient,
     private readonly execution: DerivativeExecutionClient,
     private readonly previews: DerivativePreviewService,
     private readonly store: ExecutionStateStore = new InMemoryExecutionStateStore(),
     private readonly now: () => Date = () => new Date(),
-    private readonly sleep: (ms: number) => Promise<void> = wait,
-    private readonly livePolicy: LiveExecutionPolicy = {
-      enabled: process.env["HUSKLY_ENABLE_LIVE_EXECUTION"] === "true",
-      accountAllowlist: (process.env["HUSKLY_LIVE_ACCOUNT_ALLOWLIST"] ?? "")
-        .split(",")
-        .map((value) => value.trim())
-        .filter(Boolean),
-    }
+    private readonly delay: (ms: number) => Promise<void> = defaultDelay,
+    _livePolicy?: unknown,
+    private readonly key: () => string = randomUUID
   ) {}
 
   async submit(input: {
     previewId: string;
-    accountId: string;
     operator: string;
     confirm: true;
   }): Promise<SubmissionDto> {
-    const diagnostics = await this.safeDiagnostics(input.accountId);
-    this.assertEnvironmentAllowed(input.accountId, diagnostics.environment);
-    const preview = await this.previews.validatePreview(input.previewId, {
-      accountId: input.accountId,
-      environment: diagnostics.environment,
-    });
-    await this.assertContractsUnchanged(preview);
-    const clientOrderId = `huskly-${this.now().getTime().toString(36)}-${randomUUID()}`.slice(
-      0,
-      64
-    );
-    const result = await this.execution.submitDerivativeCombo({
-      ...this.executionRequest(preview, input.accountId),
-      clientOrderId,
-      extOperator: input.operator,
-      manualIndicator: true,
-    });
-    return this.handleSubmissionResult(result, preview, input.accountId, clientOrderId);
+    const preview = await this.previews.validatePreview(input.previewId);
+    const createdAt = this.now().toISOString();
+    const pending: SubmissionRecord = {
+      schemaVersion: 1,
+      previewId: preview.previewId,
+      operationKind: "combo",
+      idempotencyKey: this.key(),
+      canonicalIntent: preview.order.gateway,
+      account: preview.account,
+      state: "submission_pending",
+      operationId: null,
+      operation: null,
+      createdAt,
+      updatedAt: createdAt,
+    };
+    if (!(await this.store.reserveSubmission(pending))) {
+      throw new Error("A submission record already exists for this preview");
+    }
+    let operation: OrderOperationView;
+    try {
+      operation = await this.execution.create(
+        pending.canonicalIntent,
+        pending.idempotencyKey,
+        input.operator
+      );
+    } catch (error: unknown) {
+      if (!(error instanceof ConsumerError) || error.code === "gateway_transport_failure") {
+        await this.store.saveSubmission({
+          ...pending,
+          state: "submission_uncertain",
+          updatedAt: this.now().toISOString(),
+        });
+      }
+      throw error;
+    }
+    const complete = this.completeSubmission(pending, operation);
+    await this.store.saveSubmission(complete);
+    await this.previews.consumePreview(preview.previewId);
+    return this.submissionDto(complete);
+  }
+
+  async recover(input: { previewId: string }): Promise<SubmissionDto> {
+    const record = await this.store.loadSubmission(input.previewId);
+    if (record === undefined) throw new Error("Unknown submission record");
+    const complete =
+      record.state === "operation_known" && record.operation !== null && record.operationId !== null
+        ? record
+        : this.completeSubmission(
+            record,
+            await this.execution.lookup(record.operationKind, record.idempotencyKey)
+          );
+    await this.store.saveSubmission(complete);
+    await this.previews.consumePreview(record.previewId);
+    return this.submissionDto(complete);
+  }
+
+  async getStatus(operationId: string): Promise<OrderLifecycleDto> {
+    const record = await this.requiredOperation(operationId);
+    const operation = await this.execution.get(operationId);
+    const updated = await this.saveParentOperation(record, operation);
+    return this.operationDto(operation, updated);
   }
 
   async acknowledgeWarning(input: {
-    previewId: string;
+    operationId?: string;
     replyId: string;
-    accountId: string;
     confirm: true;
-  }): Promise<SubmissionDto> {
-    const pending = await this.store.loadWarning(input.replyId);
-    if (pending?.previewId !== input.previewId) {
-      throw new Error("Warning reply does not match the exact preview");
+    previewId?: string;
+  }): Promise<OrderLifecycleDto> {
+    const operationId = input.operationId ?? (await this.operationIdForPreview(input.previewId));
+    const record = await this.requiredOperation(operationId);
+    const warning = record.operation?.pendingWarning;
+    if (warning?.replyId !== input.replyId) {
+      throw new Error("Warning reply does not match the durable operation");
     }
-    if (!pending.warning.known) throw new Error("Unknown broker warning requires manual review");
-    if (pending.accountDigest !== this.accountDigest(input.accountId)) {
-      throw new Error("Warning reply account does not match");
+    const existing = await this.store.loadAction(
+      operationId,
+      "warning_acknowledgement",
+      warning.sequence,
+      warning.replyId
+    );
+    if (existing !== undefined) return this.resumeAction(existing, record);
+    const action = this.pendingAction(
+      operationId,
+      "warning_acknowledgement",
+      warning.sequence,
+      warning.replyId
+    );
+    if (!(await this.store.reserveAction(action))) {
+      throw new Error("Warning acknowledgement is already reserved");
     }
-    const diagnostics = await this.safeDiagnostics(input.accountId);
-    if (diagnostics.environment !== pending.environment) {
-      throw new Error("Warning reply environment does not match");
-    }
-    const preview = await this.previews.validatePreview(input.previewId, {
-      accountId: input.accountId,
-      environment: diagnostics.environment,
-    });
-    await this.store.deleteWarning(input.replyId);
-    const result = await this.execution.acknowledgeOrderWarning({
-      replyId: input.replyId,
-      confirmed: true,
-    });
-    return this.handleSubmissionResult(result, preview, input.accountId, pending.clientOrderId);
+    return this.runAction(action, record);
   }
 
-  async getStatus(orderId: string, accountId: string): Promise<OrderLifecycleDto> {
-    const expectation = await this.requiredExpectation(orderId, accountId);
-    const lifecycle = await this.execution.getDerivativeOrderStatus(accountId, orderId);
-    this.verifyLifecycle(lifecycle, expectation);
-    return this.lifecycleDto(lifecycle, expectation.environment);
+  async reconcile(operationId: string): Promise<OrderReconciliationView> {
+    const record = await this.requiredOperation(operationId);
+    const operation = await this.execution.reconcile(operationId);
+    await this.saveParentOperation(record, operation);
+    return operation;
   }
 
   async watch(input: {
-    orderId: string;
-    accountId: string;
+    operationId: string;
     timeoutMs?: number;
     pollMs?: number;
   }): Promise<OrderLifecycleDto> {
-    const deadline = this.now().getTime() + (input.timeoutMs ?? 5 * 60 * 1000);
+    const deadline = this.now().getTime() + (input.timeoutMs ?? 300_000);
     for (;;) {
-      const status = await this.getStatus(input.orderId, input.accountId);
-      if (terminalStatuses.has(status.status)) return status;
-      if (this.now().getTime() >= deadline)
-        throw new Error("Timed out waiting for terminal order status");
-      await this.sleep(input.pollMs ?? 2000);
+      const status = await this.getStatus(input.operationId);
+      if (terminalStates.has(status.operation.state)) return status;
+      const remaining = deadline - this.now().getTime();
+      if (remaining <= 0) throw new Error("Timed out waiting for terminal order operation");
+      await this.delay(Math.min(input.pollMs ?? 2_000, remaining));
     }
   }
 
   async cancel(input: {
-    orderId: string;
-    accountId: string;
-    operator: string;
+    operationId: string;
     confirm: true;
+    operator?: string;
     timeoutMs?: number;
     pollMs?: number;
   }): Promise<OrderLifecycleDto> {
-    const expectation = await this.requiredExpectation(input.orderId, input.accountId);
-    const diagnostics = await this.safeDiagnostics(input.accountId);
-    if (diagnostics.environment !== expectation.environment) {
-      throw new Error("Order cancellation environment does not match its reviewed preview");
+    const record = await this.requiredOperation(input.operationId);
+    const existing = await this.store.loadAction(input.operationId, "cancellation");
+    if (existing !== undefined) return this.resumeAction(existing, record);
+    const action = this.pendingAction(input.operationId, "cancellation", null, null);
+    if (!(await this.store.reserveAction(action))) {
+      throw new Error("Cancellation is already reserved");
     }
-    this.assertEnvironmentAllowed(input.accountId, diagnostics.environment);
-    await this.execution.cancelDerivativeOrder({
-      accountId: input.accountId,
-      orderId: input.orderId,
-      assetClass: expectation.preview.order.legs[0].contract.identity.assetClass,
-      extOperator: input.operator,
-      manualIndicator: true,
-    });
-    const terminal = await this.watch(input);
-    if (terminal.status !== "CANCELED") {
-      throw new Error(`Cancellation did not reach CANCELED; terminal status is ${terminal.status}`);
-    }
-    return terminal;
+    return this.runAction(action, record);
   }
 
-  private async handleSubmissionResult(
-    result: DerivativeOrderSubmissionResult,
-    preview: SpreadPreviewDto,
-    accountId: string,
-    clientOrderId: string | null
-  ): Promise<SubmissionDto> {
-    if (result.state === "warning") {
-      if (clientOrderId === null) throw new Error("Warning response omitted client order identity");
-      for (const warning of result.warnings) {
-        await this.store.saveWarning({
-          replyId: warning.replyId,
-          previewId: preview.previewId,
-          accountDigest: this.accountDigest(accountId),
-          environment: preview.account.environment,
-          warning,
-          clientOrderId,
-        });
-      }
-      return {
-        state: "warning",
-        account: { maskedId: maskAccountId(accountId), environment: preview.account.environment },
-        previewId: preview.previewId,
-        status: "WARNING_PENDING",
-        warnings: result.warnings,
-        rejectionReasons: [],
-      };
+  private async resumeAction(
+    action: ActionRecord,
+    record: SubmissionRecord
+  ): Promise<OrderLifecycleDto> {
+    if (action.state === "completed" && action.operation !== null) {
+      return this.operationDto(action.operation, record);
     }
-    if (result.state === "rejected") {
-      return {
-        state: "rejected",
-        account: { maskedId: maskAccountId(accountId), environment: preview.account.environment },
-        previewId: preview.previewId,
-        warnings: [],
-        rejectionReasons: result.reasons,
-      };
+    if (action.state === "pending") {
+      throw new Error(
+        `${action.action === "cancellation" ? "Cancellation" : "Warning acknowledgement"} recovery is required`
+      );
     }
-    if (result.state === "recovery_required") {
-      return {
-        state: "recovery_required",
-        account: { maskedId: maskAccountId(accountId), environment: preview.account.environment },
-        previewId: preview.previewId,
-        warnings: result.warnings,
-        rejectionReasons: [],
-        recovery: {
-          reasons: result.reasons,
-          orders: result.orders,
-          errors: result.errors,
-          unrecognizedResponses: result.unrecognizedResponses,
-        },
-      };
+
+    const parent = await this.execution.get(action.operationId);
+    if (this.parentProvesAction(parent, action)) {
+      const updated = await this.completeAction(action, record, parent);
+      return this.operationDto(parent, updated);
     }
-    const effectiveClientOrderId = result.clientOrderId ?? clientOrderId;
-    if (effectiveClientOrderId === null)
-      throw new Error("Accepted order omitted client order identity");
-    const expectation: OrderExpectation = {
-      orderId: result.orderId,
-      previewId: preview.previewId,
-      accountDigest: this.accountDigest(accountId),
-      environment: preview.account.environment,
-      clientOrderId: effectiveClientOrderId,
-      preview,
-    };
-    await this.store.saveOrder(expectation);
-    await this.previews.consumePreview(preview.previewId);
-    const lifecycle = await this.execution.getDerivativeOrderStatus(accountId, result.orderId);
-    this.verifyLifecycle(lifecycle, expectation);
-    return {
-      state: "accepted",
-      account: { maskedId: maskAccountId(accountId), environment: preview.account.environment },
-      previewId: preview.previewId,
-      orderId: result.orderId,
-      clientOrderId: effectiveClientOrderId,
-      status: lifecycle.status,
-      updatedAt: lifecycle.updatedAt,
-      warnings: result.warnings,
-      rejectionReasons: [],
-    };
+    return this.runAction(action, record);
   }
 
-  private executionRequest(preview: SpreadPreviewDto, accountId: string) {
-    return {
-      accountId,
-      legs: [
-        { contract: preview.order.legs[0].contract, ratio: 1 as const },
-        { contract: preview.order.legs[1].contract, ratio: -1 as const },
-      ] as const,
-      quantity: preview.order.quantity,
-      priceEffect: preview.order.priceEffect,
-      limit: preview.order.limit,
-      tif: preview.order.tif,
-      session: preview.order.session,
-    };
+  private parentProvesAction(operation: OrderOperationView, action: ActionRecord): boolean {
+    if (action.action === "cancellation") {
+      return (
+        operation.state === "cancelled" ||
+        operation.children.some(
+          (child) =>
+            child.action === "cancellation" &&
+            ["accepted", "cancelled", "broker_refused", "reconciliation_required"].includes(
+              child.state
+            )
+        )
+      );
+    }
+    return (
+      operation.pendingWarning?.sequence !== action.warningSequence ||
+      operation.pendingWarning.replyId !== action.replyId
+    );
   }
 
-  private async assertContractsUnchanged(preview: SpreadPreviewDto): Promise<void> {
-    for (const leg of preview.order.legs) {
-      const identity = leg.contract.identity;
-      const current = await this.discovery.resolveContract({
-        assetClass: identity.assetClass,
-        underlying: identity.underlying,
-        expiration: identity.expiration,
-        strike: identity.strike,
-        right: identity.right,
-        tradingClass: identity.tradingClass,
-        exchange: identity.exchange,
+  private async runAction(
+    action: ActionRecord,
+    record: SubmissionRecord
+  ): Promise<OrderLifecycleDto> {
+    try {
+      const operation =
+        action.action === "warning_acknowledgement"
+          ? await this.execution.acknowledge(
+              action.operationId,
+              action.replyId ?? "",
+              action.idempotencyKey
+            )
+          : await this.execution.cancel(action.operationId, action.idempotencyKey);
+      const updated = await this.completeAction(action, record, operation);
+      return this.operationDto(operation, updated);
+    } catch (error: unknown) {
+      await this.store.saveAction({
+        ...action,
+        state: "uncertain",
+        updatedAt: this.now().toISOString(),
       });
-      if (JSON.stringify(current) !== JSON.stringify(leg.contract)) {
-        throw new Error("Resolved contract drifted since preview");
-      }
+      throw error;
     }
   }
 
-  private async safeDiagnostics(accountId: string) {
-    const diagnostics = await this.previewClient.getTradingDiagnostics(accountId);
-    if (
-      !diagnostics.authenticated ||
-      diagnostics.competingSession ||
-      diagnostics.selectedAccountId !== accountId
-    ) {
-      throw new Error("Broker account/session is not safe for execution");
-    }
-    return diagnostics;
+  private async completeAction(
+    action: ActionRecord,
+    record: SubmissionRecord,
+    operation: OrderOperationView
+  ): Promise<SubmissionRecord> {
+    const updated = await this.saveParentOperation(record, operation);
+    await this.store.saveAction({
+      ...action,
+      state: "completed",
+      operation,
+      updatedAt: this.now().toISOString(),
+    });
+    return updated;
   }
 
-  private assertEnvironmentAllowed(accountId: string, environment: BrokerEnvironment): void {
-    if (environment === "paper") return;
-    if (!this.livePolicy.enabled || !this.livePolicy.accountAllowlist.includes(accountId)) {
-      throw new Error("Live execution requires explicit enablement and exact account allowlisting");
+  private async saveParentOperation(
+    record: SubmissionRecord,
+    operation: OrderOperationView
+  ): Promise<SubmissionRecord> {
+    if (operation.operationId !== record.operationId) {
+      throw new Error("Gateway returned a different parent operation identity");
     }
+    const updated: SubmissionRecord = {
+      ...record,
+      operation,
+      updatedAt: this.now().toISOString(),
+    };
+    await this.store.saveSubmission(updated);
+    return updated;
   }
 
-  private async requiredExpectation(orderId: string, accountId: string): Promise<OrderExpectation> {
-    const expectation = await this.store.loadOrder(orderId);
-    if (expectation === undefined) throw new Error("Unknown guarded order identity");
-    if (expectation.accountDigest !== this.accountDigest(accountId)) {
-      throw new Error("Order account does not match");
-    }
-    return expectation;
-  }
-
-  private verifyLifecycle(
-    lifecycle: DerivativeOrderLifecycle,
-    expectation: OrderExpectation
-  ): void {
-    const preview = expectation.preview;
-    const expectedLegs = preview.order.legs.map(({ contract, ratio }) => ({
-      conid: Number(contract.brokerReference?.contractId),
-      ratio,
-    }));
-    if (JSON.stringify(lifecycle.legs) !== JSON.stringify(expectedLegs)) {
-      throw new Error("Returned combo legs or ratios do not match the preview");
-    }
-    if (lifecycle.quantity !== preview.order.quantity) {
-      throw new Error("Returned order quantity does not match the preview");
-    }
-    const expectedLimit =
-      preview.order.priceEffect === "CREDIT" ? -preview.order.limit : preview.order.limit;
-    if (lifecycle.limitPrice !== expectedLimit) {
-      throw new Error("Returned order limit does not match the preview");
-    }
-    if (lifecycle.clientOrderId !== null && lifecycle.clientOrderId !== expectation.clientOrderId) {
-      throw new Error("Returned client order ID does not match");
-    }
-  }
-
-  private lifecycleDto(
-    lifecycle: DerivativeOrderLifecycle,
-    environment: BrokerEnvironment
-  ): OrderLifecycleDto {
-    const { accountId, ...rest } = lifecycle;
+  private completeSubmission(
+    record: SubmissionRecord,
+    operation: OrderOperationView
+  ): SubmissionRecord {
     return {
-      ...rest,
-      account: { maskedId: maskAccountId(accountId), environment },
-      verifiedAgainstPreview: true,
+      ...record,
+      state: "operation_known",
+      operationId: operation.operationId,
+      operation,
+      updatedAt: this.now().toISOString(),
     };
   }
-
-  private accountDigest(accountId: string): string {
-    return createHash("sha256").update(accountId).digest("hex");
+  private pendingAction(
+    operationId: string,
+    action: ActionRecord["action"],
+    warningSequence: number | null,
+    replyId: string | null
+  ): ActionRecord {
+    const timestamp = this.now().toISOString();
+    return {
+      schemaVersion: 1,
+      operationId,
+      action,
+      warningSequence,
+      replyId,
+      idempotencyKey: this.key(),
+      state: "pending",
+      operation: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+  }
+  private async requiredOperation(operationId: string): Promise<SubmissionRecord> {
+    const record = await this.store.loadSubmissionByOperation(operationId);
+    if (record?.operationId !== operationId) throw new Error("Unknown guarded operation identity");
+    return record;
+  }
+  private async operationIdForPreview(previewId: string | undefined): Promise<string> {
+    if (previewId === undefined) throw new Error("Operation ID is required");
+    const record = await this.store.loadSubmission(previewId);
+    if (record?.operationId === null || record?.operationId === undefined)
+      throw new Error("Preview has no known operation ID");
+    return record.operationId;
+  }
+  private submissionDto(record: SubmissionRecord): SubmissionDto {
+    const operation = record.operation;
+    if (operation === null || record.operationId === null)
+      throw new Error("Operation evidence is missing");
+    const result = operation.result;
+    const first = result?.orders[0];
+    return {
+      state: this.dtoState(operation),
+      previewId: record.previewId,
+      operationId: record.operationId,
+      operation,
+      account: record.account,
+      orderId: first?.orderId ?? null,
+      clientOrderId: first?.clientOrderId ?? null,
+      status: first?.status ?? null,
+      updatedAt: operation.latestTransitionAt,
+      warnings: this.warnings(operation),
+      rejectionReasons:
+        result !== null && (result.kind === "refused" || result.kind === "recovery_required")
+          ? result.reasonCategories
+          : [],
+    };
+  }
+  private operationDto(operation: OrderOperationView, record: SubmissionRecord): OrderLifecycleDto {
+    const base = this.submissionDto({ ...record, operation });
+    return {
+      ...base,
+      verifiedAgainstPreview: true,
+      quantity: null,
+      filledQuantity: null,
+      remainingQuantity: null,
+      averagePrice: null,
+      limitPrice: null,
+      commissionAndFees: null,
+    };
+  }
+  private dtoState(operation: OrderOperationView): SubmissionDto["state"] {
+    return operation.result?.kind === "warning"
+      ? "warning"
+      : operation.result?.kind === "refused"
+        ? "rejected"
+        : operation.result?.kind === "recovery_required"
+          ? "recovery_required"
+          : "accepted";
+  }
+  private warnings(operation: OrderOperationView): SubmissionDto["warnings"] {
+    return operation.pendingWarning === null
+      ? []
+      : [
+          {
+            sequence: operation.pendingWarning.sequence,
+            replyId: operation.pendingWarning.replyId,
+            messages: [],
+            messageIds: [],
+            known: true,
+          },
+        ];
   }
 }

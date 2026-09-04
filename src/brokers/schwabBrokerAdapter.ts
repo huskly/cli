@@ -1,15 +1,17 @@
 import type { CachedSchwabClient } from "#src/cachedSchwabClient.js";
 import type { SchwabOrderStatus } from "@huskly/schwab-client";
-import type {
-  AccountBalances,
-  BrokerAccountOrders,
-  BrokerClient,
-  BrokerInstrument,
-  BrokerInstrumentSearchProjection,
-  BrokerOrdersOptions,
-  BrokerPosition,
-  BrokerQuote,
-  BrokerTransactionHistory,
+import {
+  observe,
+  type AccountBalances,
+  type BrokerAccountOrders,
+  type BrokerClient,
+  type BrokerInstrument,
+  type BrokerInstrumentSearchProjection,
+  type BrokerOrdersOptions,
+  type BrokerPosition,
+  type BrokerQuote,
+  type BrokerTransactionHistory,
+  type Observation,
 } from "#src/brokers/brokerClient.js";
 
 /**
@@ -22,15 +24,15 @@ import type {
 export class SchwabBrokerAdapter implements BrokerClient {
   constructor(private readonly client: CachedSchwabClient) {}
 
-  async getAccountBalances(): Promise<AccountBalances> {
-    return this.client.getAccountBalances();
+  async getAccountBalances(): Promise<Observation<AccountBalances>> {
+    return observe(await this.client.getAccountBalances(), "unspecified", null);
   }
 
-  async getPositions(symbol?: string): Promise<BrokerPosition[]> {
-    return this.client.getPositions(symbol);
+  async getPositions(symbol?: string): Promise<Observation<BrokerPosition[]>> {
+    return observe(await this.client.getPositions(symbol), "unspecified", null);
   }
 
-  async getQuotes(symbols: string[]): Promise<Record<string, BrokerQuote>> {
+  async getQuotes(symbols: string[]): Promise<Observation<Record<string, BrokerQuote>>> {
     const raw = await this.client.getQuotes(symbols);
     const result: Record<string, BrokerQuote> = {};
     for (const [key, value] of Object.entries(raw)) {
@@ -38,24 +40,28 @@ export class SchwabBrokerAdapter implements BrokerClient {
         result[key] = value;
       }
     }
-    return result;
+    return observe(result, "unspecified", null);
   }
 
   async searchInstruments(
     symbol: string,
     projection: BrokerInstrumentSearchProjection
-  ): Promise<BrokerInstrument[]> {
-    return this.client.searchInstruments(symbol, projection);
+  ): Promise<Observation<BrokerInstrument[]>> {
+    return observe(await this.client.searchInstruments(symbol, projection), "unspecified", null);
   }
 
   async fetchTransactionHistory(
     startDate: Date,
     endDate: Date
-  ): Promise<BrokerTransactionHistory[]> {
-    return this.client.fetchTransactionHistory(startDate, endDate);
+  ): Promise<Observation<BrokerTransactionHistory[]>> {
+    return observe(
+      await this.client.fetchTransactionHistory(startDate, endDate),
+      "unspecified",
+      null
+    );
   }
 
-  async fetchOrders(options: BrokerOrdersOptions): Promise<BrokerAccountOrders[]> {
+  async fetchOrders(options: BrokerOrdersOptions): Promise<Observation<BrokerAccountOrders[]>> {
     const fetchOptions: Parameters<CachedSchwabClient["fetchOrders"]>[0] = {
       fromEnteredTime: options.fromEnteredTime,
       toEnteredTime: options.toEnteredTime,
@@ -68,9 +74,13 @@ export class SchwabBrokerAdapter implements BrokerClient {
     }
 
     const orders = await this.client.fetchOrders(fetchOptions);
-    return orders.map((account) => ({
-      accountNumber: account.accountNumber,
-      orders: account.orders,
-    }));
+    return observe(
+      orders.map((account) => ({
+        accountNumber: account.accountNumber,
+        orders: account.orders,
+      })),
+      "unspecified",
+      null
+    );
   }
 }

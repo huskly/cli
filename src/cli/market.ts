@@ -26,8 +26,9 @@ program
   .command("quote")
   .description("Get current price quotes for one or more symbols")
   .argument("<symbols...>", "Stock symbols to quote")
-  .action(async (symbols: string[]) => {
-    await handleQuote("schwab", symbols);
+  .option("--json", "Emit a stable JSON DTO")
+  .action(async (symbols: string[], options: { json?: boolean }) => {
+    await handleQuote("schwab", symbols, options.json);
   });
 
 program
@@ -88,8 +89,9 @@ program
 program
   .command("account")
   .description("Show account equity/net liquidation value")
-  .action(async () => {
-    await handleAccount("schwab");
+  .option("--json", "Emit a stable JSON DTO")
+  .action(async (options: { json?: boolean }) => {
+    await handleAccount("schwab", options.json);
   });
 
 program
@@ -97,8 +99,9 @@ program
   .description("Show all account positions, optionally filtered by symbol or type")
   .argument("[symbol]", "Optional symbol to filter positions", undefined)
   .option("-t, --type <type>", "Filter by asset type (e.g., OPTION, EQUITY)")
-  .action(async (symbol: string | undefined, options: { type?: string }) => {
-    await handlePositions("schwab", symbol, options.type);
+  .option("--json", "Emit a stable JSON DTO")
+  .action(async (symbol: string | undefined, options: { type?: string; json?: boolean }) => {
+    await handlePositions("schwab", symbol, options.type, undefined, options.json);
   });
 
 program
@@ -106,7 +109,8 @@ program
   .description("List account transaction history (defaults to current year)")
   .option("-s, --start <date>", "Start date (YYYY-MM-DD)")
   .option("-e, --end <date>", "End date (YYYY-MM-DD)")
-  .action(async (options: { start?: string; end?: string }) => {
+  .option("--json", "Emit a stable JSON DTO")
+  .action(async (options: { start?: string; end?: string; json?: boolean }) => {
     await handleTransactions("schwab", options);
   });
 
@@ -117,9 +121,18 @@ program
   .option("-t, --to <date>", "To entered time (YYYY-MM-DD)")
   .option("-s, --status <status>", "Filter by order status (FILLED, WORKING, CANCELED, etc.)")
   .option("-m, --max-results <n>", "Maximum number of orders to retrieve")
-  .action(async (options: { from?: string; to?: string; status?: string; maxResults?: string }) => {
-    await handleOrders("schwab", options);
-  });
+  .option("--json", "Emit a stable JSON DTO")
+  .action(
+    async (options: {
+      from?: string;
+      to?: string;
+      status?: string;
+      maxResults?: string;
+      json?: boolean;
+    }) => {
+      await handleOrders("schwab", options);
+    }
+  );
 
 program
   .command("place-order")

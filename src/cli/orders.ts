@@ -1,7 +1,15 @@
 import chalk from "chalk";
 import { format, isValid, parseISO, subDays } from "date-fns";
 import { brokerClient } from "./shared.js";
-import type { BrokerName, BrokerOrder, BrokerOrdersOptions } from "#src/brokers/brokerClient.js";
+import {
+  isPartialObservation,
+  requireObservation,
+  type BrokerAccountOrders,
+  type BrokerName,
+  type BrokerOrder,
+  type BrokerOrdersOptions,
+  type Observation,
+} from "#src/brokers/brokerClient.js";
 import { currencyFormatUsd } from "#src/format.js";
 
 interface OrdersOptions {
@@ -9,6 +17,7 @@ interface OrdersOptions {
   to?: string;
   status?: string;
   maxResults?: string;
+  json?: boolean;
 }
 
 const DATE_FORMAT = "yyyy-MM-dd";
@@ -37,8 +46,7 @@ function parseDateInput(value: string, label: string): Date {
 
 function parseOrderDate(order: BrokerOrder): Date {
   const dateStr = order.enteredTime;
-  const parsed = dateStr ? new Date(dateStr) : new Date(NaN);
-  return parsed;
+  return dateStr ? new Date(dateStr) : new Date(NaN);
 }
 
 function formatColumn(value: string, width: number, align: "left" | "right" = "left"): string {
@@ -46,7 +54,11 @@ function formatColumn(value: string, width: number, align: "left" | "right" = "l
   return align === "right" ? truncated.padStart(width) : truncated.padEnd(width);
 }
 
-function getStatusColor(status: string | undefined): (text: string) => string {
+function accountHeading(accountNumber: string | undefined): string {
+  return accountNumber ? `Account ${accountNumber}` : "Account";
+}
+
+function getStatusColor(status: string | null | undefined): (text: string) => string {
   switch (status) {
     case "FILLED":
       return chalk.green;
@@ -75,12 +87,9 @@ function getStatusColor(status: string | undefined): (text: string) => string {
 function getOrderSymbol(order: BrokerOrder): string {
   const legs = order.orderLegCollection;
   if (!legs || legs.length === 0) return "-";
-
   if (legs.length === 1) {
     return legs[0]?.instrument?.symbol ?? "-";
   }
-
-  // For multi-leg orders, show primary symbol or indicate multi-leg
   const symbols = legs.map((leg) => leg.instrument?.symbol).filter(Boolean);
   const uniqueSymbols = [...new Set(symbols)];
   if (uniqueSymbols.length === 1) {
@@ -92,12 +101,9 @@ function getOrderSymbol(order: BrokerOrder): string {
 function getOrderInstruction(order: BrokerOrder): string {
   const legs = order.orderLegCollection;
   if (!legs || legs.length === 0) return "-";
-
   if (legs.length === 1) {
     return legs[0]?.instruction ?? "-";
   }
-
-  // For complex orders, show the strategy type
   return order.complexOrderStrategyType ?? "MULTI-LEG";
 }
 
@@ -111,19 +117,85 @@ function getOrderPrice(order: BrokerOrder): string {
   return "-";
 }
 
+export function renderOrdersObservation(
+  observation: Observation<BrokerAccountOrders[]>,
+  broker: BrokerName,
+  fromDate: Date,
+  toDate: Date,
+  options: OrdersOptions
+): string {
+  const safeObservation = requireObservation("fetchOrders", observation);
+  if (options.json) {
+    return JSON.stringify(safeObservation, null, 2);
+  }
+
+  const accountOrders = safeObservation.value;
+  const lines = [
+    chalk.bold(
+      `\n📋 Orders (${format(fromDate, DATE_FORMAT)} to ${format(toDate, DATE_FORMAT)})\n`
+    ),
+  ];
+  if (isPartialObservation(safeObservation)) {
+    lines.push(chalk.yellow("Warning: Broker data is partial."));
+  }
+
+  if (accountOrders.length === 0) {
+    lines.push(chalk.yellow(`No ${broker.toUpperCase()} accounts found.`));
+    return lines.join("\n");
+  }
+
+  for (const account of accountOrders) {
+    lines.push(chalk.bold(accountHeading(account.accountNumber)));
+    const orders = [...account.orders].sort((a, b) => {
+      const aDate = parseOrderDate(a).getTime();
+      const bDate = parseOrderDate(b).getTime();
+      return bDate - aDate;
+    });
+
+    if (orders.length === 0) {
+      lines.push(chalk.yellow("  No orders in range.\n"));
+      continue;
+    }
+
+    lines.push(chalk.gray("─".repeat(SEPARATOR_LENGTH)));
+    lines.push(
+      `${chalk.gray(formatColumn("Date", COLUMN_WIDTHS.date))} ${chalk.gray(formatColumn("Status", COLUMN_WIDTHS.status))} ${chalk.gray(formatColumn("Type", COLUMN_WIDTHS.type))} ${chalk.gray(formatColumn("Symbol", COLUMN_WIDTHS.symbol))} ${chalk.gray(formatColumn("Instruction", COLUMN_WIDTHS.instruction))} ${chalk.gray(formatColumn("Qty", COLUMN_WIDTHS.quantity, "right"))} ${chalk.gray(formatColumn("Price", COLUMN_WIDTHS.price, "right"))} ${chalk.gray(formatColumn("Filled", COLUMN_WIDTHS.filled, "right"))}`
+    );
+    lines.push(chalk.gray("─".repeat(SEPARATOR_LENGTH)));
+
+    for (const order of orders) {
+      const date = parseOrderDate(order);
+      const dateLabel = isValid(date) ? format(date, "yyyy-MM-dd HH:mm") : "-";
+      const status = order.status ?? "UNKNOWN";
+      const statusColor = getStatusColor(order.status);
+      const orderType = order.orderType ?? "-";
+      const symbol = getOrderSymbol(order);
+      const instruction = getOrderInstruction(order);
+      const quantity = order.quantity?.toString() ?? (order.quantity === null ? "-" : "-");
+      const price = getOrderPrice(order);
+      const filled =
+        order.filledQuantity?.toString() ?? (order.filledQuantity === null ? "-" : "0");
+
+      lines.push(
+        `${chalk.gray(formatColumn(dateLabel, COLUMN_WIDTHS.date))} ${statusColor(formatColumn(status, COLUMN_WIDTHS.status))} ${chalk.white(formatColumn(orderType, COLUMN_WIDTHS.type))} ${chalk.cyan(formatColumn(symbol, COLUMN_WIDTHS.symbol))} ${chalk.white(formatColumn(instruction, COLUMN_WIDTHS.instruction))} ${chalk.white(formatColumn(quantity, COLUMN_WIDTHS.quantity, "right"))} ${chalk.yellow(formatColumn(price, COLUMN_WIDTHS.price, "right"))} ${chalk.green(formatColumn(filled, COLUMN_WIDTHS.filled, "right"))}`
+      );
+    }
+
+    lines.push(chalk.gray("─".repeat(SEPARATOR_LENGTH)));
+    lines.push("");
+  }
+
+  return lines.join("\n").trimEnd();
+}
+
 export async function handleOrders(broker: BrokerName, options: OrdersOptions): Promise<void> {
   const now = new Date();
-  // Default to last 30 days if no dates provided
   const toDate = options.to ? parseDateInput(options.to, "to") : now;
   const fromDate = options.from ? parseDateInput(options.from, "from") : subDays(now, 30);
 
   if (fromDate > toDate) {
     throw new Error("From date must be on or before to date.");
   }
-
-  console.log(
-    chalk.bold(`\n📋 Orders (${format(fromDate, DATE_FORMAT)} to ${format(toDate, DATE_FORMAT)})\n`)
-  );
 
   const fetchOptions: BrokerOrdersOptions = {
     fromEnteredTime: fromDate,
@@ -137,50 +209,7 @@ export async function handleOrders(broker: BrokerName, options: OrdersOptions): 
   }
 
   const api = await brokerClient(broker);
-  const accountOrders = await api.fetchOrders(fetchOptions);
-
-  if (accountOrders.length === 0) {
-    console.log(chalk.yellow(`No ${broker.toUpperCase()} accounts found.`));
-    return;
-  }
-
-  for (const account of accountOrders) {
-    console.log(chalk.bold(`Account ${account.accountNumber}`));
-    const orders = [...account.orders].sort((a, b) => {
-      const aDate = parseOrderDate(a).getTime();
-      const bDate = parseOrderDate(b).getTime();
-      return bDate - aDate;
-    });
-
-    if (orders.length === 0) {
-      console.log(chalk.yellow("  No orders in range.\n"));
-      continue;
-    }
-
-    console.log(chalk.gray("─".repeat(SEPARATOR_LENGTH)));
-    console.log(
-      `${chalk.gray(formatColumn("Date", COLUMN_WIDTHS.date))} ${chalk.gray(formatColumn("Status", COLUMN_WIDTHS.status))} ${chalk.gray(formatColumn("Type", COLUMN_WIDTHS.type))} ${chalk.gray(formatColumn("Symbol", COLUMN_WIDTHS.symbol))} ${chalk.gray(formatColumn("Instruction", COLUMN_WIDTHS.instruction))} ${chalk.gray(formatColumn("Qty", COLUMN_WIDTHS.quantity, "right"))} ${chalk.gray(formatColumn("Price", COLUMN_WIDTHS.price, "right"))} ${chalk.gray(formatColumn("Filled", COLUMN_WIDTHS.filled, "right"))}`
-    );
-    console.log(chalk.gray("─".repeat(SEPARATOR_LENGTH)));
-
-    for (const order of orders) {
-      const date = parseOrderDate(order);
-      const dateLabel = isValid(date) ? format(date, "yyyy-MM-dd HH:mm") : "-";
-      const status = order.status ?? "UNKNOWN";
-      const statusColor = getStatusColor(order.status);
-      const orderType = order.orderType ?? "-";
-      const symbol = getOrderSymbol(order);
-      const instruction = getOrderInstruction(order);
-      const quantity = order.quantity?.toString() ?? "-";
-      const price = getOrderPrice(order);
-      const filled = order.filledQuantity?.toString() ?? "0";
-
-      console.log(
-        `${chalk.gray(formatColumn(dateLabel, COLUMN_WIDTHS.date))} ${statusColor(formatColumn(status, COLUMN_WIDTHS.status))} ${chalk.white(formatColumn(orderType, COLUMN_WIDTHS.type))} ${chalk.cyan(formatColumn(symbol, COLUMN_WIDTHS.symbol))} ${chalk.white(formatColumn(instruction, COLUMN_WIDTHS.instruction))} ${chalk.white(formatColumn(quantity, COLUMN_WIDTHS.quantity, "right"))} ${chalk.yellow(formatColumn(price, COLUMN_WIDTHS.price, "right"))} ${chalk.green(formatColumn(filled, COLUMN_WIDTHS.filled, "right"))}`
-      );
-    }
-
-    console.log(chalk.gray("─".repeat(SEPARATOR_LENGTH)));
-    console.log();
-  }
+  console.log(
+    renderOrdersObservation(await api.fetchOrders(fetchOptions), broker, fromDate, toDate, options)
+  );
 }

@@ -1,15 +1,24 @@
-import { IbkrClient, buildOauthConfig } from "@huskly/ibkr-client";
 import type { BrokerName } from "#src/brokers/brokerClient.js";
+import {
+  createGatewayMutationApi,
+  GatewayMutationAdapter,
+} from "#src/gateway/gatewayMutationAdapter.js";
+import { cliGatewayTransport } from "#src/gateway/gatewayTransport.js";
 import type { DerivativeDiscoveryClient } from "./derivativeDiscovery.js";
-import type { DerivativePreviewClient } from "./derivativePreview.js";
 import type { DerivativeExecutionClient } from "./derivativeExecution.js";
-import { IbkrDerivativeAdapter } from "./ibkrDerivativeAdapter.js";
+import {
+  createIbkrGatewayDerivativeReadApi,
+  IbkrDerivativeAdapter,
+} from "./ibkrDerivativeAdapter.js";
+import type {
+  DerivativeComboPreviewRequest,
+  DerivativePreviewClient,
+} from "./derivativePreview.js";
 
 export interface DerivativeDiscoveryFactories {
   ibkr(): Promise<DerivativeDiscoveryClient>;
 }
 
-/** Build a memoized capability resolver without widening the shared BrokerClient. */
 export function createDerivativeDiscoveryResolver(factories: DerivativeDiscoveryFactories) {
   const clients = new Map<BrokerName, Promise<DerivativeDiscoveryClient>>();
   return (broker: BrokerName): Promise<DerivativeDiscoveryClient> => {
@@ -19,7 +28,7 @@ export function createDerivativeDiscoveryResolver(factories: DerivativeDiscovery
       );
     }
     const existing = clients.get(broker);
-    if (existing) return existing;
+    if (existing !== undefined) return existing;
     const client = factories.ibkr();
     clients.set(broker, client);
     return client;
@@ -28,29 +37,52 @@ export function createDerivativeDiscoveryResolver(factories: DerivativeDiscovery
 
 const resolveDerivativeDiscovery = createDerivativeDiscoveryResolver({
   ibkr: async () => {
-    const client = new IbkrClient(buildOauthConfig());
-    await client.init();
-    return new IbkrDerivativeAdapter(client);
+    const transport = await cliGatewayTransport();
+    return new IbkrDerivativeAdapter(createIbkrGatewayDerivativeReadApi(transport));
   },
 });
+let mutationPromise: Promise<GatewayMutationAdapter> | undefined;
+function mutationClient(): Promise<GatewayMutationAdapter> {
+  return (mutationPromise ??= cliGatewayTransport()
+    .then((transport) => new GatewayMutationAdapter(createGatewayMutationApi(transport)))
+    .catch((error: unknown) => {
+      mutationPromise = undefined;
+      throw error;
+    }));
+}
 
-/** Resolve a reusable broker-specific derivative discovery capability. */
 export function derivativeDiscoveryClient(broker: BrokerName): Promise<DerivativeDiscoveryClient> {
   return resolveDerivativeDiscovery(broker);
 }
 
-/** Resolve the explicit What-If capability; unsupported brokers fail closed. */
 export async function derivativePreviewClient(
   broker: BrokerName
 ): Promise<DerivativePreviewClient> {
-  return (await resolveDerivativeDiscovery(broker)) as DerivativeDiscoveryClient &
-    DerivativePreviewClient;
+  if (broker !== "ibkr")
+    throw new Error(`Derivative preview is not implemented for broker '${broker}' yet.`);
+  const [discovery, mutation] = await Promise.all([
+    resolveDerivativeDiscovery("ibkr"),
+    mutationClient(),
+  ]);
+  const read = discovery as IbkrDerivativeAdapter;
+  return {
+    getTradingDiagnostics: () => read.getTradingDiagnostics(),
+    previewDerivativeCombo: (request: DerivativeComboPreviewRequest) =>
+      mutation.preview({
+        ...request,
+        legs: [
+          { contract: request.legs[0].contract, ratio: 1 },
+          { contract: request.legs[1].contract, ratio: -1 },
+        ],
+        orderType: "LMT",
+      }),
+  };
 }
 
-/** Resolve the guarded live-execution capability; unsupported brokers fail closed. */
 export async function derivativeExecutionClient(
   broker: BrokerName
 ): Promise<DerivativeExecutionClient> {
-  return (await resolveDerivativeDiscovery(broker)) as DerivativeDiscoveryClient &
-    DerivativeExecutionClient;
+  if (broker !== "ibkr")
+    throw new Error(`Derivative execution is not implemented for broker '${broker}' yet.`);
+  return mutationClient();
 }
