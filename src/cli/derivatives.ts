@@ -9,6 +9,10 @@ import type {
   DerivativeAssetClass,
   DerivativeRight,
 } from "#src/derivatives/derivativeDiscovery.js";
+import type {
+  OrderOperationView,
+  OrderReconciliationView,
+} from "#src/derivatives/derivativeExecution.js";
 import {
   DerivativeResearchService,
   type OptionDiscoveryResearch,
@@ -65,7 +69,6 @@ interface ResolveOptions extends SeriesOptions {
 }
 
 interface ExecutionOptions {
-  account?: string;
   broker?: string;
   confirm?: boolean;
   json?: boolean;
@@ -75,6 +78,161 @@ interface ExecutionOptions {
 interface WatchOptions extends ExecutionOptions {
   poll: string;
   timeout: string;
+}
+
+interface AcknowledgeOptions extends ExecutionOptions {
+  reply: string;
+}
+
+type ResearchServiceLike = Pick<DerivativeResearchService, "discover" | "chain" | "quoteVertical">;
+type PreviewServiceLike = Pick<
+  DerivativePreviewService,
+  "previewVertical" | "getTradingDiagnostics"
+>;
+type ExecutionServiceLike = Pick<
+  DerivativeExecutionService,
+  "submit" | "recover" | "getStatus" | "watch" | "acknowledgeWarning" | "reconcile" | "cancel"
+>;
+
+export interface DerivativeCommandDependencies {
+  readonly createResearchService?: (broker: BrokerName) => Promise<ResearchServiceLike>;
+  readonly createPreviewService?: (broker: BrokerName) => Promise<PreviewServiceLike>;
+  readonly createExecutionService?: (broker: BrokerName) => Promise<ExecutionServiceLike>;
+  readonly log?: (line: string) => void;
+}
+
+interface SafeAccountView {
+  readonly maskedId: string;
+  readonly environment: "paper" | "live";
+}
+
+interface SafeOperationView {
+  readonly operationId: string;
+  readonly kind: OrderOperationView["kind"];
+  readonly action: OrderOperationView["action"];
+  readonly state: OrderOperationView["state"];
+  readonly createdAt: string;
+  readonly latestTransitionAt: string;
+  readonly pendingWarning: OrderOperationView["pendingWarning"];
+  readonly reconciliation: OrderOperationView["reconciliation"];
+  readonly result: {
+    readonly kind: NonNullable<OrderOperationView["result"]>["kind"];
+    readonly warningCount: number;
+    readonly orderCount: number;
+    readonly statuses?: readonly NonNullable<
+      OrderOperationView["result"]
+    >["orders"][number]["status"][];
+    readonly reasonCategories?: readonly string[];
+  } | null;
+  readonly childActions: readonly {
+    readonly operationId: string;
+    readonly action: "warning_acknowledgement" | "cancellation";
+    readonly state: string;
+    readonly createdAt: string;
+    readonly latestTransitionAt: string;
+  }[];
+}
+
+interface SafeSpreadPreviewView {
+  readonly previewId: string;
+  readonly createdAt: string;
+  readonly expiresAt: string;
+  readonly account: SafeAccountView;
+  readonly order: {
+    readonly kind: VerticalSpreadKind;
+    readonly quantity: number;
+    readonly priceEffect: "CREDIT" | "DEBIT";
+    readonly limit: number;
+    readonly tif: "DAY" | "GTC";
+    readonly session: "REGULAR" | "OVERNIGHT";
+    readonly legs: readonly {
+      readonly side: "LONG" | "SHORT";
+      readonly ratio: 1 | -1;
+      readonly assetClass: DerivativeAssetClass;
+      readonly underlying: string;
+      readonly expiration: string;
+      readonly strike: number;
+      readonly right: DerivativeRight;
+      readonly tradingClass: string;
+      readonly exchange: string;
+      readonly multiplier: number;
+    }[];
+  };
+  readonly whatIf: {
+    readonly accepted: boolean;
+    readonly submitted: false;
+    readonly commission: number | null;
+    readonly initialMargin: SpreadPreviewDto["whatIf"]["initialMargin"];
+    readonly maintenanceMargin: SpreadPreviewDto["whatIf"]["maintenanceMargin"];
+    readonly warnings: readonly string[];
+    readonly rejectionReasons: readonly string[];
+    readonly advisoryAssetPermissions: readonly string[];
+  };
+  readonly submitted: false;
+}
+
+interface SafeSubmissionView {
+  readonly previewId: string;
+  readonly state: SubmissionDto["state"];
+  readonly account: SafeAccountView;
+  readonly operation: SafeOperationView;
+  readonly updatedAt?: string | null;
+  readonly verifiedStatus?: SubmissionDto["status"];
+  readonly warnings: readonly {
+    readonly replyId: string;
+    readonly known: boolean;
+    readonly messageCount: number;
+  }[];
+  readonly rejectionReasons: readonly string[];
+  readonly recoveryEvidence: {
+    readonly required: true;
+    readonly reasonCategories: readonly string[];
+    readonly orderCount: number;
+    readonly reconciliation: OrderOperationView["reconciliation"];
+  } | null;
+}
+
+interface SafeLifecycleView extends SafeSubmissionView {
+  readonly verifiedAgainstPreview: true;
+  readonly quantity: number;
+  readonly filledQuantity: number;
+  readonly remainingQuantity: number;
+  readonly averagePrice: number | null;
+  readonly limitPrice: number | null;
+  readonly commissionAndFees: number | null;
+}
+
+interface SafeReconciliationView {
+  readonly operation: SafeOperationView;
+  readonly observation: OrderOperationView["reconciliation"];
+}
+
+interface SafeTradingDiagnosticsView {
+  readonly account: {
+    readonly maskedId: string;
+    readonly environment: TradingDiagnostics["environment"];
+    readonly verified: boolean;
+  };
+  readonly gateway: {
+    readonly state: TradingDiagnostics["state"];
+    readonly authenticated: boolean;
+    readonly connected: boolean | null;
+    readonly competingSession: boolean;
+    readonly readReady: boolean;
+    readonly newMutationReady: boolean;
+    readonly recoveryMutationReady: boolean;
+    readonly lockOwned: boolean;
+  };
+  readonly marketDataAvailable: boolean | null;
+  readonly advisoryAssetPermissions: readonly string[];
+  readonly timing: {
+    readonly lastTickleAt: string | null;
+    readonly nextRenewalAt: string | null;
+    readonly lastBrokerRequestAt: string | null;
+  };
+  readonly queueDepth: number;
+  readonly pendingWarnings: number;
+  readonly reconciliationRequiredOperations: number;
 }
 
 function assetClass(value: string): DerivativeAssetClass {
@@ -100,12 +258,6 @@ function spreadKind(value: string): VerticalSpreadKind {
     throw new Error(`Invalid vertical kind '${value}'. Expected one of: ${kinds.join(", ")}.`);
   }
   return normalized as VerticalSpreadKind;
-}
-
-function accountId(value: string | undefined): string {
-  const account = value ?? process.env["IBKR_ACCOUNT_ID"];
-  if (!account?.trim()) throw new Error("An exact --account or IBKR_ACCOUNT_ID is required.");
-  return account;
 }
 
 function operator(value: string | undefined): string {
@@ -175,12 +327,10 @@ function formatPrice(value: number | null): string {
   return value === null ? "-" : String(value);
 }
 
-
 function observationDetails(observedAt: string | null, completeness: string): string {
   const detail = observedAt === null ? completeness : `${completeness} @ ${observedAt}`;
   return `[${detail}]`;
 }
-
 
 export function renderOptionDiscovery(result: OptionDiscoveryResearch): string {
   const reference = result.referenceQuote;
@@ -262,24 +412,211 @@ export function renderVerticalSpread(result: VerticalSpreadResearch): string {
   return lines.join("\n");
 }
 
-function renderTradingDiagnostics(result: TradingDiagnostics): string {
-  return [
-    `Account: ${result.accountId}  Environment: ${result.environment}  State: ${result.state}`,
-    `Authenticated: ${String(result.authenticated)}  Connected: ${String(result.connected)}  Competing session: ${String(result.competingSession)}`,
-    `Read ready: ${String(result.readReady)}  New mutations ready: ${String(result.newMutationReady)}  Recovery ready: ${String(result.recoveryMutationReady)}`,
-    `Account verified: ${String(result.accountVerified)}  Lock owned: ${String(result.lockOwned)}`,
-    `Market data: ${result.marketDataAvailable === null ? "unknown" : String(result.marketDataAvailable)}  Queue depth: ${String(result.readQueueDepth)}`,
-    `Last tickle: ${result.lastTickleAt ?? "unknown"}  Next renewal: ${result.nextRenewalAt ?? "unknown"}  Last broker request: ${result.lastBrokerRequestAt ?? "unknown"}`,
-    `Pending warnings: ${String(result.pendingWarnings)}  Reconciliation required: ${String(result.reconciliationRequiredOperations)}`,
-  ].join("\n");
+function safeAccount(
+  maskedId: string | null | undefined,
+  environment: SafeAccountView["environment"]
+): SafeAccountView {
+  return { maskedId: maskedId ?? "unknown", environment };
 }
 
-function renderSpreadPreview(result: SpreadPreviewDto): string {
+function safeOperation(operation: OrderOperationView): SafeOperationView {
+  const result =
+    operation.result === null
+      ? null
+      : {
+          kind: operation.result.kind,
+          warningCount: operation.result.warningCount,
+          orderCount: operation.result.orders.length,
+          ...(operation.result.orders.length === 0
+            ? {}
+            : { statuses: [...new Set(operation.result.orders.map((order) => order.status))] }),
+          ...("reasonCategories" in operation.result && operation.result.reasonCategories.length > 0
+            ? { reasonCategories: operation.result.reasonCategories }
+            : {}),
+        };
+  return {
+    operationId: operation.operationId,
+    kind: operation.kind,
+    action: operation.action,
+    state: operation.state,
+    createdAt: operation.createdAt,
+    latestTransitionAt: operation.latestTransitionAt,
+    pendingWarning: operation.pendingWarning,
+    reconciliation: operation.reconciliation,
+    result,
+    childActions: operation.children.map((child) => ({
+      operationId: child.operationId,
+      action: child.action,
+      state: child.state,
+      createdAt: child.createdAt,
+      latestTransitionAt: child.latestTransitionAt,
+    })),
+  };
+}
+
+function toSpreadPreviewView(result: SpreadPreviewDto): SafeSpreadPreviewView {
+  return {
+    previewId: result.previewId,
+    createdAt: result.createdAt,
+    expiresAt: result.expiresAt,
+    account: safeAccount(result.account.maskedId, result.account.environment),
+    order: {
+      kind: result.order.kind,
+      quantity: result.order.quantity,
+      priceEffect: result.order.priceEffect,
+      limit: result.order.limit,
+      tif: result.order.tif,
+      session: result.order.session,
+      legs: result.order.legs.map((leg) => ({
+        side: leg.side,
+        ratio: leg.ratio,
+        assetClass: leg.contract.identity.assetClass,
+        underlying: leg.contract.identity.underlying,
+        expiration: leg.contract.identity.expiration,
+        strike: leg.contract.identity.strike,
+        right: leg.contract.identity.right,
+        tradingClass: leg.contract.identity.tradingClass,
+        exchange: leg.contract.identity.exchange,
+        multiplier: leg.contract.identity.multiplier,
+      })),
+    },
+    whatIf: {
+      accepted: result.whatIf.accepted,
+      submitted: result.whatIf.submitted,
+      commission: result.whatIf.commission,
+      initialMargin: result.whatIf.initialMargin,
+      maintenanceMargin: result.whatIf.maintenanceMargin,
+      warnings: result.whatIf.warnings,
+      rejectionReasons: result.whatIf.rejectionReasons,
+      advisoryAssetPermissions: result.whatIf.advisoryAssetPermissions,
+    },
+    submitted: result.submitted,
+  };
+}
+
+function toSubmissionView(result: SubmissionDto): SafeSubmissionView {
+  const operation = safeOperation(result.operation);
+  return {
+    previewId: result.previewId,
+    state: result.state,
+    account: safeAccount(result.account.maskedId, result.account.environment),
+    operation,
+    ...(result.updatedAt !== undefined ? { updatedAt: result.updatedAt } : {}),
+    ...(result.status !== undefined ? { verifiedStatus: result.status } : {}),
+    warnings: result.warnings.map((warning) => ({
+      replyId: warning.replyId,
+      known: warning.known,
+      messageCount: warning.messages.length,
+    })),
+    rejectionReasons: result.rejectionReasons,
+    recoveryEvidence:
+      operation.result?.kind !== "recovery_required"
+        ? null
+        : {
+            required: true,
+            reasonCategories: operation.result.reasonCategories ?? [],
+            orderCount: operation.result.orderCount,
+            reconciliation: operation.reconciliation,
+          },
+  };
+}
+
+function toLifecycleView(result: OrderLifecycleDto): SafeLifecycleView {
+  const base = toSubmissionView(result);
+  return {
+    ...base,
+    verifiedAgainstPreview: result.verifiedAgainstPreview,
+    quantity: result.quantity,
+    filledQuantity: result.filledQuantity,
+    remainingQuantity: result.remainingQuantity,
+    averagePrice: result.averagePrice,
+    limitPrice: result.limitPrice,
+    commissionAndFees: result.commissionAndFees,
+  };
+}
+
+function toReconciliationView(result: OrderReconciliationView): SafeReconciliationView {
+  return {
+    operation: safeOperation(result),
+    observation: result.reconciliation,
+  };
+}
+
+function toTradingDiagnosticsView(result: TradingDiagnostics): SafeTradingDiagnosticsView {
+  return {
+    account: {
+      maskedId: maskAccountId(result.maskedAccountDisplay ?? result.accountId),
+      environment: result.environment,
+      verified: result.accountVerified,
+    },
+    gateway: {
+      state: result.state,
+      authenticated: result.authenticated,
+      connected: result.connected,
+      competingSession: result.competingSession,
+      readReady: result.readReady,
+      newMutationReady: result.newMutationReady,
+      recoveryMutationReady: result.recoveryMutationReady,
+      lockOwned: result.lockOwned,
+    },
+    marketDataAvailable: result.marketDataAvailable,
+    advisoryAssetPermissions: result.advisoryAssetPermissions,
+    timing: {
+      lastTickleAt: result.lastTickleAt,
+      nextRenewalAt: result.nextRenewalAt,
+      lastBrokerRequestAt: result.lastBrokerRequestAt,
+    },
+    queueDepth: result.readQueueDepth,
+    pendingWarnings: result.pendingWarnings,
+    reconciliationRequiredOperations: result.reconciliationRequiredOperations,
+  };
+}
+
+function renderSafeOperation(operation: SafeOperationView): string[] {
+  const lines = [
+    `Operation: ${operation.operationId}`,
+    `Kind: ${operation.kind}  Action: ${operation.action}  State: ${operation.state}`,
+    `Created: ${operation.createdAt}  Updated: ${operation.latestTransitionAt}`,
+  ];
+  if (operation.result !== null) {
+    lines.push(
+      `Result: ${operation.result.kind}  Orders: ${String(operation.result.orderCount)}  Warnings: ${String(operation.result.warningCount)}`
+    );
+    if (operation.result.statuses !== undefined) {
+      lines.push(`Observed statuses: ${operation.result.statuses.join(" | ")}`);
+    }
+    if (operation.result.reasonCategories !== undefined) {
+      lines.push(`Reason categories: ${operation.result.reasonCategories.join(" | ")}`);
+    }
+  } else {
+    lines.push("Result: pending");
+  }
+  if (operation.pendingWarning !== null) {
+    lines.push(
+      `Pending warning: reply ${operation.pendingWarning.replyId}  sequence ${String(operation.pendingWarning.sequence)}`
+    );
+  }
+  if (operation.reconciliation !== null) {
+    lines.push(
+      `Reconciliation: ${operation.reconciliation.status} @ ${operation.reconciliation.observedAt}  reason ${operation.reconciliation.reason}`
+    );
+  }
+  if (operation.childActions.length > 0) {
+    lines.push(
+      `Child actions: ${operation.childActions.map((child) => `${child.action}:${child.state}:${child.operationId}`).join(" | ")}`
+    );
+  }
+  return lines;
+}
+
+function renderSpreadPreview(result: SafeSpreadPreviewView): string {
   return [
-    `Preview ${result.previewId}`,
-    `Account: ${result.account.maskedId ?? "unknown"}  Environment: ${result.account.environment}`,
+    `Preview: ${result.previewId}`,
+    `Account: ${result.account.maskedId}  Environment: ${result.account.environment}`,
+    `Created: ${result.createdAt}`,
     `Expires: ${result.expiresAt}`,
-    `${result.order.kind} x${String(result.order.quantity)} ${result.order.priceEffect.toLowerCase()} ${String(result.order.limit)}`,
+    `${result.order.kind} x${String(result.order.quantity)} ${result.order.priceEffect.toLowerCase()} ${String(result.order.limit)}  ${result.order.tif} ${result.order.session}`,
+    `Legs: ${result.order.legs.map((leg) => `${leg.side} ${leg.underlying} ${leg.expiration} ${String(leg.strike)} ${leg.right}`).join(" | ")}`,
     `Initial margin change: ${formatPrice(result.whatIf.initialMargin?.change ?? null)}`,
     `Maintenance margin change: ${formatPrice(result.whatIf.maintenanceMargin?.change ?? null)}`,
     `Commission/fees: ${formatPrice(result.whatIf.commission)}`,
@@ -289,43 +626,76 @@ function renderSpreadPreview(result: SpreadPreviewDto): string {
   ].join("\n");
 }
 
-function renderSubmission(result: SubmissionDto): string {
+function renderSubmission(result: SafeSubmissionView): string {
   const lines = [
     `Submission: ${result.state}`,
     `Preview: ${result.previewId}`,
     `Account: ${result.account.maskedId}  Environment: ${result.account.environment}`,
+    ...renderSafeOperation(result.operation),
   ];
-  if (result.orderId !== undefined) lines.push(`Order: ${result.orderId}`);
-  if (result.clientOrderId !== undefined) lines.push(`Client order: ${result.clientOrderId}`);
-  if (result.status !== undefined) lines.push(`Verified status: ${result.status}`);
-  if (result.updatedAt !== undefined) lines.push(`Updated: ${result.updatedAt ?? "unknown"}`);
+  if (result.verifiedStatus !== undefined) {
+    lines.push(`Verified status: ${result.verifiedStatus}`);
+  }
+  if (result.updatedAt !== undefined) {
+    lines.push(`Updated: ${result.updatedAt ?? "unknown"}`);
+  }
   for (const warning of result.warnings) {
     lines.push(
-      `Warning ${warning.replyId} (${warning.known ? "known" : "UNKNOWN"}): ${warning.messages.join(" | ")}`
+      `Warning reply: ${warning.replyId} (${warning.known ? "known" : "unknown"})  message count ${String(warning.messageCount)}`
     );
   }
   if (result.rejectionReasons.length > 0) {
     lines.push(`Rejected: ${result.rejectionReasons.join(" | ")}`);
   }
-  if (result.recovery !== undefined) {
-    lines.push(`Recovery required: ${result.recovery.reasons.join(" | ")}`);
+  if (result.recoveryEvidence !== null) {
+    lines.push(
+      `Recovery evidence: required  reason categories ${result.recoveryEvidence.reasonCategories.join(" | ") || "none"}  observed orders ${String(result.recoveryEvidence.orderCount)}`
+    );
   }
   return lines.join("\n");
 }
 
-function renderOrderLifecycle(result: OrderLifecycleDto): string {
+function renderOrderLifecycle(result: SafeLifecycleView): string {
   return [
-    `Order ${result.orderId}: ${result.status}`,
+    `Order lifecycle: ${result.state}`,
+    `Preview: ${result.previewId}`,
     `Account: ${result.account.maskedId}  Environment: ${result.account.environment}`,
+    ...renderSafeOperation(result.operation),
+    `Verified against preview: ${String(result.verifiedAgainstPreview)}`,
     `Quantity: ${String(result.filledQuantity)}/${String(result.quantity)}  Remaining: ${String(result.remainingQuantity)}`,
     `Limit: ${formatPrice(result.limitPrice)}  Average fill: ${formatPrice(result.averagePrice)}`,
     `Commission/fees: ${formatPrice(result.commissionAndFees)}`,
-    `Verified against preview: ${String(result.verifiedAgainstPreview)}`,
   ].join("\n");
 }
 
-function output<T>(value: T, json: boolean | undefined, render: (result: T) => string): void {
-  console.log(json === true ? JSON.stringify(value, null, 2) : render(value));
+function renderReconciliation(result: SafeReconciliationView): string {
+  return [
+    ...renderSafeOperation(result.operation),
+    result.observation === null
+      ? "Observation: unavailable"
+      : `Observation: ${result.observation.status} @ ${result.observation.observedAt}  reason ${result.observation.reason}`,
+  ].join("\n");
+}
+
+function renderTradingDiagnostics(result: SafeTradingDiagnosticsView): string {
+  return [
+    `Account: ${result.account.maskedId}  Environment: ${result.account.environment}  Verified: ${String(result.account.verified)}`,
+    `Gateway state: ${result.gateway.state}`,
+    `Authenticated: ${String(result.gateway.authenticated)}  Connected: ${String(result.gateway.connected)}  Competing session: ${String(result.gateway.competingSession)}`,
+    `Read ready: ${String(result.gateway.readReady)}  New mutations ready: ${String(result.gateway.newMutationReady)}  Recovery ready: ${String(result.gateway.recoveryMutationReady)}  Lock owned: ${String(result.gateway.lockOwned)}`,
+    `Market data: ${result.marketDataAvailable === null ? "unknown" : String(result.marketDataAvailable)}  Queue depth: ${String(result.queueDepth)}`,
+    `Last tickle: ${result.timing.lastTickleAt ?? "unknown"}  Next renewal: ${result.timing.nextRenewalAt ?? "unknown"}  Last broker request: ${result.timing.lastBrokerRequestAt ?? "unknown"}`,
+    `Pending warnings: ${String(result.pendingWarnings)}  Reconciliation required: ${String(result.reconciliationRequiredOperations)}`,
+  ].join("\n");
+}
+
+function output<T>(
+  value: T,
+  json: boolean | undefined,
+  render: (result: T) => string,
+  log: (line: string) => void
+): void {
+  log(json === true ? JSON.stringify(value, null, 2) : render(value));
 }
 
 async function service(broker: BrokerName): Promise<DerivativeResearchService> {
@@ -371,8 +741,14 @@ async function executionService(broker: BrokerName): Promise<DerivativeExecution
 /** Register broker-neutral derivative research commands without changing legacy chain commands. */
 export function addDerivativeCommands(
   program: Command,
-  broker: (override?: string) => BrokerName
+  broker: (override?: string) => BrokerName,
+  dependencies: DerivativeCommandDependencies = {}
 ): void {
+  const createResearchService = dependencies.createResearchService ?? service;
+  const createPreviewService = dependencies.createPreviewService ?? previewService;
+  const createExecutionService = dependencies.createExecutionService ?? executionService;
+  const log = dependencies.log ?? console.log;
+
   const option = new Command("option").description("Resolve and research exact derivative series");
 
   seriesOptions(
@@ -384,13 +760,13 @@ export function addDerivativeCommands(
       .option("--strike <strike>", "Filter to one exact strike")
   ).action(async (underlying: string, options: ResolveOptions) => {
     const result = await (
-      await service(broker(options.broker))
+      await createResearchService(broker(options.broker))
     ).discover({
       ...seriesRequest(underlying, options),
       ...(options.strike !== undefined ? { strike: number(options.strike, "strike") } : {}),
       ...(options.right !== undefined ? { right: right(options.right) } : {}),
     });
-    output(result, options.json, renderOptionDiscovery);
+    output(result, options.json, renderOptionDiscovery, log);
   });
 
   seriesOptions(
@@ -403,14 +779,14 @@ export function addDerivativeCommands(
       .option("--strikes <count>", "Strikes on each side of center", "10")
   ).action(async (underlying: string, options: ChainOptions) => {
     const result = await (
-      await service(broker(options.broker))
+      await createResearchService(broker(options.broker))
     ).chain({
       ...seriesRequest(underlying, options),
       ...(options.right !== undefined ? { right: right(options.right) } : {}),
       ...(options.around !== undefined ? { around: number(options.around, "around strike") } : {}),
       strikes: integer(options.strikes, "Strike count"),
     });
-    output(result, options.json, renderOptionChain);
+    output(result, options.json, renderOptionChain, log);
   });
 
   program.addCommand(option);
@@ -430,7 +806,7 @@ export function addDerivativeCommands(
     const quantity = integer(options.quantity, "Quantity");
     if (quantity === 0) throw new Error("Quantity must be greater than zero.");
     const result = await (
-      await service(broker(options.broker))
+      await createResearchService(broker(options.broker))
     ).quoteVertical({
       ...seriesRequest(underlying, options),
       kind: spreadKind(kindValue),
@@ -439,7 +815,7 @@ export function addDerivativeCommands(
       quantity,
       ...(options.limit !== undefined ? { limit: number(options.limit, "limit") } : {}),
     });
-    output(result, options.json, renderVerticalSpread);
+    output(result, options.json, renderVerticalSpread, log);
   });
 
   seriesOptions(
@@ -465,7 +841,7 @@ export function addDerivativeCommands(
     const limitValue = options.credit ?? options.debit;
     if (limitValue === undefined) throw new Error("A credit or debit is required.");
     const result = await (
-      await previewService(broker(options.broker))
+      await createPreviewService(broker(options.broker))
     ).previewVertical({
       ...seriesRequest(underlying, options),
       kind: spreadKind(kindValue),
@@ -477,7 +853,7 @@ export function addDerivativeCommands(
       tif: tif(options.tif),
       session: session(options.session),
     });
-    output(result, options.json, renderSpreadPreview);
+    output(toSpreadPreviewView(result), options.json, renderSpreadPreview, log);
   });
 
   spread
@@ -485,7 +861,6 @@ export function addDerivativeCommands(
     .description("Submit the exact, unexpired reviewed preview")
     .argument("<preview-id>", "Exact preview ID")
     .option("--broker <name>", "Broker to use", "ibkr")
-    .option("--account <id>", "Exact account ID; defaults to IBKR_ACCOUNT_ID")
     .option("--operator <name>", "CME operator identity; defaults to HUSKLY_EXT_OPERATOR")
     .option("--confirm", "Confirm this order submission")
     .option("--json", "Emit a stable JSON DTO")
@@ -493,116 +868,120 @@ export function addDerivativeCommands(
       const confirm = confirmed(options.confirm);
       const extOperator = operator(options.operator);
       const result = await (
-        await executionService(broker(options.broker))
+        await createExecutionService(broker(options.broker))
       ).submit({
         previewId,
-        accountId: accountId(options.account),
         operator: extOperator,
         confirm,
       });
-      output(result, options.json, renderSubmission);
+      output(toSubmissionView(result), options.json, renderSubmission, log);
     });
 
   spread
-    .command("acknowledge")
-    .description("Acknowledge one known broker warning for the exact preview")
+    .command("recover")
+    .description("Recover a lost submission response for the exact preview")
     .argument("<preview-id>", "Exact preview ID")
-    .argument("<reply-id>", "Exact broker warning reply ID")
     .option("--broker <name>", "Broker to use", "ibkr")
-    .option("--account <id>", "Exact account ID; defaults to IBKR_ACCOUNT_ID")
-    .option("--confirm", "Confirm this warning acknowledgment")
     .option("--json", "Emit a stable JSON DTO")
-    .action(async (previewId: string, replyId: string, options: ExecutionOptions) => {
-      const confirm = confirmed(options.confirm);
+    .action(async (previewId: string, options: Omit<ExecutionOptions, "confirm" | "operator">) => {
       const result = await (
-        await executionService(broker(options.broker))
-      ).acknowledgeWarning({
-        previewId,
-        replyId,
-        accountId: accountId(options.account),
-        confirm,
-      });
-      output(result, options.json, renderSubmission);
+        await createExecutionService(broker(options.broker))
+      ).recover({ previewId });
+      output(toSubmissionView(result), options.json, renderSubmission, log);
     });
   program.addCommand(spread);
 
-  const order = new Command("order").description("Inspect or cancel guarded derivative orders");
+  const order = new Command("order").description("Inspect or manage guarded gateway operations");
   order
     .command("show")
-    .argument("<order-id>", "Broker order ID")
+    .argument("<operation-id>", "Gateway operation ID")
     .option("--broker <name>", "Broker to use", "ibkr")
-    .option("--account <id>", "Exact account ID; defaults to IBKR_ACCOUNT_ID")
     .option("--json", "Emit a stable JSON DTO")
-    .action(async (orderId: string, options: ExecutionOptions) => {
-      const result = await (
-        await executionService(broker(options.broker))
-      ).getStatus(orderId, accountId(options.account));
-      output(result, options.json, renderOrderLifecycle);
-    });
+    .action(
+      async (operationId: string, options: Omit<ExecutionOptions, "confirm" | "operator">) => {
+        const result = await (
+          await createExecutionService(broker(options.broker))
+        ).getStatus(operationId);
+        output(toLifecycleView(result), options.json, renderOrderLifecycle, log);
+      }
+    );
   order
     .command("watch")
-    .argument("<order-id>", "Broker order ID")
+    .argument("<operation-id>", "Gateway operation ID")
     .option("--broker <name>", "Broker to use", "ibkr")
-    .option("--account <id>", "Exact account ID; defaults to IBKR_ACCOUNT_ID")
     .option("--timeout <seconds>", "Maximum watch duration", "300")
     .option("--poll <seconds>", "Polling interval", "2")
     .option("--json", "Emit a stable JSON DTO")
-    .action(async (orderId: string, options: WatchOptions) => {
+    .action(async (operationId: string, options: WatchOptions) => {
       const result = await (
-        await executionService(broker(options.broker))
+        await createExecutionService(broker(options.broker))
       ).watch({
-        orderId,
-        accountId: accountId(options.account),
+        orderId: operationId,
         timeoutMs: number(options.timeout, "timeout") * 1000,
         pollMs: number(options.poll, "poll") * 1000,
       });
-      output(result, options.json, renderOrderLifecycle);
+      output(toLifecycleView(result), options.json, renderOrderLifecycle, log);
+    });
+  order
+    .command("acknowledge")
+    .argument("<operation-id>", "Gateway operation ID")
+    .requiredOption("--reply <reply-id>", "Exact pending warning reply ID")
+    .option("--broker <name>", "Broker to use", "ibkr")
+    .option("--confirm", "Confirm this warning acknowledgment")
+    .option("--json", "Emit a stable JSON DTO")
+    .action(async (operationId: string, options: AcknowledgeOptions) => {
+      const confirm = confirmed(options.confirm);
+      const result = await (
+        await createExecutionService(broker(options.broker))
+      ).acknowledgeWarning({
+        operationId,
+        replyId: options.reply,
+        confirm,
+      });
+      output(toLifecycleView(result), options.json, renderOrderLifecycle, log);
+    });
+  order
+    .command("reconcile")
+    .argument("<operation-id>", "Gateway operation ID")
+    .option("--broker <name>", "Broker to use", "ibkr")
+    .option("--confirm", "Confirm reconciliation")
+    .option("--json", "Emit a stable JSON DTO")
+    .action(async (operationId: string, options: ExecutionOptions) => {
+      confirmed(options.confirm);
+      const result = await (
+        await createExecutionService(broker(options.broker))
+      ).reconcile(operationId);
+      output(toReconciliationView(result), options.json, renderReconciliation, log);
     });
   order
     .command("cancel")
-    .argument("<order-id>", "Broker order ID")
+    .argument("<operation-id>", "Gateway operation ID")
     .option("--broker <name>", "Broker to use", "ibkr")
-    .option("--account <id>", "Exact account ID; defaults to IBKR_ACCOUNT_ID")
-    .option("--operator <name>", "CME operator identity; defaults to HUSKLY_EXT_OPERATOR")
     .option("--confirm", "Confirm cancellation")
-    .option("--timeout <seconds>", "Maximum verification duration", "300")
-    .option("--poll <seconds>", "Polling interval", "2")
     .option("--json", "Emit a stable JSON DTO")
-    .action(async (orderId: string, options: WatchOptions) => {
+    .action(async (operationId: string, options: ExecutionOptions) => {
       const confirm = confirmed(options.confirm);
-      const extOperator = operator(options.operator);
       const result = await (
-        await executionService(broker(options.broker))
+        await createExecutionService(broker(options.broker))
       ).cancel({
-        orderId,
-        accountId: accountId(options.account),
-        operator: extOperator,
+        orderId: operationId,
         confirm,
-        timeoutMs: number(options.timeout, "timeout") * 1000,
-        pollMs: number(options.poll, "poll") * 1000,
       });
-      output(result, options.json, renderOrderLifecycle);
+      output(toLifecycleView(result), options.json, renderOrderLifecycle, log);
     });
   program.addCommand(order);
 
   const brokerCommand = new Command("broker").description("Broker diagnostics");
   brokerCommand
     .command("doctor")
-    .description("Run read-only broker trading diagnostics")
+    .description("Run gateway trading diagnostics")
     .option("--broker <name>", "Broker to use: schwab or ibkr", "ibkr")
-    .option("--trading", "Include trading-session and advisory permission diagnostics")
     .option("--json", "Emit a stable JSON DTO")
-    .action(
-      async (options: { broker: string; trading?: boolean; json?: boolean }) => {
-        const result = await (
-          await previewService(broker(options.broker))
-        ).getTradingDiagnostics();
-        const safeResult: TradingDiagnostics = {
-          ...result,
-          accountId: maskAccountId(result.accountId),
-        };
-        output(safeResult, options.json, renderTradingDiagnostics);
-      }
-    );
+    .action(async (options: { broker: string; json?: boolean }) => {
+      const result = await (
+        await createPreviewService(broker(options.broker))
+      ).getTradingDiagnostics();
+      output(toTradingDiagnosticsView(result), options.json, renderTradingDiagnostics, log);
+    });
   program.addCommand(brokerCommand);
 }

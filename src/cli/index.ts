@@ -26,7 +26,7 @@ const program = new Command();
 
 program
   .name("huskly-cli")
-  .description("Terminal-based trading tools for Schwab (huskly auth) and IBKR (native OAuth)")
+  .description("Terminal-based trading tools for Schwab (huskly auth) and IBKR (gateway)")
   .version("1.0.0")
   .option("--broker <name>", "Broker to use: schwab or ibkr", "schwab");
 
@@ -199,9 +199,14 @@ program
   .option("-t, --type <type>", "Filter by asset type (e.g., OPTION, EQUITY)")
   .option("--csv", "Output in CSV format instead of table")
   .option("--json", "Emit a stable JSON DTO")
-  .action(async (symbol: string | undefined, options: { type?: string; csv?: boolean; json?: boolean }) => {
-    await handlePositions(broker(), symbol, options.type, options.csv, options.json);
-  });
+  .action(
+    async (
+      symbol: string | undefined,
+      options: { type?: string; csv?: boolean; json?: boolean }
+    ) => {
+      await handlePositions(broker(), symbol, options.type, options.csv, options.json);
+    }
+  );
 
 program
   .command("transactions")
@@ -211,9 +216,17 @@ program
   .option("-t, --type <type>", "Filter by transaction type (e.g., TRADE, DIVIDEND)")
   .option("--csv", "Output in CSV format instead of table")
   .option("--json", "Emit a stable JSON DTO")
-  .action(async (options: { start?: string; end?: string; type?: string; csv?: boolean; json?: boolean }) => {
-    await handleTransactions(broker(), options);
-  });
+  .action(
+    async (options: {
+      start?: string;
+      end?: string;
+      type?: string;
+      csv?: boolean;
+      json?: boolean;
+    }) => {
+      await handleTransactions(broker(), options);
+    }
+  );
 
 program
   .command("orders")
@@ -223,9 +236,17 @@ program
   .option("-s, --status <status>", "Filter by order status (FILLED, WORKING, CANCELED, etc.)")
   .option("-m, --max-results <n>", "Maximum number of orders to retrieve")
   .option("--json", "Emit a stable JSON DTO")
-  .action(async (options: { from?: string; to?: string; status?: string; maxResults?: string; json?: boolean }) => {
-    await handleOrders(broker(), options);
-  });
+  .action(
+    async (options: {
+      from?: string;
+      to?: string;
+      status?: string;
+      maxResults?: string;
+      json?: boolean;
+    }) => {
+      await handleOrders(broker(), options);
+    }
+  );
 
 program
   .command("place-order")
