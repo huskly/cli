@@ -58,12 +58,9 @@ class FakeDiscovery implements DerivativeDiscoveryClient {
 
 class FakePreviewClient implements DerivativePreviewClient {
   environment: "paper" | "live" = "paper";
-  selectedAccountId = "U1234567";
-
   getTradingDiagnostics() {
     return Promise.resolve({
       accountId: "U1234567",
-      selectedAccountId: this.selectedAccountId,
       environment: this.environment,
       authenticated: true,
       competingSession: false,
@@ -85,9 +82,8 @@ class FakePreviewClient implements DerivativePreviewClient {
     });
   }
 
-  previewDerivativeCombo(request: { accountId: string }) {
+  previewDerivativeCombo(_request: Parameters<DerivativePreviewClient["previewDerivativeCombo"]>[0]) {
     return Promise.resolve({
-      accountId: request.accountId,
       environment: this.environment,
       accepted: true,
       submitted: false as const,
@@ -184,7 +180,6 @@ async function setup() {
     new InMemoryPreviewStore()
   );
   const preview = await previews.previewVertical({
-    accountId: "U1234567",
     kind: "put-credit",
     assetClass: "FOP",
     underlying: "NQ",
@@ -237,10 +232,7 @@ void test("confirmed submission revalidates and verifies the exact preview", asy
   );
   await assert.rejects(
     () =>
-      previews.validatePreview(preview.previewId, {
-        accountId: "U1234567",
-        environment: "paper",
-      }),
+      previews.validatePreview(preview.previewId),
     /Unknown preview ID/
   );
 });

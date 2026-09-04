@@ -215,10 +215,7 @@ export class DerivativeExecutionService {
   }): Promise<SubmissionDto> {
     const diagnostics = await this.safeDiagnostics(input.accountId);
     this.assertEnvironmentAllowed(input.accountId, diagnostics.environment);
-    const preview = await this.previews.validatePreview(input.previewId, {
-      accountId: input.accountId,
-      environment: diagnostics.environment,
-    });
+    const preview = await this.previews.validatePreview(input.previewId);
     await this.assertContractsUnchanged(preview);
     const clientOrderId = `huskly-${this.now().getTime().toString(36)}-${randomUUID()}`.slice(
       0,
@@ -251,10 +248,7 @@ export class DerivativeExecutionService {
     if (diagnostics.environment !== pending.environment) {
       throw new Error("Warning reply environment does not match");
     }
-    const preview = await this.previews.validatePreview(input.previewId, {
-      accountId: input.accountId,
-      environment: diagnostics.environment,
-    });
+    const preview = await this.previews.validatePreview(input.previewId);
     await this.store.deleteWarning(input.replyId);
     const result = await this.execution.acknowledgeOrderWarning({
       replyId: input.replyId,
@@ -434,8 +428,7 @@ export class DerivativeExecutionService {
     if (
       !diagnostics.authenticated ||
       diagnostics.competingSession ||
-      diagnostics.accountId !== accountId ||
-      diagnostics.selectedAccountId !== accountId
+      diagnostics.accountId !== accountId
     ) {
       throw new Error("Broker account/session is not safe for execution");
     }

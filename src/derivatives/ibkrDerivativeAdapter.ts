@@ -380,7 +380,6 @@ function normalizeDiagnostics(response: GetDiagnosticsResponse): TradingDiagnost
   const diagnostics = parseGatewayResponse("getDiagnostics", diagnosticsSchema, response);
   return {
     accountId: diagnostics.account,
-    selectedAccountId: diagnostics.accountVerified ? diagnostics.account : null,
     environment: diagnostics.environment,
     authenticated: diagnostics.authenticated === true,
     competingSession: diagnostics.competingSession === true,

@@ -2,6 +2,7 @@ import type { DerivativeComboPreviewRequest } from "./derivativePreview.js";
 import type { DerivativeAssetClass } from "./derivativeDiscovery.js";
 
 export interface DerivativeComboExecutionRequest extends DerivativeComboPreviewRequest {
+  accountId: string;
   clientOrderId: string;
   extOperator: string;
   manualIndicator: boolean;

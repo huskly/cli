@@ -53,7 +53,6 @@ interface SpreadOptions extends SeriesOptions {
 }
 
 interface PreviewOptions extends SpreadOptions {
-  account?: string;
   credit?: string;
   debit?: string;
   session: string;
@@ -268,7 +267,7 @@ function renderTradingDiagnostics(result: TradingDiagnostics): string {
     `Account: ${result.accountId}  Environment: ${result.environment}  State: ${result.state}`,
     `Authenticated: ${String(result.authenticated)}  Connected: ${String(result.connected)}  Competing session: ${String(result.competingSession)}`,
     `Read ready: ${String(result.readReady)}  New mutations ready: ${String(result.newMutationReady)}  Recovery ready: ${String(result.recoveryMutationReady)}`,
-    `Account verified: ${String(result.accountVerified)}  Lock owned: ${String(result.lockOwned)}  Selected account matches: ${String(result.selectedAccountId === result.accountId)}`,
+    `Account verified: ${String(result.accountVerified)}  Lock owned: ${String(result.lockOwned)}`,
     `Market data: ${result.marketDataAvailable === null ? "unknown" : String(result.marketDataAvailable)}  Queue depth: ${String(result.readQueueDepth)}`,
     `Last tickle: ${result.lastTickleAt ?? "unknown"}  Next renewal: ${result.nextRenewalAt ?? "unknown"}  Last broker request: ${result.lastBrokerRequestAt ?? "unknown"}`,
     `Pending warnings: ${String(result.pendingWarnings)}  Reconciliation required: ${String(result.reconciliationRequiredOperations)}`,
@@ -451,7 +450,6 @@ export function addDerivativeCommands(
       .argument("<underlying>", "Underlying symbol")
       .requiredOption("--long <strike>", "Long-leg strike")
       .requiredOption("--short <strike>", "Short-leg strike")
-      .option("--account <id>", "Exact account ID; defaults to IBKR_ACCOUNT_ID")
       .option("--credit <price>", "Positive net credit")
       .option("--debit <price>", "Positive net debit")
       .option("--quantity <count>", "Number of spreads", "1")
@@ -470,7 +468,6 @@ export function addDerivativeCommands(
       await previewService(broker(options.broker))
     ).previewVertical({
       ...seriesRequest(underlying, options),
-      accountId: accountId(options.account),
       kind: spreadKind(kindValue),
       longStrike: number(options.long, "long strike"),
       shortStrike: number(options.short, "short strike"),
@@ -603,8 +600,6 @@ export function addDerivativeCommands(
         const safeResult: TradingDiagnostics = {
           ...result,
           accountId: maskAccountId(result.accountId),
-          selectedAccountId:
-            result.selectedAccountId === null ? null : maskAccountId(result.selectedAccountId),
         };
         output(safeResult, options.json, renderTradingDiagnostics);
       }

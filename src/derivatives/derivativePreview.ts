@@ -5,7 +5,6 @@ export type BrokerEnvironment = "live" | "paper";
 export interface TradingDiagnostics {
   accountId: string;
   maskedAccountDisplay?: string | null;
-  selectedAccountId: string | null;
   environment: BrokerEnvironment;
   authenticated: boolean;
   competingSession: boolean;
@@ -27,7 +26,6 @@ export interface TradingDiagnostics {
 }
 
 export interface DerivativeComboPreviewRequest {
-  accountId: string;
   legs: readonly [
     { contract: DerivativeContract; ratio: 1 | -1 },
     { contract: DerivativeContract; ratio: 1 | -1 },

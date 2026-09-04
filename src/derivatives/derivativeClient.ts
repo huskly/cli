@@ -111,6 +111,7 @@ function legacyPreviewClient(): Promise<DerivativePreviewClient> {
         (discovery as IbkrDerivativeAdapter).getTradingDiagnostics(),
       previewDerivativeCombo: async (request: DerivativeComboPreviewRequest): Promise<DerivativeComboPreviewResult> => {
         const result = await direct.previewDerivativeCombo({
+          accountId: await direct.getAccountId(),
           ...request,
           legs: [...toLegacyLegs(request)],
           orderType: "LMT",

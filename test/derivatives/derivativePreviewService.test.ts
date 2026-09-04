@@ -48,7 +48,6 @@ const preview: DerivativePreviewClient = {
     Promise.resolve({
       accountId: "U1234567",
       maskedAccountDisplay: "U***567",
-      selectedAccountId: "U1234567",
       environment: "paper",
       authenticated: true,
       competingSession: false,
@@ -84,7 +83,6 @@ const preview: DerivativePreviewClient = {
 
 function request(overrides: Partial<PreviewVerticalRequest> = {}): PreviewVerticalRequest {
   return {
-    accountId: "U1234567",
     kind: "put-credit",
     assetClass: "FOP",
     underlying: "NQ",
@@ -104,10 +102,35 @@ function request(overrides: Partial<PreviewVerticalRequest> = {}): PreviewVertic
 
 void test("preview DTO masks the account and binds exact economic terms", async () => {
   const now = new Date("2026-07-29T12:00:00.000Z");
-  const service = new DerivativePreviewService(discovery, preview, () => now, 60_000);
+  let outgoingPreviewRequest: unknown;
+  const service = new DerivativePreviewService(
+    discovery,
+    {
+      ...preview,
+      previewDerivativeCombo: (request) => {
+        outgoingPreviewRequest ??= request;
+        return preview.previewDerivativeCombo(request);
+      },
+    },
+    () => now,
+    60_000
+  );
   const first = await service.previewVertical(request());
   const changed = await service.previewVertical(request({ limit: 38 }));
 
+  assert.deepEqual(outgoingPreviewRequest, {
+    legs: [
+      { contract: contract(26400), ratio: 1 },
+      { contract: contract(26600), ratio: -1 },
+    ],
+    quantity: 1,
+    priceEffect: "CREDIT",
+    limit: 39,
+    tif: "DAY",
+    session: "REGULAR",
+  });
+  assert.equal("accountId" in (outgoingPreviewRequest as Record<string, unknown>), false);
+  assert.equal("clientOrderId" in (outgoingPreviewRequest as Record<string, unknown>), false);
   assert.equal(first.account.maskedId, "U***567");
   assert.equal(first.order.kind, "put-credit");
   assert.equal(first.order.gateway.orderType, "LMT");
@@ -126,6 +149,43 @@ void test("preview validation rejects at the exact expiry boundary and keeps the
   assert.equal((await service.validatePreview(result.previewId)).previewId, result.previewId);
   now = new Date("2026-07-29T12:01:00.000Z");
   await assert.rejects(() => service.validatePreview(result.previewId), /expired/);
+});
+
+void test("preview ignores diagnostics account authority and keeps only masked display", async () => {
+  const service = new DerivativePreviewService(
+    discovery,
+    {
+      ...preview,
+      getTradingDiagnostics: () =>
+        Promise.resolve({
+          accountId: "DIFFERENT",
+          maskedAccountDisplay: "U***567",
+          environment: "paper",
+          authenticated: false,
+          competingSession: true,
+          marketDataAvailable: null,
+          advisoryAssetPermissions: [],
+          state: "degraded",
+          readReady: false,
+          newMutationReady: false,
+          recoveryMutationReady: false,
+          lockOwned: false,
+          accountVerified: false,
+          connected: null,
+          lastTickleAt: null,
+          nextRenewalAt: null,
+          lastBrokerRequestAt: null,
+          readQueueDepth: 99,
+          pendingWarnings: 1,
+          reconciliationRequiredOperations: 2,
+        }),
+    },
+    () => new Date("2026-07-29T12:00:00.000Z"),
+    60_000
+  );
+
+  const result = await service.previewVertical(request());
+  assert.equal(result.account.maskedId, "U***567");
 });
 
 void test("file preview store round-trips the canonical gateway intent without persisting authority", async () => {
@@ -174,8 +234,7 @@ void test("stores rejected previews and never submits during preview", async () 
       Promise.resolve({
         accountId: "U1234567",
         maskedAccountDisplay: "U***567",
-        selectedAccountId: "U1234567",
-        environment: "paper",
+          environment: "paper",
         authenticated: true,
         competingSession: false,
         marketDataAvailable: true,

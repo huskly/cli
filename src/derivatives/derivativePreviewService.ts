@@ -20,7 +20,6 @@ import type {
 import type { VerticalSpreadKind } from "./verticalSpread.js";
 
 export interface PreviewVerticalRequest {
-  accountId: string;
   kind: VerticalSpreadKind;
   assetClass: "OPT" | "FOP";
   underlying: string;
@@ -317,11 +316,7 @@ export class DerivativePreviewService {
     const longContract = requireResolvedContract(longContractResult, request.longStrike);
     const shortContract = requireResolvedContract(shortContractResult, request.shortStrike);
     const diagnostics = await this.preview.getTradingDiagnostics();
-    if (diagnostics.accountId !== request.accountId) {
-      throw new Error("What-If account does not match the configured gateway account");
-    }
     const previewResult = await this.preview.previewDerivativeCombo({
-      accountId: request.accountId,
       legs: [
         { contract: longContract, ratio: 1 },
         { contract: shortContract, ratio: -1 },
@@ -374,10 +369,7 @@ export class DerivativePreviewService {
     return toSpreadPreviewDto(record);
   }
 
-  async validatePreview(
-    previewId: string,
-    _context?: { accountId: string; environment: BrokerEnvironment },
-  ): Promise<SpreadPreviewDto> {
+  async validatePreview(previewId: string): Promise<SpreadPreviewDto> {
     const stored = await this.store.load(previewId);
     if (stored === undefined) throw new Error("Unknown preview ID");
     if (this.now().getTime() >= new Date(stored.expiresAt).getTime()) {

@@ -64,3 +64,12 @@ void test("cancellation refuses to initialize a broker without explicit confirma
     /requires --confirm/
   );
 });
+
+
+void test("spread preview no longer accepts --account", () => {
+  const spread = program().commands.find((command) => command.name() === "spread");
+  assert.ok(spread);
+  const preview = spread.commands.find((command) => command.name() === "preview");
+  assert.ok(preview);
+  assert.equal(preview.options.some((option) => option.long === "--account"), false);
+});

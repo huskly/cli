@@ -168,7 +168,6 @@ void test("IBKR adapter maps gateway diagnostics without a caller account", asyn
   const adapter = new IbkrDerivativeAdapter(fakeApi());
   const diagnostics = await adapter.getTradingDiagnostics();
   assert.equal(diagnostics.accountId, "U1234567");
-  assert.equal(diagnostics.selectedAccountId, "U1234567");
   assert.equal(diagnostics.environment, "paper");
   assert.equal(diagnostics.newMutationReady, false);
 });

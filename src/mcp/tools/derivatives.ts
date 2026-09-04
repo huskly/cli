@@ -150,7 +150,6 @@ export function registerDerivativeTools(server: McpServer): void {
         "Run a non-submitting IBKR What-If and persist a short-lived exact preview ID. No order is submitted.",
       inputSchema: {
         ...series,
-        accountId: account,
         kind: spreadKind,
         longStrike: z.number().positive(),
         shortStrike: z.number().positive(),
@@ -168,7 +167,6 @@ export function registerDerivativeTools(server: McpServer): void {
             await derivativeTools()
           ).preview.previewVertical({
             ...exactSeries(input),
-            accountId: input.accountId,
             kind: input.kind,
             longStrike: input.longStrike,
             shortStrike: input.shortStrike,
