@@ -1,13 +1,46 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { BrokerClient, BrokerInstrumentSearchProjection, BrokerName } from "#src/brokers/brokerClient.js";
 import { z } from "zod";
-import { brokerClient } from "#src/cli/shared.js";
-import { resolveToolBroker } from "#src/mcp/defaultBroker.js";
-import { jsonResult, runTool } from "#src/mcp/toolResult.js";
-import type { BrokerInstrumentSearchProjection } from "#src/brokers/brokerClient.js";
+import { mcpBrokerClient, resolveToolBroker } from "#src/mcp/defaultBroker.js";
+import { observationResult, runTool } from "#src/mcp/toolResult.js";
 
 const IBKR_PROJECTIONS: BrokerInstrumentSearchProjection[] = ["symbol-search", "search"];
 
-export function registerSearchSymbolTool(server: McpServer): void {
+export interface SearchSymbolToolDependencies {
+  readonly resolveBrokerClient?: (broker: BrokerName) => Promise<BrokerClient>;
+}
+
+export function createSearchSymbolHandler(
+  dependencies: SearchSymbolToolDependencies = {}
+): (input: {
+  query: string;
+  projection: BrokerInstrumentSearchProjection;
+  broker?: "schwab" | "ibkr" | undefined;
+}) => Promise<CallToolResult> {
+  return async ({ query, projection, broker }) =>
+    runTool(async () => {
+      const resolvedBroker = resolveToolBroker(broker);
+      if (resolvedBroker === "ibkr" && !IBKR_PROJECTIONS.includes(projection)) {
+        throw new Error(
+          `IBKR search currently supports only symbol-search/search projections (got '${projection}').`
+        );
+      }
+      const api = await (dependencies.resolveBrokerClient ?? mcpBrokerClient)(resolvedBroker);
+      const observation = await api.searchInstruments(query, projection);
+      return observationResult(observation, {
+        broker: resolvedBroker,
+        query,
+        projection,
+        instruments: observation.value,
+      });
+    });
+}
+
+export function registerSearchSymbolTool(
+  server: McpServer,
+  dependencies: SearchSymbolToolDependencies = {}
+): void {
   server.registerTool(
     "search_symbol",
     {
@@ -36,17 +69,6 @@ export function registerSearchSymbolTool(server: McpServer): void {
           .describe("Broker to search with. Defaults to the server's configured default broker."),
       },
     },
-    async ({ query, projection, broker }) =>
-      runTool(async () => {
-        const resolvedBroker = resolveToolBroker(broker);
-        if (resolvedBroker === "ibkr" && !IBKR_PROJECTIONS.includes(projection)) {
-          throw new Error(
-            `IBKR search currently supports only symbol-search/search projections (got '${projection}').`
-          );
-        }
-        const api = await brokerClient(resolvedBroker);
-        const observation = await api.searchInstruments(query, projection);
-        return jsonResult({ broker: resolvedBroker, query, projection, observedAt: observation.observedAt, completeness: observation.completeness, instruments: observation.value });
-      })
+    createSearchSymbolHandler(dependencies)
   );
 }
