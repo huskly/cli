@@ -40,4 +40,4 @@ coverage/
 *.tsbuildinfo
 .env.*
 # Isolated development worktrees
-.worktrees/
+/.worktrees/
