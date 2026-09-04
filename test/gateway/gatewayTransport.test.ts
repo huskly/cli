@@ -42,11 +42,11 @@ function createTransportFixture(overrides: Partial<GatewayTransportDependencies>
   };
 
   const dependencies: GatewayTransportDependencies = {
-    loadConfig: async () => config,
+    loadConfig: () => Promise.resolve(config),
     createTokenProvider: () => ({
-      async getToken(): Promise<string> {
+      getToken(): Promise<string> {
         tokenCalls += 1;
-        return "bearer-token";
+        return Promise.resolve("bearer-token");
       },
     }),
     fetch: async (input, init) => {
@@ -106,15 +106,16 @@ const orderIntent = {
 
 void test("pre-acquires the token, classifies token failures as authentication failures, and never reaches fetch", async () => {
   const transport = await createGatewayTransport("cli", {
-    loadConfig: async () => ({
-      gatewayUrl: "https://gateway.example",
-      tokenUrl: "https://tokens.example/machine/token",
-      clientId: "machine-client-id",
-      clientSecret: "machine-client-secret",
-    }),
+    loadConfig: () =>
+      Promise.resolve({
+        gatewayUrl: "https://gateway.example",
+        tokenUrl: "https://tokens.example/machine/token",
+        clientId: "machine-client-id",
+        clientSecret: "machine-client-secret",
+      }),
     createTokenProvider: () => ({
-      async getToken(): Promise<string> {
-        throw new Error("bearer-token client-secret acct-123");
+      getToken(): Promise<string> {
+        return Promise.reject(new Error("bearer-token client-secret acct-123"));
       },
     }),
   });
@@ -171,7 +172,7 @@ void test("maps stable gateway failures and recovery-required outcomes without l
     (error: unknown) =>
       error instanceof ConsumerError &&
       error.code === "broker_data_unavailable" &&
-      !/acct-123/u.test(error.message)
+      !error.message.includes("acct-123")
   );
 
   fixture.queueResponse(
@@ -240,7 +241,7 @@ void test("maps stable gateway failures and recovery-required outcomes without l
     (error: unknown) =>
       error instanceof ConsumerError &&
       error.code === "recovery_required" &&
-      !/private broker detail/u.test(error.message)
+      !error.message.includes("private broker detail")
   );
 });
 
@@ -301,33 +302,38 @@ void test("creates separate lazy singleton transports for CLI and MCP with indep
   const originalFetch = globalThis.fetch;
   process.env["HUSKLY_IBKR_GATEWAY_CLI_CONFIG"] = cliConfigPath;
   process.env["HUSKLY_IBKR_GATEWAY_MCP_CONFIG"] = mcpConfigPath;
-  globalThis.fetch = async (
-    input: string | URL | Request,
-    init?: RequestInit
-  ): Promise<Response> => {
+  globalThis.fetch = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     fetchRequests.push({ input: url, init: init ?? {} });
     if (url === "https://tokens-cli.example/machine/token") {
-      return createGatewayResponse({
-        access_token: "cli-token",
-        token_type: "Bearer",
-        expires_in: 300,
-        scope: "ibkr:read-only",
-      });
+      return Promise.resolve(
+        createGatewayResponse({
+          access_token: "cli-token",
+          token_type: "Bearer",
+          expires_in: 300,
+          scope: "ibkr:read-only",
+        })
+      );
     }
     if (url === "https://tokens-mcp.example/machine/token") {
-      return createGatewayResponse({
-        access_token: "mcp-token",
-        token_type: "Bearer",
-        expires_in: 300,
-        scope: "ibkr:read-only",
-      });
+      return Promise.resolve(
+        createGatewayResponse({
+          access_token: "mcp-token",
+          token_type: "Bearer",
+          expires_in: 300,
+          scope: "ibkr:read-only",
+        })
+      );
     }
     if (url === "https://gateway-cli.example/livez") {
-      return createGatewayResponse({ status: "live", version: SUPPORTED_API_VERSION });
+      return Promise.resolve(
+        createGatewayResponse({ status: "live", version: SUPPORTED_API_VERSION })
+      );
     }
     if (url === "https://gateway-mcp.example/livez") {
-      return createGatewayResponse({ status: "live", version: SUPPORTED_API_VERSION });
+      return Promise.resolve(
+        createGatewayResponse({ status: "live", version: SUPPORTED_API_VERSION })
+      );
     }
     throw new Error(`Unexpected fetch ${url}`);
   };

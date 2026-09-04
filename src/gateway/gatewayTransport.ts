@@ -123,7 +123,7 @@ export async function callGateway<T>(
 
   try {
     token = await dependencies.tokenProvider.getToken();
-  } catch (error: unknown) {
+  } catch {
     throw createAuthenticationFailureError(operation);
   }
 
@@ -170,9 +170,6 @@ function wrapGatewayFetch(
   }
 
   const activeFetch = fetcher ?? globalThis.fetch;
-  if (activeFetch === undefined) {
-    return undefined;
-  }
 
   return async (input, init) => {
     const response = await activeFetch(input, init);
