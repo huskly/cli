@@ -238,8 +238,10 @@ function chainResult(
 function verticalQuoteResult(
   result: Awaited<ReturnType<DerivativeResearchService["quoteVertical"]>>
 ): CallToolResult {
-  return observationResult(result.referenceQuote, {
-    referenceQuote: result.referenceQuote.value,
+  return observationResult(result.observation, {
+    referenceQuote: result.referenceQuote,
+    longQuote: result.longQuote,
+    shortQuote: result.shortQuote,
     spread: result.spread,
     pricingNotice: result.pricingNotice,
   });

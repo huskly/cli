@@ -19,6 +19,9 @@ export interface Observation<T> {
   readonly observedAt: string | null;
   readonly completeness: ObservationCompleteness;
   readonly value: T;
+  readonly warnings?: readonly string[];
+  readonly sourceCount?: number;
+  readonly omittedCount?: number;
 }
 
 export class BrokerDataUnavailableError extends Error {
@@ -35,9 +38,14 @@ export class BrokerDataUnavailableError extends Error {
 export function observe<T>(
   value: T,
   completeness: ObservationCompleteness,
-  observedAt: string | null
+  observedAt: string | null,
+  evidence: {
+    readonly warnings?: readonly string[];
+    readonly sourceCount?: number;
+    readonly omittedCount?: number;
+  } = {}
 ): Observation<T> {
-  return { observedAt, completeness, value };
+  return { observedAt, completeness, value, ...evidence };
 }
 
 export function requireObservation<T>(

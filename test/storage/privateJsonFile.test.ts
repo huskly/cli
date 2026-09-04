@@ -302,3 +302,24 @@ void test("enforces bounded reads and strict versioned schemas", async () => {
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+void test("compare-and-create reserves the final canonical file exactly once", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "huskly-private-create-"));
+  try {
+    const target = join(directory, "state");
+    const left = createSubject(target);
+    const right = createSubject(target);
+    const created = await Promise.all([
+      left.create({ schemaVersion: 1, value: "left" }),
+      right.create({ schemaVersion: 1, value: "right" }),
+    ]);
+    assert.deepEqual([...created].sort(), [false, true]);
+    const stored = await left.load();
+    assert.ok(stored);
+    assert.ok(stored.value === "left" || stored.value === "right");
+    const stat = await lstat(join(target, "state.json"));
+    assert.equal(stat.mode & 0o777, 0o600);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

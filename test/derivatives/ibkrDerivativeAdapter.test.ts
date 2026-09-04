@@ -368,3 +368,79 @@ void test("IBKR adapter preserves empty evidence and refuses unavailable evidenc
     (error) => error instanceof BrokerDataUnavailableError
   );
 });
+
+void test("contract-real partial nullable items are omitted with safe count evidence", async () => {
+  const validContract = (
+    await fakeApi().queryDerivativeContracts({
+      assetClass: "OPT",
+      underlying: "NDX",
+      expiration: "2026-08-20",
+      right: null,
+      strike: null,
+      tradingClass: null,
+      exchange: null,
+    })
+  ).contracts[0];
+  const validQuote = (
+    await fakeApi().queryDerivativeQuotes({
+      assetClass: "FOP",
+      underlying: "NQ",
+      expiration: "2026-08-21",
+      right: null,
+      tradingClass: null,
+      exchange: null,
+    })
+  ).quotes[0];
+  assert.ok(validContract);
+  assert.ok(validQuote);
+  const adapter = new IbkrDerivativeAdapter(
+    fakeApi({
+      queryDerivativeContracts: () =>
+        Promise.resolve({
+          observedAt: "2026-07-29T12:00:00.000Z",
+          status: "partial",
+          contracts: [validContract, { ...validContract, brokerId: null, expiration: null }],
+        }),
+      queryDerivativeQuotes: () =>
+        Promise.resolve({
+          observedAt: "2026-07-29T12:01:00.000Z",
+          status: "partial",
+          quotes: [validQuote, { ...validQuote, brokerId: null, right: null }],
+        }),
+      resolveDerivativeContract: () =>
+        Promise.resolve({
+          observedAt: "2026-07-29T12:02:00.000Z",
+          status: "partial",
+          contract: { ...validContract, brokerId: null, strike: null },
+        }),
+    })
+  );
+  const contracts = await adapter.getContracts({
+    assetClass: "OPT",
+    underlying: "NDX",
+    expiration: "2026-08-20",
+  });
+  const quotes = await adapter.getChain({
+    assetClass: "FOP",
+    underlying: "NQ",
+    expiration: "2026-08-21",
+  });
+  const resolved = await adapter.resolveContract({
+    assetClass: "OPT",
+    underlying: "NDX",
+    expiration: "2026-08-20",
+    right: "PUT",
+    strike: 26600,
+  });
+  assert.equal(contracts.completeness, "partial");
+  assert.equal(contracts.value.length, 1);
+  assert.equal(contracts.sourceCount, 2);
+  assert.equal(contracts.omittedCount, 1);
+  assert.match(contracts.warnings?.[0] ?? "", /Omitted 1 incomplete derivative contract/);
+  assert.equal(quotes.completeness, "partial");
+  assert.equal(quotes.value.length, 1);
+  assert.equal(quotes.omittedCount, 1);
+  assert.equal(resolved.completeness, "partial");
+  assert.equal(resolved.value, null);
+  assert.equal(resolved.omittedCount, 1);
+});

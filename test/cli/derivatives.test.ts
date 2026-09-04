@@ -2,7 +2,18 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { Command } from "commander";
-import { addDerivativeCommands, type DerivativeCommandDependencies } from "#src/cli/derivatives.js";
+import {
+  addDerivativeCommands,
+  renderVerticalSpread,
+  type DerivativeCommandDependencies,
+} from "#src/cli/derivatives.js";
+import { BrokerDataUnavailableError, observe } from "#src/brokers/brokerClient.js";
+import type {
+  DerivativeQuote,
+  DerivativeReferenceQuote,
+} from "#src/derivatives/derivativeDiscovery.js";
+import type { VerticalSpreadResearch } from "#src/derivatives/derivativeResearch.js";
+import { buildVerticalSpread } from "#src/derivatives/verticalSpread.js";
 import type { TradingDiagnostics } from "#src/derivatives/derivativePreview.js";
 import type { SpreadPreviewDto } from "#src/derivatives/derivativePreviewService.js";
 import type {
@@ -80,7 +91,9 @@ const submission: SubmissionDto = {
   clientOrderId: "client-1",
   status: "WARNING_PENDING",
   updatedAt: "2026-09-04T00:00:01.000Z",
-  warnings: [{ replyId: "reply-1", messages: ["secret-body"], messageIds: ["m1"], known: true }],
+  warnings: [
+    { sequence: 1, replyId: "reply-1", messages: ["secret-body"], messageIds: ["m1"], known: true },
+  ],
   rejectionReasons: [],
 };
 const lifecycle: OrderLifecycleDto = {
@@ -90,7 +103,9 @@ const lifecycle: OrderLifecycleDto = {
   operation,
   account: { maskedId: "U***567", environment: "paper" },
   updatedAt: "2026-09-04T00:00:01.000Z",
-  warnings: [{ replyId: "reply-1", messages: ["secret-body"], messageIds: ["m1"], known: true }],
+  warnings: [
+    { sequence: 1, replyId: "reply-1", messages: ["secret-body"], messageIds: ["m1"], known: true },
+  ],
   rejectionReasons: [],
   verifiedAgainstPreview: true,
   orderId: "777",
@@ -102,10 +117,6 @@ const lifecycle: OrderLifecycleDto = {
   averagePrice: 1.25,
   limitPrice: 1.5,
   commissionAndFees: 0.12,
-  legs: [
-    { conid: 101, ratio: 1 },
-    { conid: 102, ratio: -1 },
-  ],
 };
 const reconciliation: OrderReconciliationView = operation;
 const diagnostics: TradingDiagnostics = {
@@ -408,6 +419,7 @@ void test("submission output uses preview and operation ids with safe human and 
 
 void test("operation commands use gateway operation ids and make one service call per command", async () => {
   const calls: { name: string; input: unknown }[] = [];
+  const output: string[] = [];
   const execution = {
     submit: () => Promise.resolve(submission),
     recover: ({ previewId: value }: { previewId: string }) => {
@@ -437,7 +449,7 @@ void test("operation commands use gateway operation ids and make one service cal
   };
   const root = program({
     createExecutionService: () => Promise.resolve(execution),
-    log: () => undefined,
+    log: (line) => output.push(line),
   });
   await root.parseAsync(["node", "test", "spread", "recover", previewId]);
   await root.parseAsync(["node", "test", "order", "show", "op-1"]);
@@ -462,8 +474,16 @@ void test("operation commands use gateway operation ids and make one service cal
     "reply-1",
     "--confirm",
   ]);
-  await root.parseAsync(["node", "test", "order", "reconcile", "op-1", "--confirm"]);
+  await root.parseAsync(["node", "test", "order", "reconcile", "op-1", "--confirm", "--json"]);
   await root.parseAsync(["node", "test", "order", "cancel", "op-1", "--confirm"]);
+  const reconciliationOutput = output.find((line) => line.trimStart().startsWith("{"));
+  assert.ok(reconciliationOutput);
+  const reconciliationView = JSON.parse(reconciliationOutput) as {
+    operation: { operationId: string };
+    observation: OrderReconciliationView["reconciliation"];
+  };
+  assert.equal(reconciliationView.operation.operationId, "op-1");
+  assert.deepEqual(reconciliationView.observation, operation.reconciliation);
   assert.deepEqual(calls, [
     { name: "recover", input: previewId },
     { name: "show", input: "op-1" },
@@ -505,4 +525,137 @@ void test("broker doctor uses gateway diagnostics and only safe account display"
   const json = JSON.parse(jsonLines.join("\n")) as Record<string, unknown>;
   assert.equal((json["account"] as { maskedId: string }).maskedId, "U***567");
   assert.equal(JSON.stringify(json).includes("DU1234567"), false);
+});
+
+void test("CLI spread presentation labels the weakest partial leg evidence", () => {
+  const quote = (strike: number, bid: number, ask: number): DerivativeQuote => ({
+    contract: {
+      identity: {
+        assetClass: "FOP",
+        underlying: "NQ",
+        expiration: "2026-08-21",
+        strike,
+        right: "PUT",
+        tradingClass: "QN3",
+        exchange: "CME",
+        multiplier: 20,
+        settlement: "PM",
+        exerciseStyle: "AMERICAN",
+      },
+      brokerReference: { broker: "ibkr", contractId: String(strike) },
+    },
+    dataAvailability: "live",
+    timestamp: null,
+    bid,
+    ask,
+    last: null,
+    mark: (bid + ask) / 2,
+    delta: null,
+    impliedVolatility: null,
+    volume: null,
+    openInterest: null,
+  });
+  const long = quote(26400, 291, 297);
+  const short = quote(26600, 330.5, 337.5);
+  const spread = buildVerticalSpread({
+    kind: "put-credit",
+    quantity: 1,
+    longQuote: long,
+    shortQuote: short,
+  });
+  const reference: DerivativeReferenceQuote = {
+    brokerReference: { broker: "ibkr", contractId: "770561204" },
+    symbol: "NQ",
+    dataAvailability: "live",
+    timestamp: null,
+    bid: 27865,
+    ask: 27866.5,
+    last: 27865.5,
+    mark: 27864.25,
+  };
+  const result: VerticalSpreadResearch = {
+    referenceQuote: observe(reference, "available", "2026-09-04T00:02:00.000Z"),
+    longQuote: observe(long, "partial", "2026-09-04T00:00:00.000Z"),
+    shortQuote: observe(short, "available", "2026-09-04T00:01:00.000Z"),
+    observation: observe(spread, "partial", "2026-09-04T00:00:00.000Z"),
+    spread,
+    pricingNotice: "Synthetic leg evidence.",
+  };
+  const rendered = renderVerticalSpread(result);
+  assert.match(rendered, /Evidence: \[partial @ 2026-09-04T00:00:00.000Z\]/u);
+  assert.match(rendered, /Long .*\[partial @/u);
+  assert.match(rendered, /Reference .*\[available @/u);
+});
+
+void test("CLI lifecycle JSON keeps unavailable account and broker lifecycle facts null", async () => {
+  const lines: string[] = [];
+  const unavailable: OrderLifecycleDto = {
+    ...lifecycle,
+    account: { maskedId: null, environment: null },
+    orderId: null,
+    clientOrderId: null,
+    status: null,
+    quantity: null,
+    filledQuantity: null,
+    remainingQuantity: null,
+    averagePrice: null,
+    limitPrice: null,
+    commissionAndFees: null,
+  };
+  const root = program({
+    createExecutionService: () =>
+      Promise.resolve({
+        submit: () => Promise.resolve(submission),
+        recover: () => Promise.resolve(submission),
+        getStatus: () => Promise.resolve(unavailable),
+        watch: () => Promise.resolve(unavailable),
+        acknowledgeWarning: () => Promise.resolve(unavailable),
+        reconcile: () => Promise.resolve(reconciliation),
+        cancel: () => Promise.resolve(unavailable),
+      }),
+    log: (line) => lines.push(line),
+  });
+  await root.parseAsync(["node", "test", "order", "show", "op-1", "--json"]);
+  const body = JSON.parse(lines[0] ?? "") as Record<string, unknown>;
+  assert.deepEqual(body["account"], { maskedId: null, environment: null });
+  assert.equal(body["quantity"], null);
+  assert.equal(body["filledQuantity"], null);
+  assert.equal(body["remainingQuantity"], null);
+  assert.equal(JSON.stringify(body).includes('"orderId":"op-1"'), false);
+});
+
+void test("CLI spread quote preserves empty and unavailable leg failures", async () => {
+  for (const error of [
+    new Error("No exact market quote returned for the empty leg"),
+    new BrokerDataUnavailableError("queryDerivativeQuotes"),
+  ]) {
+    const root = program({
+      createResearchService: () =>
+        Promise.resolve({
+          discover: () => Promise.reject(new Error("unused")),
+          chain: () => Promise.reject(new Error("unused")),
+          quoteVertical: () => Promise.reject(error),
+        }),
+    });
+    await assert.rejects(
+      () =>
+        root.parseAsync([
+          "node",
+          "test",
+          "spread",
+          "quote",
+          "put-credit",
+          "NQ",
+          "--expiry",
+          "2026-08-21",
+          "--long",
+          "26400",
+          "--short",
+          "26600",
+          "--quantity",
+          "1",
+        ]),
+      error.name === "BrokerDataUnavailableError" ? /Broker data is unavailable/u : /empty leg/u
+    );
+  }
 });

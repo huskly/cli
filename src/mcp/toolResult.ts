@@ -33,7 +33,9 @@ export function observationResult(
     ...payload,
     observedAt: observation.observedAt,
     completeness: observation.completeness,
-    warnings: observationWarnings(observation.completeness),
+    warnings: [...observationWarnings(observation.completeness), ...(observation.warnings ?? [])],
+    ...(observation.sourceCount === undefined ? {} : { sourceCount: observation.sourceCount }),
+    ...(observation.omittedCount === undefined ? {} : { omittedCount: observation.omittedCount }),
   };
   return observation.completeness === "unavailable"
     ? textResult(JSON.stringify(body, null, 2), true)

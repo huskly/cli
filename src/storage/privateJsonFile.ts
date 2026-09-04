@@ -86,6 +86,52 @@ export class PrivateJsonFile<T> {
     this.tempName = options.tempName ?? (() => `${String(process.pid)}-${randomUUID()}`);
   }
 
+  async create(value: T): Promise<boolean> {
+    const parsed = this.schema.parse(value);
+    const source = JSON.stringify(parsed);
+    if (Buffer.byteLength(source, "utf8") > this.maxBytes) {
+      throw new Error(
+        `Private JSON file at ${this.path} must be at most ${String(this.maxBytes)} bytes`
+      );
+    }
+
+    await this.fs.mkdir(this.directory, { recursive: true, mode: 0o700 });
+    const directoryHandle = await this.openDirectory();
+    await directoryHandle.chmod(0o700);
+    let handle: PrivateJsonHandle | undefined;
+    let created = false;
+
+    try {
+      try {
+        handle = await this.fs.open(
+          this.path,
+          constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
+          0o600
+        );
+        created = true;
+      } catch (error: unknown) {
+        if (isNodeErrorWithCode(error, "EEXIST")) {
+          await this.assertSafeExistingTarget();
+          return false;
+        }
+        throw error;
+      }
+      await handle.writeFile(source, { encoding: "utf8" });
+      await handle.chmod(0o600);
+      await handle.sync();
+      await handle.close();
+      handle = undefined;
+      await directoryHandle.sync();
+      return true;
+    } catch (error: unknown) {
+      await closeQuietly(handle);
+      if (created) await unlinkQuietly(this.fs, this.path);
+      throw error;
+    } finally {
+      await closeQuietly(directoryHandle);
+    }
+  }
+
   async save(value: T): Promise<void> {
     await this.fs.mkdir(this.directory, { recursive: true, mode: 0o700 });
     const directoryHandle = await this.openDirectory();

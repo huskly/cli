@@ -407,12 +407,30 @@ function normalizeReferenceQuote(
   };
 }
 
-function observeList<T>(
-  value: T[],
+function normalizeCollection<Source, Target>(
+  source: readonly Source[],
+  normalize: (item: Source) => Target,
   status: z.infer<typeof readStatusSchema>,
-  observedAt: string
-): Observation<T[]> {
-  return observe(value, status, observedAt);
+  observedAt: string,
+  itemName: string
+): Observation<Target[]> {
+  const value: Target[] = [];
+  let omittedCount = 0;
+  for (const item of source) {
+    try {
+      value.push(normalize(item));
+    } catch {
+      omittedCount += 1;
+    }
+  }
+  const completeness = omittedCount === 0 || status === "unavailable" ? status : "partial";
+  return observe(value, completeness, observedAt, {
+    sourceCount: source.length,
+    omittedCount,
+    ...(omittedCount === 0
+      ? {}
+      : { warnings: [`Omitted ${String(omittedCount)} incomplete ${itemName} item(s).`] }),
+  });
 }
 
 function normalizeDiagnostics(response: GetDiagnosticsResponse): TradingDiagnostics {
@@ -474,10 +492,12 @@ export class IbkrDerivativeAdapter
       derivativeExpiryResponseSchema,
       await this.api.queryDerivativeExpiries(toExpiryQuery(request))
     );
-    return observeList(
-      response.expiries.map(normalizeExpiry),
+    return normalizeCollection(
+      response.expiries,
+      normalizeExpiry,
       response.status,
-      response.observedAt
+      response.observedAt,
+      "derivative expiry"
     );
   }
 
@@ -489,10 +509,12 @@ export class IbkrDerivativeAdapter
       derivativeContractsResponseSchema,
       await this.api.queryDerivativeContracts(toContractsQuery(request))
     );
-    return observeList(
-      response.contracts.map(normalizeContract),
+    return normalizeCollection(
+      response.contracts,
+      normalizeContract,
       response.status,
-      response.observedAt
+      response.observedAt,
+      "derivative contract"
     );
   }
 
@@ -504,11 +526,23 @@ export class IbkrDerivativeAdapter
       derivativeContractResponseSchema,
       await this.api.resolveDerivativeContract(toResolveQuery(request))
     );
-    return observe(
-      response.contract === null ? null : normalizeContract(response.contract),
-      response.status,
-      response.observedAt
-    );
+    if (response.contract === null) {
+      return observe(null, response.status, response.observedAt);
+    }
+    try {
+      return observe(normalizeContract(response.contract), response.status, response.observedAt);
+    } catch {
+      return observe(
+        null,
+        response.status === "unavailable" ? "unavailable" : "partial",
+        response.observedAt,
+        {
+          sourceCount: 1,
+          omittedCount: 1,
+          warnings: ["Omitted an incomplete exact derivative contract."],
+        }
+      );
+    }
   }
 
   async getChain(request: DerivativeContractRequest): Promise<Observation<DerivativeQuote[]>> {
@@ -517,7 +551,13 @@ export class IbkrDerivativeAdapter
       derivativeQuotesResponseSchema,
       await this.api.queryDerivativeQuotes(toQuotesQuery(request))
     );
-    return observeList(response.quotes.map(normalizeQuote), response.status, response.observedAt);
+    return normalizeCollection(
+      response.quotes,
+      normalizeQuote,
+      response.status,
+      response.observedAt,
+      "derivative quote"
+    );
   }
 
   async getReferenceQuote(
@@ -586,10 +626,20 @@ export class IbkrDerivativeAdapter
       derivativeContractResponseSchema,
       await responsePromise
     );
-    return observe(
-      response.contract === null ? null : normalizeContract(response.contract),
-      response.status,
-      response.observedAt
-    );
+    if (response.contract === null) return observe(null, response.status, response.observedAt);
+    try {
+      return observe(normalizeContract(response.contract), response.status, response.observedAt);
+    } catch {
+      return observe(
+        null,
+        response.status === "unavailable" ? "unavailable" : "partial",
+        response.observedAt,
+        {
+          sourceCount: 1,
+          omittedCount: 1,
+          warnings: ["Omitted an incomplete exact derivative contract."],
+        }
+      );
+    }
   }
 }

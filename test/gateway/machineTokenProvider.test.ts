@@ -12,6 +12,16 @@ const validTokenResponse = {
   scope: "ibkr:read-only",
 } as const;
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((next, fail) => {
+    resolve = next;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
 function createJsonResponse(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), {
     status: 200,
@@ -204,4 +214,35 @@ void test("never serializes secrets or provider internals", () => {
   const serialized = JSON.stringify(fixture.provider);
   assert.equal(serialized, "{}");
   assert.doesNotMatch(serialized, /machine-client-id|machine-client-secret|token/i);
+});
+
+void test("failed refresh re-reads time and rejects when the fallback expires at the exact boundary", async () => {
+  let now = 0;
+  let calls = 0;
+  const refreshStarted = deferred<undefined>();
+  const refreshFailure = deferred<Response>();
+  const provider = createMachineTokenProvider({
+    tokenUrl: "https://huskly.finance/api/v1/machine/token",
+    clientId: "id",
+    clientSecret: "secret",
+    now: () => now,
+    delay: () => Promise.resolve(),
+    fetch: () => {
+      calls += 1;
+      if (calls === 1) return Promise.resolve(createJsonResponse(validTokenResponse));
+      if (calls === 2) {
+        refreshStarted.resolve(undefined);
+        return refreshFailure.promise;
+      }
+      return Promise.reject(new TypeError("refresh retry failed"));
+    },
+  });
+  assert.equal(await provider.getToken(), "token-1");
+  now = 240_000;
+  const refreshing = provider.getToken();
+  await refreshStarted.promise;
+  now = 300_000;
+  refreshFailure.reject(new TypeError("refresh failed at expiry"));
+  await assert.rejects(() => refreshing, /token exchange failed/i);
+  assert.equal(calls, 4);
 });

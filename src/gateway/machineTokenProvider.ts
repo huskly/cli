@@ -58,7 +58,7 @@ export function createMachineTokenProvider(
       try {
         return await activeRefresh;
       } catch (error: unknown) {
-        if (cachedToken !== undefined && currentTime < cachedToken.expiresAt) {
+        if (cachedToken !== undefined && now() < cachedToken.expiresAt) {
           return cachedToken.token;
         }
         throw error;

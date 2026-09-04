@@ -102,8 +102,8 @@ export interface DerivativeCommandDependencies {
 }
 
 interface SafeAccountView {
-  readonly maskedId: string;
-  readonly environment: "paper" | "live";
+  readonly maskedId: string | null;
+  readonly environment: "paper" | "live" | null;
 }
 
 interface SafeOperationView {
@@ -176,8 +176,8 @@ interface SafeSubmissionView {
   readonly state: SubmissionDto["state"];
   readonly account: SafeAccountView;
   readonly operation: SafeOperationView;
-  readonly updatedAt?: string | null;
-  readonly verifiedStatus?: SubmissionDto["status"];
+  readonly updatedAt: string | null;
+  readonly verifiedStatus: SubmissionDto["status"];
   readonly warnings: readonly {
     readonly replyId: string;
     readonly known: boolean;
@@ -194,9 +194,9 @@ interface SafeSubmissionView {
 
 interface SafeLifecycleView extends SafeSubmissionView {
   readonly verifiedAgainstPreview: true;
-  readonly quantity: number;
-  readonly filledQuantity: number;
-  readonly remainingQuantity: number;
+  readonly quantity: number | null;
+  readonly filledQuantity: number | null;
+  readonly remainingQuantity: number | null;
   readonly averagePrice: number | null;
   readonly limitPrice: number | null;
   readonly commissionAndFees: number | null;
@@ -393,9 +393,10 @@ export function renderVerticalSpread(result: VerticalSpreadResearch): string {
   const { spread } = result;
   const lines = [
     `${spread.kind} x${String(spread.quantity)}  width ${String(spread.width)}  multiplier ${String(spread.multiplier)}`,
+    `Evidence: ${observationDetails(result.observation.observedAt, result.observation.completeness)}`,
     `Reference ${result.referenceQuote.value.symbol}: ${formatPrice(result.referenceQuote.value.mark ?? result.referenceQuote.value.last)} (${result.referenceQuote.value.dataAvailability}) ${observationDetails(result.referenceQuote.observedAt, result.referenceQuote.completeness)}`,
-    `Long ${String(spread.longLeg.quote.contract.identity.strike)} @ ${formatPrice(spread.longLeg.quote.bid)} x ${formatPrice(spread.longLeg.quote.ask)}`,
-    `Short ${String(spread.shortLeg.quote.contract.identity.strike)} @ ${formatPrice(spread.shortLeg.quote.bid)} x ${formatPrice(spread.shortLeg.quote.ask)}`,
+    `Long ${String(spread.longLeg.quote.contract.identity.strike)} @ ${formatPrice(spread.longLeg.quote.bid)} x ${formatPrice(spread.longLeg.quote.ask)} ${observationDetails(result.longQuote.observedAt, result.longQuote.completeness)}`,
+    `Short ${String(spread.shortLeg.quote.contract.identity.strike)} @ ${formatPrice(spread.shortLeg.quote.bid)} x ${formatPrice(spread.shortLeg.quote.ask)} ${observationDetails(result.shortQuote.observedAt, result.shortQuote.completeness)}`,
   ];
   for (const scenario of spread.scenarios) {
     if (scenario.analysis === null) {
@@ -416,7 +417,7 @@ function safeAccount(
   maskedId: string | null | undefined,
   environment: SafeAccountView["environment"]
 ): SafeAccountView {
-  return { maskedId: maskedId ?? "unknown", environment };
+  return { maskedId: maskedId ?? null, environment };
 }
 
 function safeOperation(operation: OrderOperationView): SafeOperationView {
@@ -501,8 +502,8 @@ function toSubmissionView(result: SubmissionDto): SafeSubmissionView {
     state: result.state,
     account: safeAccount(result.account.maskedId, result.account.environment),
     operation,
-    ...(result.updatedAt !== undefined ? { updatedAt: result.updatedAt } : {}),
-    ...(result.status !== undefined ? { verifiedStatus: result.status } : {}),
+    updatedAt: result.updatedAt,
+    verifiedStatus: result.status,
     warnings: result.warnings.map((warning) => ({
       replyId: warning.replyId,
       known: warning.known,
@@ -612,7 +613,7 @@ function renderSafeOperation(operation: SafeOperationView): string[] {
 function renderSpreadPreview(result: SafeSpreadPreviewView): string {
   return [
     `Preview: ${result.previewId}`,
-    `Account: ${result.account.maskedId}  Environment: ${result.account.environment}`,
+    `Account: ${result.account.maskedId ?? "unknown"}  Environment: ${result.account.environment ?? "unknown"}`,
     `Created: ${result.createdAt}`,
     `Expires: ${result.expiresAt}`,
     `${result.order.kind} x${String(result.order.quantity)} ${result.order.priceEffect.toLowerCase()} ${String(result.order.limit)}  ${result.order.tif} ${result.order.session}`,
@@ -630,15 +631,13 @@ function renderSubmission(result: SafeSubmissionView): string {
   const lines = [
     `Submission: ${result.state}`,
     `Preview: ${result.previewId}`,
-    `Account: ${result.account.maskedId}  Environment: ${result.account.environment}`,
+    `Account: ${result.account.maskedId ?? "unknown"}  Environment: ${result.account.environment ?? "unknown"}`,
     ...renderSafeOperation(result.operation),
   ];
-  if (result.verifiedStatus !== undefined) {
+  if (result.verifiedStatus !== null) {
     lines.push(`Verified status: ${result.verifiedStatus}`);
   }
-  if (result.updatedAt !== undefined) {
-    lines.push(`Updated: ${result.updatedAt ?? "unknown"}`);
-  }
+  lines.push(`Updated: ${result.updatedAt ?? "unknown"}`);
   for (const warning of result.warnings) {
     lines.push(
       `Warning reply: ${warning.replyId} (${warning.known ? "known" : "unknown"})  message count ${String(warning.messageCount)}`
@@ -659,10 +658,10 @@ function renderOrderLifecycle(result: SafeLifecycleView): string {
   return [
     `Order lifecycle: ${result.state}`,
     `Preview: ${result.previewId}`,
-    `Account: ${result.account.maskedId}  Environment: ${result.account.environment}`,
+    `Account: ${result.account.maskedId ?? "unknown"}  Environment: ${result.account.environment ?? "unknown"}`,
     ...renderSafeOperation(result.operation),
     `Verified against preview: ${String(result.verifiedAgainstPreview)}`,
-    `Quantity: ${String(result.filledQuantity)}/${String(result.quantity)}  Remaining: ${String(result.remainingQuantity)}`,
+    `Quantity: ${formatPrice(result.filledQuantity)}/${formatPrice(result.quantity)}  Remaining: ${formatPrice(result.remainingQuantity)}`,
     `Limit: ${formatPrice(result.limitPrice)}  Average fill: ${formatPrice(result.averagePrice)}`,
     `Commission/fees: ${formatPrice(result.commissionAndFees)}`,
   ].join("\n");

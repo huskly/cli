@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { ConsumerError } from "#src/gateway/gatewayErrors.js";
+import { BrokerDataUnavailableError } from "#src/brokers/brokerClient.js";
+import type { OrderReconciliationView } from "#src/derivatives/derivativeExecution.js";
 import {
   registerDerivativeTools,
   type DerivativeTools,
@@ -30,6 +32,34 @@ function requiredTool(server: FakeServer, name: string): RegisteredMcpTool {
   const tool = server.tools.get(name);
   assert.ok(tool, `missing tool ${name}`);
   return tool;
+}
+
+function reconciliationOperation(operationId: string): OrderReconciliationView {
+  return {
+    operationId,
+    kind: "combo",
+    action: "submission",
+    parentOperationId: null,
+    intentSchemaVersion: 1,
+    intentHash: "hash",
+    state: "reconciliation_required",
+    correlations: [],
+    children: [],
+    pendingWarning: null,
+    reconciliation: {
+      observedAt: "2026-09-04T00:03:00.000Z",
+      status: "incomplete",
+      reason: "broker evidence is incomplete",
+    },
+    result: {
+      kind: "recovery_required",
+      orders: [],
+      warningCount: 0,
+      reasonCategories: ["unknown"],
+    },
+    createdAt: "2026-09-04T00:00:00.000Z",
+    latestTransitionAt: "2026-09-04T00:03:00.000Z",
+  };
 }
 
 function fakeTools() {
@@ -86,14 +116,52 @@ function fakeTools() {
     },
     quoteVertical: () => {
       calls.quoteVertical += 1;
+      const quote = {
+        contract: {
+          identity: {
+            assetClass: "FOP" as const,
+            underlying: "NQ",
+            expiration: "2026-08-21",
+            strike: 26600,
+            right: "PUT" as const,
+            tradingClass: "QN3",
+            exchange: "CME",
+            multiplier: 20,
+          },
+          brokerReference: { broker: "ibkr" as const, contractId: "892767774" },
+        },
+        dataAvailability: "live" as const,
+        timestamp: null,
+        bid: 39,
+        ask: 40,
+        last: null,
+        mark: 39.5,
+        delta: -0.25,
+        impliedVolatility: null,
+        volume: null,
+        openInterest: null,
+      };
+      const spread = {
+        width: 200,
+        naturalPrice: 39,
+        midpointPrice: 40,
+        requestedLimit: 39,
+        limitSatisfied: true,
+        quantity: 1,
+        cashFlow: { effect: "CREDIT", perSpread: 39, gross: 780 },
+        maxProfit: 780,
+        maxLoss: 3220,
+        breakEven: 26561,
+        warnings: [],
+      };
       return Promise.resolve({
         referenceQuote: {
-          observedAt: "2026-09-04T00:00:00.000Z",
-          completeness: "partial",
+          observedAt: "2026-09-04T00:02:00.000Z",
+          completeness: "available" as const,
           value: {
-            brokerReference: { broker: "ibkr", contractId: "770561204" },
+            brokerReference: { broker: "ibkr" as const, contractId: "770561204" },
             symbol: "NQ",
-            dataAvailability: "live",
+            dataAvailability: "live" as const,
             timestamp: null,
             bid: 27865,
             ask: 27866.5,
@@ -101,19 +169,22 @@ function fakeTools() {
             mark: 27864.25,
           },
         },
-        spread: {
-          width: 200,
-          naturalPrice: 39,
-          midpointPrice: 40,
-          requestedLimit: 39,
-          limitSatisfied: true,
-          quantity: 1,
-          cashFlow: { effect: "CREDIT", perSpread: 39, gross: 780 },
-          maxProfit: 780,
-          maxLoss: 3220,
-          breakEven: 26561,
-          warnings: [],
+        longQuote: {
+          observedAt: "2026-09-04T00:00:00.000Z",
+          completeness: "partial" as const,
+          value: quote,
         },
+        shortQuote: {
+          observedAt: "2026-09-04T00:01:00.000Z",
+          completeness: "available" as const,
+          value: quote,
+        },
+        observation: {
+          observedAt: "2026-09-04T00:00:00.000Z",
+          completeness: "partial" as const,
+          value: spread,
+        },
+        spread,
         pricingNotice:
           "Natural and midpoint prices are synthesized from individual leg markets; they are not a broker combo NBBO or executable preview.",
       });
@@ -259,7 +330,7 @@ function fakeTools() {
     },
     reconcile: (operationId: string) => {
       calls.reconcile += 1;
-      return Promise.resolve({ operation: { operationId, state: "accepted" }, observation: null });
+      return Promise.resolve(reconciliationOperation(operationId));
     },
     cancel: ({ operationId }: { operationId: string }) => {
       calls.cancel += 1;
@@ -350,9 +421,16 @@ void test("derivative tool registration removes account inputs and adds recovery
     confirm: true,
   });
   await requiredTool(server, "get_order_status").handler({ operationId: "op-1" });
-  await requiredTool(server, "reconcile_order_operation").handler({
+  const reconcileResult = await requiredTool(server, "reconcile_order_operation").handler({
     operationId: "op-1",
     confirm: true,
+  });
+  const reconciliationBody = parse(reconcileResult);
+  assert.equal(reconciliationBody["operationId"], "op-1");
+  assert.deepEqual(reconciliationBody["reconciliation"], {
+    observedAt: "2026-09-04T00:03:00.000Z",
+    status: "incomplete",
+    reason: "broker evidence is incomplete",
   });
   const cancelResult = await requiredTool(server, "cancel_order").handler({
     operationId: "op-1",
@@ -389,6 +467,26 @@ void test("derivative read tools keep observation evidence", async () => {
   assert.equal(body["completeness"], "partial");
   assert.deepEqual(body["warnings"], ["Broker data is partial."]);
   assert.equal(calls.chain, 1);
+
+  const spreadResult = await requiredTool(server, "quote_option_spread").handler({
+    assetClass: "FOP",
+    underlying: "NQ",
+    expiration: "2026-08-21",
+    kind: "put-credit",
+    longStrike: 26400,
+    shortStrike: 26600,
+    quantity: 1,
+  });
+  const spreadBody = parse(spreadResult);
+  assert.equal(spreadBody["completeness"], "partial");
+  assert.equal(spreadBody["observedAt"], "2026-09-04T00:00:00.000Z");
+  assert.deepEqual(spreadBody["warnings"], ["Broker data is partial."]);
+  assert.equal(
+    (spreadBody["referenceQuote"] as { completeness: string }).completeness,
+    "available"
+  );
+  assert.equal((spreadBody["longQuote"] as { completeness: string }).completeness, "partial");
+  assert.equal(calls.quoteVertical, 1);
 });
 
 void test("read-only mutation failures stay clear and redacted", async () => {
@@ -430,4 +528,37 @@ void test("read-only mutation failures stay clear and redacted", async () => {
         "Gateway authorization failed. The MCP credential may be read-only for this operation.",
     },
   });
+});
+
+void test("MCP spread quote preserves empty and unavailable leg failures", async () => {
+  for (const [error, expected] of [
+    [
+      new Error("No exact market quote returned for the empty leg"),
+      "No exact market quote returned for the empty leg",
+    ],
+    [new BrokerDataUnavailableError("queryDerivativeQuotes"), "Broker data is unavailable."],
+  ] as const) {
+    const { tools } = fakeTools();
+    const server = new FakeServer();
+    registerDerivativeTools(server, {
+      createTools: () =>
+        Promise.resolve({
+          ...tools,
+          research: { ...tools.research, quoteVertical: () => Promise.reject(error) },
+        }),
+    });
+    const result = await requiredTool(server, "quote_option_spread").handler({
+      assetClass: "FOP",
+      underlying: "NQ",
+      expiration: "2026-08-21",
+      kind: "put-credit",
+      longStrike: 26400,
+      shortStrike: 26600,
+      quantity: 1,
+    });
+    assert.equal(result.isError, true);
+    const first = result.content[0] as { type: "text"; text: string } | undefined;
+    assert.ok(first);
+    assert.match(first.text, new RegExp(expected.replaceAll(".", "\\.")));
+  }
 });
