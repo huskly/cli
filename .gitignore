@@ -39,3 +39,5 @@ coverage/
 .prettiercache
 *.tsbuildinfo
 .env.*
+# Isolated development worktrees
+.worktrees/
