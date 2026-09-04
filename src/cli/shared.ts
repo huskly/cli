@@ -1,4 +1,3 @@
-import { HusklyDeviceAuth } from "#src/auth/husklyDeviceAuth.js";
 import { ensure } from "#src/helpers.js";
 import { SchwabClient } from "@huskly/schwab-client";
 import { cliGatewayTransport } from "#src/gateway/gatewayTransport.js";
@@ -18,6 +17,7 @@ const brokerClientPromises = new Map<BrokerName, Promise<BrokerClient>>();
  * the Redis read-cache.
  */
 export async function apiClient(): Promise<CachedSchwabClient> {
+  const { HusklyDeviceAuth } = await import("#src/auth/husklyDeviceAuth.js");
   const deviceAuth = new HusklyDeviceAuth();
   const accessToken = await deviceAuth.getAccessToken();
   const client = new SchwabClient(
