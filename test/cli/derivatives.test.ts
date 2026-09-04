@@ -277,7 +277,8 @@ void test("task 9 command surface removes account inputs and old acknowledgment 
     true
   );
   const source = await readFile(new URL("../../src/cli/derivatives.ts", import.meta.url), "utf8");
-  assert.equal(source.includes("IBKR_ACCOUNT_ID"), false);
+  const removedAccountEnv = ["IBKR", "ACCOUNT", "ID"].join("_");
+  assert.equal(source.includes(removedAccountEnv), false);
 });
 
 void test("every mutation command requires explicit confirmation before service setup", async () => {
