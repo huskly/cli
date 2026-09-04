@@ -207,18 +207,17 @@ void test("file preview store round-trips the canonical gateway intent without p
       60_000,
       new FilePreviewStore(directory)
     );
-    assert.equal(
-      (
-        await reader.validatePreview(result.previewId)
-      ).previewId,
-      result.previewId
-    );
+    assert.equal((await reader.validatePreview(result.previewId)).previewId, result.previewId);
     const [filename] = await readdir(directory);
     assert.ok(filename);
     const persisted = await readFile(join(directory, filename), "utf8");
     assert.doesNotMatch(persisted, /U1234567/);
     assert.doesNotMatch(persisted, /clientOrderId/);
-    const parsed = JSON.parse(persisted) as { schemaVersion: number; canonicalIntent: { orderType: string }; previewResult: { accepted: boolean } };
+    const parsed = JSON.parse(persisted) as {
+      schemaVersion: number;
+      canonicalIntent: { orderType: string };
+      previewResult: { accepted: boolean };
+    };
     assert.equal(parsed.schemaVersion, 1);
     assert.equal(parsed.canonicalIntent.orderType, "LMT");
     assert.equal(parsed.previewResult.accepted, true);
@@ -234,7 +233,7 @@ void test("stores rejected previews and never submits during preview", async () 
       Promise.resolve({
         accountId: "U1234567",
         maskedAccountDisplay: "U***567",
-          environment: "paper",
+        environment: "paper",
         authenticated: true,
         competingSession: false,
         marketDataAvailable: true,
@@ -298,7 +297,11 @@ void test("breaking old persisted preview formats is required", async () => {
   const directory = await mkdtemp(join(tmpdir(), "huskly-preview-test-"));
   try {
     const store = new FilePreviewStore(directory);
-    await writeFile(join(directory, `${"a".repeat(64)}.json`), JSON.stringify({ dto: { previewId: "a".repeat(64) } }), { mode: 0o600 });
+    await writeFile(
+      join(directory, `${"a".repeat(64)}.json`),
+      JSON.stringify({ dto: { previewId: "a".repeat(64) } }),
+      { mode: 0o600 }
+    );
     await chmod(join(directory, `${"a".repeat(64)}.json`), 0o600);
     await assert.rejects(() => store.load("a".repeat(64)), /schema|version|invalid/i);
   } finally {

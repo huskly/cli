@@ -68,7 +68,12 @@ export function registerMcpTools(
   registerGetOptionChainTool(server as McpServer);
   registerGetOptionExpiriesTool(server as McpServer);
   registerPlaceOptionOrderTool(server as McpServer);
-  registerDerivativeTools(server, { ...dependencies, ...(dependencies.createDerivativeTools === undefined ? {} : { createTools: dependencies.createDerivativeTools }) });
+  registerDerivativeTools(server, {
+    ...dependencies,
+    ...(dependencies.createDerivativeTools === undefined
+      ? {}
+      : { createTools: dependencies.createDerivativeTools }),
+  });
 }
 
 export function createMcpServer(dependencies: McpServerDependencies = {}): McpServer {

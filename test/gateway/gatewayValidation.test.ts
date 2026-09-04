@@ -16,11 +16,10 @@ test("parseGatewayResponse returns validated data", () => {
 test("parseGatewayResponse throws a fixed redacted transport failure", () => {
   assert.throws(
     () =>
-      parseGatewayResponse(
-        "queryQuotes",
-        z.object({ observedAt: z.string() }).strict(),
-        { observedAt: 123, secrets: { token: "abc" } }
-      ),
+      parseGatewayResponse("queryQuotes", z.object({ observedAt: z.string() }).strict(), {
+        observedAt: 123,
+        secrets: { token: "abc" },
+      }),
     (error: unknown) => {
       assert.ok(error instanceof ConsumerError);
       assert.equal(error.code, "gateway_transport_failure");

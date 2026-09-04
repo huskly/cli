@@ -51,11 +51,22 @@ function client(): DerivativeDiscoveryClient {
   ];
   return {
     getExpiries: () => Promise.resolve(observe([], "empty", "2026-07-29T12:00:00.000Z")),
-    getContracts: () => Promise.resolve(observe(quotes.map(({ contract: item }) => item), "partial", "2026-07-29T12:00:00.000Z")),
+    getContracts: () =>
+      Promise.resolve(
+        observe(
+          quotes.map(({ contract: item }) => item),
+          "partial",
+          "2026-07-29T12:00:00.000Z"
+        )
+      ),
     resolveContract: (request) => {
       const resolved = quotes.find(({ contract: item }) => item.identity.strike === request.strike);
       return Promise.resolve(
-        observe(resolved?.contract ?? null, resolved === undefined ? "empty" : "available", "2026-07-29T12:00:00.000Z")
+        observe(
+          resolved?.contract ?? null,
+          resolved === undefined ? "empty" : "available",
+          "2026-07-29T12:00:00.000Z"
+        )
       );
     },
     getChain: (request) =>

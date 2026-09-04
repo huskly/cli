@@ -20,7 +20,7 @@ export interface PrivateJsonHandle {
     buffer: Buffer,
     offset: number,
     length: number,
-    position: number | null,
+    position: number | null
   ): Promise<{ bytesRead: number; buffer: Buffer }>;
   writeFile(data: string, options?: { encoding?: BufferEncoding }): Promise<void>;
   chmod(mode: number): Promise<void>;
@@ -97,7 +97,7 @@ export class PrivateJsonFile<T> {
       tempHandle = await this.fs.open(
         tempPath,
         constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
-        0o600,
+        0o600
       );
       await tempHandle.writeFile(JSON.stringify(value), { encoding: "utf8" });
       await tempHandle.sync();
@@ -157,7 +157,7 @@ export class PrivateJsonFile<T> {
   private async openDirectory(): Promise<PrivateJsonHandle> {
     const handle = await this.fs.open(
       this.directory,
-      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW
     );
     const stat = await handle.stat();
     if (!stat.isDirectory()) {
@@ -209,7 +209,7 @@ export class PrivateJsonFile<T> {
 async function readBoundedUtf8(
   handle: PrivateJsonHandle,
   maxBytes: number,
-  path: string,
+  path: string
 ): Promise<string> {
   const buffer = Buffer.alloc(maxBytes + 1);
   let totalBytes = 0;
@@ -236,7 +236,7 @@ function parsePrivateJson<T>(source: string, schema: ZodType<T>, path: string): 
   const result = schema.safeParse(parsed);
   if (!result.success) {
     throw new Error(
-      `Private JSON file at ${path} is invalid: ${result.error.issues.map((issue) => issue.message).join("; ")}`,
+      `Private JSON file at ${path} is invalid: ${result.error.issues.map((issue) => issue.message).join("; ")}`
     );
   }
   return result.data;

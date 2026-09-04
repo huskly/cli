@@ -9,7 +9,12 @@ const stripAnsi = (value: string): string => {
 
 test("search renderer reports a true empty result", () => {
   const output = stripAnsi(
-    renderSearchObservation({ observedAt: "2026-09-04T00:00:00.000Z", completeness: "empty", value: [] }, "ibkr", "AAPL", { projection: "search" })
+    renderSearchObservation(
+      { observedAt: "2026-09-04T00:00:00.000Z", completeness: "empty", value: [] },
+      "ibkr",
+      "AAPL",
+      { projection: "search" }
+    )
   );
   assert.match(output, /No instruments found matching "AAPL"/);
 });
@@ -17,7 +22,11 @@ test("search renderer reports a true empty result", () => {
 test("search renderer warns on partial data", () => {
   const output = stripAnsi(
     renderSearchObservation(
-      { observedAt: "2026-09-04T00:00:00.000Z", completeness: "partial", value: [{ symbol: "AAPL", description: "Apple Inc." }] },
+      {
+        observedAt: "2026-09-04T00:00:00.000Z",
+        completeness: "partial",
+        value: [{ symbol: "AAPL", description: "Apple Inc." }],
+      },
       "ibkr",
       "AAPL",
       { projection: "search" }

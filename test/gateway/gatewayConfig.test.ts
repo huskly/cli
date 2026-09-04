@@ -16,11 +16,7 @@ async function makeDirectory(): Promise<string> {
   return mkdtemp(join(tmpdir(), "huskly-gateway-config-"));
 }
 
-async function writeGatewayConfig(
-  path: string,
-  value: unknown,
-  mode = 0o600,
-): Promise<void> {
+async function writeGatewayConfig(path: string, value: unknown, mode = 0o600): Promise<void> {
   await writeFile(path, JSON.stringify(value), { mode });
   await chmod(path, mode);
 }
@@ -30,17 +26,17 @@ function configPath(homeDirectory: string, runtime: "cli" | "mcp"): string {
     homeDirectory,
     ".config",
     "huskly",
-    runtime === "cli" ? "ibkr-gateway-cli.json" : "ibkr-gateway-mcp.json",
+    runtime === "cli" ? "ibkr-gateway-cli.json" : "ibkr-gateway-mcp.json"
   );
 }
 
 async function expectConfigError(
   options: Parameters<typeof loadGatewayConfig>[0],
-  pattern: RegExp,
+  pattern: RegExp
 ): Promise<void> {
   await assert.rejects(
     () => loadGatewayConfig(options),
-    (error: unknown) => error instanceof Error && pattern.test(error.message),
+    (error: unknown) => error instanceof Error && pattern.test(error.message)
   );
 }
 
@@ -187,7 +183,7 @@ void test("rejects malformed JSON", async () => {
         homeDirectory: directory,
         uid: requiredUid(),
       },
-      /JSON/,
+      /JSON/
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -227,7 +223,7 @@ void test("rejects missing, unknown, empty, and unbounded fields", async () => {
         homeDirectory: directory,
         uid: requiredUid(),
       },
-      /clientSecret|expected string/i,
+      /clientSecret|expected string/i
     );
     await expectConfigError(
       {
@@ -236,7 +232,7 @@ void test("rejects missing, unknown, empty, and unbounded fields", async () => {
         homeDirectory: directory,
         uid: requiredUid(),
       },
-      /unexpected|unknown/i,
+      /unexpected|unknown/i
     );
     await expectConfigError(
       {
@@ -245,7 +241,7 @@ void test("rejects missing, unknown, empty, and unbounded fields", async () => {
         homeDirectory: directory,
         uid: requiredUid(),
       },
-      /clientSecret/,
+      /clientSecret/
     );
     await expectConfigError(
       {
@@ -254,7 +250,7 @@ void test("rejects missing, unknown, empty, and unbounded fields", async () => {
         homeDirectory: directory,
         uid: requiredUid(),
       },
-      /clientSecret/,
+      /clientSecret/
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -278,7 +274,7 @@ void test("rejects files larger than 16 KiB", async () => {
         homeDirectory: directory,
         uid: requiredUid(),
       },
-      /16 KiB|16384/,
+      /16 KiB|16384/
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -301,7 +297,7 @@ void test("rejects a config file owned by another user", async () => {
         homeDirectory: directory,
         uid: uid + 1,
       },
-      /owner|uid/i,
+      /owner|uid/i
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -335,7 +331,7 @@ void test("rejects every permission mode except 0600", async () => {
           homeDirectory: directory,
           uid: requiredUid(),
         },
-        /0600|mode|EACCES/i,
+        /0600|mode|EACCES/i
       );
     }
   } finally {
@@ -357,7 +353,7 @@ void test("rejects a path that is not a regular file", async () => {
         homeDirectory: directory,
         uid: requiredUid(),
       },
-      /regular file/,
+      /regular file/
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -380,7 +376,7 @@ void test("rejects a symbolic link through the opened descriptor", async () => {
         homeDirectory: directory,
         uid: requiredUid(),
       },
-      /symbolic link|symlink/i,
+      /symbolic link|symlink/i
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -404,7 +400,7 @@ void test("rejects non-HTTPS URLs by default", async () => {
         homeDirectory: directory,
         uid: requiredUid(),
       },
-      /HTTPS|https/,
+      /HTTPS|https/
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -438,7 +434,7 @@ void test("rejects URL credentials and fragments", async () => {
         homeDirectory: directory,
         uid: requiredUid(),
       },
-      /credentials|username|password/i,
+      /credentials|username|password/i
     );
     await expectConfigError(
       {
@@ -447,7 +443,7 @@ void test("rejects URL credentials and fragments", async () => {
         homeDirectory: directory,
         uid: requiredUid(),
       },
-      /credentials|username|password/i,
+      /credentials|username|password/i
     );
     await expectConfigError(
       {
@@ -456,7 +452,7 @@ void test("rejects URL credentials and fragments", async () => {
         homeDirectory: directory,
         uid: requiredUid(),
       },
-      /fragment/i,
+      /fragment/i
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -503,7 +499,7 @@ void test("allows only exact loopback HTTP URLs when enabled", async () => {
         ...validConfig,
         gatewayUrl: "http://localhost:3000",
         tokenUrl: "http://localhost:4000/token",
-      },
+      }
     );
     assert.deepEqual(
       await loadGatewayConfig({
@@ -517,7 +513,7 @@ void test("allows only exact loopback HTTP URLs when enabled", async () => {
         ...validConfig,
         gatewayUrl: "http://[::1]:3000",
         tokenUrl: "http://[::1]:4000/token",
-      },
+      }
     );
     assert.deepEqual(
       await loadGatewayConfig({
@@ -531,7 +527,7 @@ void test("allows only exact loopback HTTP URLs when enabled", async () => {
         ...validConfig,
         gatewayUrl: "http://127.9.8.7:3000",
         tokenUrl: "http://127.0.0.1:4000/token",
-      },
+      }
     );
     await expectConfigError(
       {
@@ -541,7 +537,7 @@ void test("allows only exact loopback HTTP URLs when enabled", async () => {
         uid: requiredUid(),
         allowHttpLoopback: true,
       },
-      /loopback|HTTPS|https/,
+      /loopback|HTTPS|https/
     );
   } finally {
     await rm(directory, { recursive: true, force: true });

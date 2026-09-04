@@ -310,7 +310,8 @@ void test("derivative tool registration removes account inputs and adds recovery
   assert.ok(server.tools.has("recover_option_spread_order"));
   assert.ok(server.tools.has("reconcile_order_operation"));
   const submitSchema = requiredTool(server, "submit_option_spread_order").definition.inputSchema;
-  const acknowledgeSchema = requiredTool(server, "acknowledge_order_warning").definition.inputSchema;
+  const acknowledgeSchema = requiredTool(server, "acknowledge_order_warning").definition
+    .inputSchema;
   const statusSchema = requiredTool(server, "get_order_status").definition.inputSchema;
   const cancelSchema = requiredTool(server, "cancel_order").definition.inputSchema;
   assert.equal("accountId" in (submitSchema as Record<string, unknown>), false);
@@ -425,7 +426,8 @@ void test("read-only mutation failures stay clear and redacted", async () => {
     error: {
       code: "authorization_failure",
       operation: "createOrderOperation",
-      message: "Gateway authorization failed. The MCP credential may be read-only for this operation.",
+      message:
+        "Gateway authorization failed. The MCP credential may be read-only for this operation.",
     },
   });
 });

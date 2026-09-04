@@ -54,12 +54,15 @@ void test("refuses symlink, non-regular, and loose existing targets", async () =
     });
     await chmod(join(target, "loose.json"), 0o644);
 
-    await assert.rejects(() => createSubject(target, "symlink.json").load(), /symbolic link|symlink/i);
+    await assert.rejects(
+      () => createSubject(target, "symlink.json").load(),
+      /symbolic link|symlink/i
+    );
     await assert.rejects(() => createSubject(target, "directory.json").load(), /regular file/i);
     await assert.rejects(() => createSubject(target, "loose.json").load(), /0600|mode/i);
     await assert.rejects(
       () => createSubject(target, "symlink.json").save({ schemaVersion: 1, value: "x" }),
-      /symbolic link|symlink/i,
+      /symbolic link|symlink/i
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -75,16 +78,25 @@ void test("uses exclusive temp creation, fsyncs before rename, and fsyncs the di
     constructor(
       readonly kind: "file" | "directory",
       readonly mode: number,
-      readonly size = 0,
+      readonly size = 0
     ) {}
-    isFile() { return this.kind === "file"; }
-    isDirectory() { return this.kind === "directory"; }
+    isFile() {
+      return this.kind === "file";
+    }
+    isDirectory() {
+      return this.kind === "directory";
+    }
   }
 
   class FakeHandle implements PrivateJsonHandle {
     data = "";
-    constructor(readonly path: string, private readonly stats: FakeStats) {}
-    stat() { return Promise.resolve(this.stats); }
+    constructor(
+      readonly path: string,
+      private readonly stats: FakeStats
+    ) {}
+    stat() {
+      return Promise.resolve(this.stats);
+    }
     read(_buffer: Buffer, _offset: number, _length: number, _position: number | null) {
       return Promise.resolve({ bytesRead: 0, buffer: Buffer.alloc(0) });
     }
@@ -107,7 +119,9 @@ void test("uses exclusive temp creation, fsyncs before rename, and fsyncs the di
     }
   }
 
-  const entries = new Map<string, FakeHandle>([["/secure", new FakeHandle("/secure", new FakeStats("directory", 0o700))]]);
+  const entries = new Map<string, FakeHandle>([
+    ["/secure", new FakeHandle("/secure", new FakeStats("directory", 0o700))],
+  ]);
 
   const fs: PrivateJsonFilesystem = {
     mkdir(path, options) {
@@ -133,7 +147,10 @@ void test("uses exclusive temp creation, fsyncs before rename, and fsyncs the di
       operations.push(`rename:${from}:${to}`);
       const source = entries.get(from);
       if (source === undefined) throw new Error("missing temp");
-      entries.set(to, new FakeHandle(to, new FakeStats("file", 0o600, Buffer.byteLength(source.data))));
+      entries.set(
+        to,
+        new FakeHandle(to, new FakeStats("file", 0o600, Buffer.byteLength(source.data)))
+      );
       entries.delete(from);
       return Promise.resolve();
     },
@@ -173,21 +190,42 @@ void test("cleans up the temp file when rename fails without hiding the write fa
   const operations: string[] = [];
 
   class FakeStats implements PrivateJsonStats {
-    constructor(readonly kind: "file" | "directory", readonly mode: number, readonly size = 0) {}
-    isFile() { return this.kind === "file"; }
-    isDirectory() { return this.kind === "directory"; }
+    constructor(
+      readonly kind: "file" | "directory",
+      readonly mode: number,
+      readonly size = 0
+    ) {}
+    isFile() {
+      return this.kind === "file";
+    }
+    isDirectory() {
+      return this.kind === "directory";
+    }
   }
 
   class FakeHandle implements PrivateJsonHandle {
-    constructor(readonly path: string, private readonly stats: FakeStats) {}
-    stat() { return Promise.resolve(this.stats); }
+    constructor(
+      readonly path: string,
+      private readonly stats: FakeStats
+    ) {}
+    stat() {
+      return Promise.resolve(this.stats);
+    }
     read(_buffer: Buffer, _offset: number, _length: number, _position: number | null) {
       return Promise.resolve({ bytesRead: 0, buffer: Buffer.alloc(0) });
     }
-    writeFile(_data: string) { return Promise.resolve(); }
-    chmod(_mode: number) { return Promise.resolve(); }
-    sync() { return Promise.resolve(); }
-    close() { return Promise.resolve(); }
+    writeFile(_data: string) {
+      return Promise.resolve();
+    }
+    chmod(_mode: number) {
+      return Promise.resolve();
+    }
+    sync() {
+      return Promise.resolve();
+    }
+    close() {
+      return Promise.resolve();
+    }
   }
 
   const fs: PrivateJsonFilesystem = {
@@ -195,7 +233,13 @@ void test("cleans up the temp file when rename fails without hiding the write fa
     open(path) {
       operations.push(`open:${path}`);
       return Promise.resolve(
-        new FakeHandle(path, new FakeStats(path === "/secure" ? "directory" : "file", path === "/secure" ? 0o700 : 0o600)),
+        new FakeHandle(
+          path,
+          new FakeStats(
+            path === "/secure" ? "directory" : "file",
+            path === "/secure" ? 0o700 : 0o600
+          )
+        )
       );
     },
     rename() {
@@ -231,9 +275,13 @@ void test("enforces bounded reads and strict versioned schemas", async () => {
   try {
     const target = join(directory, "state");
     await mkdir(target, { mode: 0o700 });
-    await writeFile(join(target, "state.json"), JSON.stringify({ schemaVersion: 1, value: "x".repeat(80) }), {
-      mode: 0o600,
-    });
+    await writeFile(
+      join(target, "state.json"),
+      JSON.stringify({ schemaVersion: 1, value: "x".repeat(80) }),
+      {
+        mode: 0o600,
+      }
+    );
     await chmod(join(target, "state.json"), 0o600);
     await assert.rejects(() => createSubject(target).load(), /64/);
 
@@ -241,9 +289,13 @@ void test("enforces bounded reads and strict versioned schemas", async () => {
     await chmod(join(target, "state.json"), 0o600);
     await assert.rejects(() => createSubject(target).load(), /schema|version|invalid/i);
 
-    await writeFile(join(target, "state.json"), JSON.stringify({ schemaVersion: 1, value: "ok", extra: true }), {
-      mode: 0o600,
-    });
+    await writeFile(
+      join(target, "state.json"),
+      JSON.stringify({ schemaVersion: 1, value: "ok", extra: true }),
+      {
+        mode: 0o600,
+      }
+    );
     await chmod(join(target, "state.json"), 0o600);
     await assert.rejects(() => createSubject(target).load(), /schema|version|invalid|unexpected/i);
   } finally {

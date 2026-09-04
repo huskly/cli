@@ -13,11 +13,7 @@
 export type BrokerName = "ibkr" | "schwab";
 
 export type ObservationCompleteness =
-  | "available"
-  | "partial"
-  | "empty"
-  | "unavailable"
-  | "unspecified";
+  "available" | "partial" | "empty" | "unavailable" | "unspecified";
 
 export interface Observation<T> {
   readonly observedAt: string | null;
@@ -36,7 +32,11 @@ export class BrokerDataUnavailableError extends Error {
   }
 }
 
-export function observe<T>(value: T, completeness: ObservationCompleteness, observedAt: string | null): Observation<T> {
+export function observe<T>(
+  value: T,
+  completeness: ObservationCompleteness,
+  observedAt: string | null
+): Observation<T> {
   return { observedAt, completeness, value };
 }
 

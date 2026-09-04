@@ -54,7 +54,11 @@ export class SchwabBrokerAdapter implements BrokerClient {
     startDate: Date,
     endDate: Date
   ): Promise<Observation<BrokerTransactionHistory[]>> {
-    return observe(await this.client.fetchTransactionHistory(startDate, endDate), "unspecified", null);
+    return observe(
+      await this.client.fetchTransactionHistory(startDate, endDate),
+      "unspecified",
+      null
+    );
   }
 
   async fetchOrders(options: BrokerOrdersOptions): Promise<Observation<BrokerAccountOrders[]>> {

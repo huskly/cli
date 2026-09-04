@@ -11,7 +11,13 @@ const toDate = new Date("2026-01-31T00:00:00Z");
 
 test("orders renderer reports a true empty result", () => {
   const output = stripAnsi(
-    renderOrdersObservation({ observedAt: "2026-09-04T00:00:00.000Z", completeness: "empty", value: [] }, "ibkr", fromDate, toDate, {})
+    renderOrdersObservation(
+      { observedAt: "2026-09-04T00:00:00.000Z", completeness: "empty", value: [] },
+      "ibkr",
+      fromDate,
+      toDate,
+      {}
+    )
   );
   assert.match(output, /No IBKR accounts found/);
 });
@@ -19,7 +25,26 @@ test("orders renderer reports a true empty result", () => {
 test("orders renderer warns on partial data and shows missing numeric evidence", () => {
   const output = stripAnsi(
     renderOrdersObservation(
-      { observedAt: "2026-09-04T00:00:00.000Z", completeness: "partial", value: [{ accountNumber: "acct", orders: [{ enteredTime: "2026-01-02T12:00:00Z", status: "WORKING", orderType: "LMT", quantity: null, filledQuantity: null, price: null, orderLegCollection: [{ instrument: { symbol: "AAPL" }, instruction: "BUY" }] }] }] },
+      {
+        observedAt: "2026-09-04T00:00:00.000Z",
+        completeness: "partial",
+        value: [
+          {
+            accountNumber: "acct",
+            orders: [
+              {
+                enteredTime: "2026-01-02T12:00:00Z",
+                status: "WORKING",
+                orderType: "LMT",
+                quantity: null,
+                filledQuantity: null,
+                price: null,
+                orderLegCollection: [{ instrument: { symbol: "AAPL" }, instruction: "BUY" }],
+              },
+            ],
+          },
+        ],
+      },
       "ibkr",
       fromDate,
       toDate,

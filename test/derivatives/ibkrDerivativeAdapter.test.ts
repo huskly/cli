@@ -6,7 +6,9 @@ import {
   type IbkrGatewayDerivativeReadApi,
 } from "#src/derivatives/ibkrDerivativeAdapter.js";
 
-function fakeApi(overrides: Partial<IbkrGatewayDerivativeReadApi> = {}): IbkrGatewayDerivativeReadApi {
+function fakeApi(
+  overrides: Partial<IbkrGatewayDerivativeReadApi> = {}
+): IbkrGatewayDerivativeReadApi {
   return {
     getDiagnostics: () =>
       Promise.resolve({
@@ -227,7 +229,10 @@ void test("IBKR adapter keeps OPT and FOP identities, nullable broker ids, and e
     exchange: "SMART",
   });
   assert.equal(contracts.completeness, "partial");
-  assert.deepEqual(contracts.value.map(({ identity }) => identity.tradingClass), ["NDX", "NDXP"]);
+  assert.deepEqual(
+    contracts.value.map(({ identity }) => identity.tradingClass),
+    ["NDX", "NDXP"]
+  );
   assert.equal(contracts.value[0]?.brokerReference?.contractId, "851296101");
   assert.equal(contracts.value[1]?.brokerReference, undefined);
 });

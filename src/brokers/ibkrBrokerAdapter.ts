@@ -103,24 +103,23 @@ const positionResponseSchema = z
   .object({
     observedAt: z.string(),
     status: readStatusSchema,
-    positions: z
-      .array(
-        z
-          .object({
-            brokerId: z.string().nullable(),
-            symbol: z.string().nullable(),
-            assetType: z.string().nullable(),
-            longQuantity: z.number().nullable(),
-            shortQuantity: z.number().nullable(),
-            averagePrice: z.number().nullable(),
-            multiplier: z.number().nullable(),
-            marketPrice: z.number().nullable(),
-            marketValue: z.number().nullable(),
-            currentDayProfitLoss: z.number().nullable(),
-            openProfitLoss: z.number().nullable(),
-          })
-          .strict()
-      ),
+    positions: z.array(
+      z
+        .object({
+          brokerId: z.string().nullable(),
+          symbol: z.string().nullable(),
+          assetType: z.string().nullable(),
+          longQuantity: z.number().nullable(),
+          shortQuantity: z.number().nullable(),
+          averagePrice: z.number().nullable(),
+          multiplier: z.number().nullable(),
+          marketPrice: z.number().nullable(),
+          marketValue: z.number().nullable(),
+          currentDayProfitLoss: z.number().nullable(),
+          openProfitLoss: z.number().nullable(),
+        })
+        .strict()
+    ),
   })
   .strict() satisfies z.ZodType<QueryPositionsResponse>;
 
@@ -167,18 +166,17 @@ const instrumentResponseSchema = z
   .object({
     observedAt: z.string(),
     status: readStatusSchema,
-    instruments: z
-      .array(
-        z
-          .object({
-            brokerId: z.string().nullable(),
-            symbol: z.string().nullable(),
-            description: z.string().nullable(),
-            exchange: z.string().nullable(),
-            assetClass: z.string().nullable(),
-          })
-          .strict()
-      ),
+    instruments: z.array(
+      z
+        .object({
+          brokerId: z.string().nullable(),
+          symbol: z.string().nullable(),
+          description: z.string().nullable(),
+          exchange: z.string().nullable(),
+          assetClass: z.string().nullable(),
+        })
+        .strict()
+    ),
   })
   .strict() satisfies z.ZodType<SearchInstrumentsResponse>;
 
@@ -186,16 +184,18 @@ const orderLifecycleSchema = z
   .object({
     orderId: z.string().nullable(),
     clientOrderId: z.string().nullable(),
-    status: z.enum([
-      "WARNING_PENDING",
-      "PENDING",
-      "WORKING",
-      "PARTIALLY_FILLED",
-      "FILLED",
-      "CANCELED",
-      "REJECTED",
-      "UNKNOWN",
-    ]).nullable(),
+    status: z
+      .enum([
+        "WARNING_PENDING",
+        "PENDING",
+        "WORKING",
+        "PARTIALLY_FILLED",
+        "FILLED",
+        "CANCELED",
+        "REJECTED",
+        "UNKNOWN",
+      ])
+      .nullable(),
     quantity: z.number().nullable(),
     filledQuantity: z.number().nullable(),
     remainingQuantity: z.number().nullable(),
@@ -204,7 +204,9 @@ const orderLifecycleSchema = z
     limitPrice: z.number().nullable(),
     stopPrice: z.number().nullable(),
     commissionAndFees: z.number().nullable(),
-    legs: z.array(z.object({ brokerId: z.number().nullable(), ratio: z.number().nullable() }).strict()),
+    legs: z.array(
+      z.object({ brokerId: z.number().nullable(), ratio: z.number().nullable() }).strict()
+    ),
     updatedAt: z.string().nullable(),
   })
   .strict();
@@ -213,39 +215,38 @@ const transactionResponseSchema = z
   .object({
     observedAt: z.string(),
     status: readStatusSchema,
-    transactions: z
-      .array(
-        z
-          .object({
-            activityId: z.string().nullable(),
-            time: z.string().nullable(),
-            type: z.string().nullable(),
-            status: z.string().nullable(),
-            description: z.string().nullable(),
-            netAmount: z.number().nullable(),
-            transferItems: z
-              .array(
-                z
-                  .object({
-                    instrument: z
-                      .object({
-                        assetType: z.string().nullable(),
-                        symbol: z.string().nullable(),
-                        description: z.string().nullable(),
-                      })
-                      .strict()
-                      .nullable(),
-                    amount: z.number().nullable(),
-                    cost: z.number().nullable(),
-                    transferItemType: z.string().nullable(),
-                    feeType: z.string().nullable(),
-                  })
-                  .strict()
-              )
-              .nullable(),
-          })
-          .strict()
-      ),
+    transactions: z.array(
+      z
+        .object({
+          activityId: z.string().nullable(),
+          time: z.string().nullable(),
+          type: z.string().nullable(),
+          status: z.string().nullable(),
+          description: z.string().nullable(),
+          netAmount: z.number().nullable(),
+          transferItems: z
+            .array(
+              z
+                .object({
+                  instrument: z
+                    .object({
+                      assetType: z.string().nullable(),
+                      symbol: z.string().nullable(),
+                      description: z.string().nullable(),
+                    })
+                    .strict()
+                    .nullable(),
+                  amount: z.number().nullable(),
+                  cost: z.number().nullable(),
+                  transferItemType: z.string().nullable(),
+                  feeType: z.string().nullable(),
+                })
+                .strict()
+            )
+            .nullable(),
+        })
+        .strict()
+    ),
     truncated: z.boolean(),
   })
   .strict() satisfies z.ZodType<QueryTransactionsResponse>;
@@ -256,32 +257,30 @@ const orderHistoryResponseSchema = z
     status: readStatusSchema,
     outcome: z.enum(["resolved", "listed", "not_found", "ambiguous"]),
     lifecycle: orderLifecycleSchema.nullable(),
-    orders: z
-      .array(
-        z
-          .object({
-            orderId: z.string().nullable(),
-            enteredTime: z.string().nullable(),
-            status: z.string().nullable(),
-            orderType: z.string().nullable(),
-            complexOrderStrategyType: z.string().nullable(),
-            quantity: z.number().nullable(),
-            filledQuantity: z.number().nullable(),
-            remainingQuantity: z.number().nullable(),
-            price: z.number().nullable(),
-            stopPrice: z.number().nullable(),
-            legs: z
-              .array(
-                z
-                  .object({
-                    symbol: z.string().nullable(),
-                    instruction: z.string().nullable(),
-                  })
-                  .strict()
-              ),
-          })
-          .strict()
-      ),
+    orders: z.array(
+      z
+        .object({
+          orderId: z.string().nullable(),
+          enteredTime: z.string().nullable(),
+          status: z.string().nullable(),
+          orderType: z.string().nullable(),
+          complexOrderStrategyType: z.string().nullable(),
+          quantity: z.number().nullable(),
+          filledQuantity: z.number().nullable(),
+          remainingQuantity: z.number().nullable(),
+          price: z.number().nullable(),
+          stopPrice: z.number().nullable(),
+          legs: z.array(
+            z
+              .object({
+                symbol: z.string().nullable(),
+                instruction: z.string().nullable(),
+              })
+              .strict()
+          ),
+        })
+        .strict()
+    ),
     truncated: z.boolean(),
     uncertainty: z.array(orderUncertaintySchema),
   })
@@ -302,9 +301,7 @@ function mapAccountReadStatus(
   }
 }
 
-function mapEvidenceStatus(
-  status: z.infer<typeof evidenceStatusSchema>
-): ObservationCompleteness {
+function mapEvidenceStatus(status: z.infer<typeof evidenceStatusSchema>): ObservationCompleteness {
   return status;
 }
 
@@ -312,7 +309,9 @@ function toDateOnly(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
-function normalizeOrderStatus(status: string | undefined): QueryOrderHistoryWindowRequest["status"] | undefined {
+function normalizeOrderStatus(
+  status: string | undefined
+): QueryOrderHistoryWindowRequest["status"] | undefined {
   if (status === undefined) {
     return undefined;
   }
@@ -322,7 +321,9 @@ function normalizeOrderStatus(status: string | undefined): QueryOrderHistoryWind
   return status as QueryOrderHistoryWindowRequest["status"];
 }
 
-function groupTransactions(transactions: BrokerTransactionHistory["transactions"]): BrokerTransactionHistory[] {
+function groupTransactions(
+  transactions: BrokerTransactionHistory["transactions"]
+): BrokerTransactionHistory[] {
   return transactions.length === 0 ? [] : [{ transactions }];
 }
 
@@ -331,9 +332,7 @@ function groupOrders(orders: BrokerAccountOrders["orders"]): BrokerAccountOrders
 }
 
 export interface IbkrGatewayReadApi {
-  queryAccountBalances(
-    body: QueryAccountBalancesRequest
-  ): Promise<QueryAccountBalancesResponse>;
+  queryAccountBalances(body: QueryAccountBalancesRequest): Promise<QueryAccountBalancesResponse>;
   queryPositions(body: QueryPositionsRequest): Promise<QueryPositionsResponse>;
   queryQuotes(body: QueryQuotesRequest): Promise<QueryQuotesResponse>;
   searchInstruments(body: SearchInstrumentsRequest): Promise<SearchInstrumentsResponse>;
@@ -459,7 +458,11 @@ export class IbkrBrokerAdapter implements BrokerClient {
             })),
           }),
     }));
-    return observe(groupTransactions(transactions), mapReadStatus(response.status), response.observedAt);
+    return observe(
+      groupTransactions(transactions),
+      mapReadStatus(response.status),
+      response.observedAt
+    );
   }
 
   async fetchOrders(options: BrokerOrdersOptions) {
@@ -500,7 +503,9 @@ export class IbkrBrokerAdapter implements BrokerClient {
     return observe(groupOrders(orders), mapReadStatus(response.status), response.observedAt);
   }
 
-  private mapPosition(position: z.infer<typeof positionResponseSchema>["positions"][number]): BrokerPosition {
+  private mapPosition(
+    position: z.infer<typeof positionResponseSchema>["positions"][number]
+  ): BrokerPosition {
     const quantity = (position.longQuantity ?? 0) - (position.shortQuantity ?? 0);
     return {
       instrument: { symbol: position.symbol, assetType: position.assetType },

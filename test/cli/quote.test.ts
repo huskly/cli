@@ -14,7 +14,11 @@ test("quote renderer warns on partial data and shows missing values as dashes", 
         observedAt: "2026-09-04T00:00:00.000Z",
         completeness: "partial",
         value: {
-          AAPL: { symbol: "AAPL", reference: { description: "Apple" }, quote: { lastPrice: null, bidPrice: null, askPrice: 190 } },
+          AAPL: {
+            symbol: "AAPL",
+            reference: { description: "Apple" },
+            quote: { lastPrice: null, bidPrice: null, askPrice: 190 },
+          },
         },
       },
       ["AAPL"]

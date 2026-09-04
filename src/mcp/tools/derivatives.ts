@@ -212,7 +212,9 @@ export async function createDerivativeTools(
   };
 }
 
-async function derivativeTools(dependencies: DerivativeToolDependencies = {}): Promise<DerivativeTools> {
+async function derivativeTools(
+  dependencies: DerivativeToolDependencies = {}
+): Promise<DerivativeTools> {
   if (dependencies.createTools !== undefined) {
     return dependencies.createTools();
   }
@@ -223,7 +225,9 @@ async function derivativeTools(dependencies: DerivativeToolDependencies = {}): P
   return toolsPromise;
 }
 
-function chainResult(chain: Awaited<ReturnType<DerivativeResearchService["chain"]>>): CallToolResult {
+function chainResult(
+  chain: Awaited<ReturnType<DerivativeResearchService["chain"]>>
+): CallToolResult {
   return observationResult(chain.quotes, {
     referenceQuote: chain.referenceQuote,
     center: chain.center,
@@ -356,7 +360,9 @@ export function registerDerivativeTools(
       },
     },
     async (input: SubmitSpreadToolInput) =>
-      runTool(async () => jsonResult(await (await derivativeTools(dependencies)).execution.submit(input)))
+      runTool(async () =>
+        jsonResult(await (await derivativeTools(dependencies)).execution.submit(input))
+      )
   );
 
   server.registerTool(
@@ -370,7 +376,9 @@ export function registerDerivativeTools(
       },
     },
     async (input: RecoverSpreadToolInput) =>
-      runTool(async () => jsonResult(await (await derivativeTools(dependencies)).execution.recover(input)))
+      runTool(async () =>
+        jsonResult(await (await derivativeTools(dependencies)).execution.recover(input))
+      )
   );
 
   server.registerTool(
@@ -400,22 +408,25 @@ export function registerDerivativeTools(
       inputSchema: { operationId: z.string().min(1) },
     },
     async ({ operationId }: OperationToolInput) =>
-      runTool(async () => jsonResult(await (await derivativeTools(dependencies)).execution.getStatus(operationId)))
+      runTool(async () =>
+        jsonResult(await (await derivativeTools(dependencies)).execution.getStatus(operationId))
+      )
   );
 
   server.registerTool(
     "reconcile_order_operation",
     {
       title: "Reconcile a gateway order operation",
-      description:
-        "Run explicit gateway reconciliation for one operation ID.",
+      description: "Run explicit gateway reconciliation for one operation ID.",
       inputSchema: {
         operationId: z.string().min(1),
         confirm: confirmed,
       },
     },
     async ({ operationId }: ReconcileToolInput) =>
-      runTool(async () => jsonResult(await (await derivativeTools(dependencies)).execution.reconcile(operationId)))
+      runTool(async () =>
+        jsonResult(await (await derivativeTools(dependencies)).execution.reconcile(operationId))
+      )
   );
 
   server.registerTool(
@@ -432,6 +443,8 @@ export function registerDerivativeTools(
       },
     },
     async (input: CancelToolInput) =>
-      runTool(async () => jsonResult(await (await derivativeTools(dependencies)).execution.cancel(input)))
+      runTool(async () =>
+        jsonResult(await (await derivativeTools(dependencies)).execution.cancel(input))
+      )
   );
 }

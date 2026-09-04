@@ -1,9 +1,6 @@
 import { resolveBroker, apiClient } from "#src/cli/shared.js";
 import type { BrokerClient, BrokerName } from "#src/brokers/brokerClient.js";
-import {
-  createIbkrGatewayReadApi,
-  IbkrBrokerAdapter,
-} from "#src/brokers/ibkrBrokerAdapter.js";
+import { createIbkrGatewayReadApi, IbkrBrokerAdapter } from "#src/brokers/ibkrBrokerAdapter.js";
 import { SchwabBrokerAdapter } from "#src/brokers/schwabBrokerAdapter.js";
 import { mcpGatewayTransport, type GatewayTransport } from "#src/gateway/gatewayTransport.js";
 import { logger } from "#src/logger.js";
@@ -30,7 +27,10 @@ export function createMcpBrokerClientResolver(
         ? (dependencies.resolveGatewayTransport ?? mcpGatewayTransport)().then(
             (transport) => new IbkrBrokerAdapter(createIbkrGatewayReadApi(transport))
           )
-        : (dependencies.createSchwabClient ?? (() => apiClient().then((client) => new SchwabBrokerAdapter(client))))();
+        : (
+            dependencies.createSchwabClient ??
+            (() => apiClient().then((client) => new SchwabBrokerAdapter(client)))
+          )();
 
     const resetOnFailure = promise.catch((error: unknown) => {
       clients.delete(broker);

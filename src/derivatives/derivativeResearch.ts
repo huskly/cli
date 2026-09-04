@@ -1,7 +1,4 @@
-import {
-  requireObservation,
-  type Observation,
-} from "#src/brokers/brokerClient.js";
+import { requireObservation, type Observation } from "#src/brokers/brokerClient.js";
 import type {
   DerivativeContract,
   DerivativeContractRequest,
@@ -149,7 +146,10 @@ export class DerivativeResearchService {
 
   async chain(request: OptionChainRequest): Promise<OptionChainResearch> {
     const { around, strikes, ...contractRequest } = request;
-    const quotes = requireObservation("queryDerivativeQuotes", await this.client.getChain(contractRequest));
+    const quotes = requireObservation(
+      "queryDerivativeQuotes",
+      await this.client.getChain(contractRequest)
+    );
     if (quotes.value.length === 0) {
       return { referenceQuote: null, center: around ?? null, quotes };
     }
@@ -157,7 +157,8 @@ export class DerivativeResearchService {
     if (first === undefined) throw new Error("Derivative chain unexpectedly has no first quote");
     const referenceQuote = await this.client.getReferenceQuote(first.contract);
     const center =
-      around ?? quoteCenter(requireObservation("queryDerivativeReferenceQuote", referenceQuote).value);
+      around ??
+      quoteCenter(requireObservation("queryDerivativeReferenceQuote", referenceQuote).value);
     return {
       referenceQuote,
       center,
@@ -214,7 +215,9 @@ export class DerivativeResearchService {
     }
     const quotes = requireObservation("queryDerivativeQuotes", await this.client.getChain(request));
     const resolvedContract = contract.value;
-    const quote = quotes.value.find((candidate) => sameContract(candidate.contract, resolvedContract));
+    const quote = quotes.value.find((candidate) =>
+      sameContract(candidate.contract, resolvedContract)
+    );
     if (quote === undefined) {
       throw new Error(
         `No market quote returned for ${request.underlying} ${request.expiration} ${String(request.strike)} ${request.right}`

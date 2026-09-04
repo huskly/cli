@@ -1,6 +1,10 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import type { BrokerClient, BrokerInstrumentSearchProjection, BrokerName } from "#src/brokers/brokerClient.js";
+import type {
+  BrokerClient,
+  BrokerInstrumentSearchProjection,
+  BrokerName,
+} from "#src/brokers/brokerClient.js";
 import { z } from "zod";
 import { mcpBrokerClient, resolveToolBroker } from "#src/mcp/defaultBroker.js";
 import { observationResult, runTool } from "#src/mcp/toolResult.js";

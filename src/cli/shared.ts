@@ -5,10 +5,7 @@ import { cliGatewayTransport } from "#src/gateway/gatewayTransport.js";
 import { CachedSchwabClient } from "#src/cachedSchwabClient.js";
 import type { BrokerClient, BrokerName } from "#src/brokers/brokerClient.js";
 import { SchwabBrokerAdapter } from "#src/brokers/schwabBrokerAdapter.js";
-import {
-  createIbkrGatewayReadApi,
-  IbkrBrokerAdapter,
-} from "#src/brokers/ibkrBrokerAdapter.js";
+import { createIbkrGatewayReadApi, IbkrBrokerAdapter } from "#src/brokers/ibkrBrokerAdapter.js";
 import * as asciichart from "asciichart";
 
 export { asciichart };
@@ -40,7 +37,9 @@ export async function brokerClient(broker: BrokerName): Promise<BrokerClient> {
 
   const promise =
     broker === "ibkr"
-      ? cliGatewayTransport().then((transport) => new IbkrBrokerAdapter(createIbkrGatewayReadApi(transport)))
+      ? cliGatewayTransport().then(
+          (transport) => new IbkrBrokerAdapter(createIbkrGatewayReadApi(transport))
+        )
       : apiClient().then((client) => new SchwabBrokerAdapter(client));
 
   brokerClientPromises.set(broker, promise);

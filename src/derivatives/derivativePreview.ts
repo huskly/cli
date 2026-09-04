@@ -71,6 +71,6 @@ export interface DerivativeComboPreviewResult {
 export interface DerivativePreviewClient {
   getTradingDiagnostics(): Promise<TradingDiagnostics>;
   previewDerivativeCombo(
-    request: DerivativeComboPreviewRequest,
+    request: DerivativeComboPreviewRequest
   ): Promise<DerivativeComboPreviewResult>;
 }

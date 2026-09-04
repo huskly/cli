@@ -17,6 +17,7 @@ test("requireObservation preserves available evidence and rejects unavailable ev
         completeness: "unavailable",
         value: {},
       }),
-    (error: unknown) => error instanceof Error && "code" in error && error.code === "broker_data_unavailable"
+    (error: unknown) =>
+      error instanceof Error && "code" in error && error.code === "broker_data_unavailable"
   );
 });

@@ -67,7 +67,9 @@ function displaySymbol(position: BrokerPosition): string {
 }
 
 function calculateCurrentPrice(position: BrokerPosition): number | null {
-  const quantity = isPositive(position.longQuantity) ? position.longQuantity : position.shortQuantity;
+  const quantity = isPositive(position.longQuantity)
+    ? position.longQuantity
+    : position.shortQuantity;
   const marketValue = position.marketValue;
   if (quantity === null || marketValue === null || quantity === 0) {
     return null;
@@ -82,15 +84,15 @@ function calculateOpenProfitLoss(position: BrokerPosition): number | null {
     : position.shortOpenProfitLoss;
 }
 
-function calculateProfitLossPercent(position: BrokerPosition, plOpen: number | null): number | null {
-  const quantity = isPositive(position.longQuantity) ? position.longQuantity : position.shortQuantity;
+function calculateProfitLossPercent(
+  position: BrokerPosition,
+  plOpen: number | null
+): number | null {
+  const quantity = isPositive(position.longQuantity)
+    ? position.longQuantity
+    : position.shortQuantity;
   const averagePrice = position.averagePrice;
-  if (
-    quantity === null ||
-    averagePrice === null ||
-    plOpen === null ||
-    quantity === 0
-  ) {
+  if (quantity === null || averagePrice === null || plOpen === null || quantity === 0) {
     return null;
   }
   const contractMultiplier = position.instrument.assetType === "OPTION" ? 100 : 1;
@@ -187,12 +189,28 @@ export function renderPositionsObservation(
     const typeLabel = formatColumn(assetType, COLUMN_WIDTHS.type);
     const longQtyLabel = formatColumn(longQty, COLUMN_WIDTHS.longQty, "right");
     const shortQtyLabel = formatColumn(shortQty, COLUMN_WIDTHS.shortQty, "right");
-    const avgPriceLabel = formatColumn(currencyFormatUsd(pos.averagePrice), COLUMN_WIDTHS.avgPrice, "right");
-    const curPriceLabel = formatColumn(currencyFormatUsd(curPrice), COLUMN_WIDTHS.curPrice, "right");
-    const marketValueLabel = formatColumn(currencyFormatUsd(pos.marketValue), COLUMN_WIDTHS.marketValue, "right");
+    const avgPriceLabel = formatColumn(
+      currencyFormatUsd(pos.averagePrice),
+      COLUMN_WIDTHS.avgPrice,
+      "right"
+    );
+    const curPriceLabel = formatColumn(
+      currencyFormatUsd(curPrice),
+      COLUMN_WIDTHS.curPrice,
+      "right"
+    );
+    const marketValueLabel = formatColumn(
+      currencyFormatUsd(pos.marketValue),
+      COLUMN_WIDTHS.marketValue,
+      "right"
+    );
     const dayPLLabel = formatColumn(formatSignedCurrency(dayPL), COLUMN_WIDTHS.dayPL, "right");
     const plOpenLabel = formatColumn(formatSignedCurrency(plOpen), COLUMN_WIDTHS.plOpen, "right");
-    const plPctLabel = formatColumn(plPct === null ? "-" : `${plPct >= 0 ? "+" : ""}${plPct.toFixed(2)}%`, COLUMN_WIDTHS.plPct, "right");
+    const plPctLabel = formatColumn(
+      plPct === null ? "-" : `${plPct >= 0 ? "+" : ""}${plPct.toFixed(2)}%`,
+      COLUMN_WIDTHS.plPct,
+      "right"
+    );
     lines.push(
       `${chalk.cyan(symbolLabel)} ${chalk.white(typeLabel)} ${chalk.green(longQtyLabel)} ${chalk.red(shortQtyLabel)} ${chalk.white(avgPriceLabel)} ${chalk.white(curPriceLabel)} ${chalk.yellow(marketValueLabel)} ${dayPL !== null && dayPL < 0 ? chalk.red(dayPLLabel) : chalk.green(dayPLLabel)} ${plOpen !== null && plOpen < 0 ? chalk.red(plOpenLabel) : chalk.green(plOpenLabel)} ${plPct !== null && plPct < 0 ? chalk.red(plPctLabel) : chalk.green(plPctLabel)}`
     );

@@ -478,13 +478,16 @@ describe("IbkrBrokerAdapter", () => {
       }).api
     );
 
-    await assert.rejects(() => adapter.getQuotes(["AAPL"]), (error: unknown) => {
-      assert.ok(error instanceof ConsumerError);
-      assert.equal(error.code, "gateway_transport_failure");
-      assert.equal(error.operation, "queryQuotes");
-      assert.equal(error.message, "Gateway request failed");
-      assert.doesNotMatch(JSON.stringify(error), /190|issues|askPrice|NASDAQ/);
-      return true;
-    });
+    await assert.rejects(
+      () => adapter.getQuotes(["AAPL"]),
+      (error: unknown) => {
+        assert.ok(error instanceof ConsumerError);
+        assert.equal(error.code, "gateway_transport_failure");
+        assert.equal(error.operation, "queryQuotes");
+        assert.equal(error.message, "Gateway request failed");
+        assert.doesNotMatch(JSON.stringify(error), /190|issues|askPrice|NASDAQ/);
+        return true;
+      }
+    );
   });
 });

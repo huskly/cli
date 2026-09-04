@@ -12,11 +12,7 @@ import type {
   ResolveDerivativeContractResponse,
 } from "@huskly/ibkr-gateway-client";
 import { z } from "zod";
-import {
-  observe,
-  requireObservation,
-  type Observation,
-} from "#src/brokers/brokerClient.js";
+import { observe, requireObservation, type Observation } from "#src/brokers/brokerClient.js";
 import { parseGatewayResponse } from "#src/gateway/gatewayValidation.js";
 import type { GatewayTransport } from "#src/gateway/gatewayTransport.js";
 import type {
@@ -218,7 +214,9 @@ export function createIbkrGatewayDerivativeReadApi(
     queryDerivativeContracts: (body) =>
       transport.call("queryDerivativeContracts", (client) => client.queryDerivativeContracts(body)),
     resolveDerivativeContract: (body) =>
-      transport.call("resolveDerivativeContract", (client) => client.resolveDerivativeContract(body)),
+      transport.call("resolveDerivativeContract", (client) =>
+        client.resolveDerivativeContract(body)
+      ),
     queryDerivativeQuotes: (body) =>
       transport.call("queryDerivativeQuotes", (client) => client.queryDerivativeQuotes(body)),
     queryDerivativeReferenceQuote: (body) =>
@@ -308,26 +306,67 @@ function toResolveQuery(
 
 function normalizeExpiry(expiry: z.infer<typeof derivativeExpirySchema>): DerivativeExpiry {
   return {
-    assetClass: requireField(expiry.assetClass, "Gateway returned an incomplete derivative expiry asset class"),
-    underlying: requireField(expiry.underlying, "Gateway returned an incomplete derivative expiry underlying"),
-    expiration: requireField(expiry.expiration, "Gateway returned an incomplete derivative expiry date"),
-    tradingClass: requireField(expiry.tradingClass, "Gateway returned an incomplete derivative expiry trading class"),
-    exchange: requireField(expiry.exchange, "Gateway returned an incomplete derivative expiry exchange"),
-    multiplier: requireField(expiry.multiplier, "Gateway returned an incomplete derivative expiry multiplier"),
+    assetClass: requireField(
+      expiry.assetClass,
+      "Gateway returned an incomplete derivative expiry asset class"
+    ),
+    underlying: requireField(
+      expiry.underlying,
+      "Gateway returned an incomplete derivative expiry underlying"
+    ),
+    expiration: requireField(
+      expiry.expiration,
+      "Gateway returned an incomplete derivative expiry date"
+    ),
+    tradingClass: requireField(
+      expiry.tradingClass,
+      "Gateway returned an incomplete derivative expiry trading class"
+    ),
+    exchange: requireField(
+      expiry.exchange,
+      "Gateway returned an incomplete derivative expiry exchange"
+    ),
+    multiplier: requireField(
+      expiry.multiplier,
+      "Gateway returned an incomplete derivative expiry multiplier"
+    ),
   };
 }
 
 function normalizeContract(contract: z.infer<typeof derivativeContractSchema>): DerivativeContract {
   return {
     identity: {
-      assetClass: requireField(contract.assetClass, "Gateway returned an incomplete derivative contract asset class"),
-      underlying: requireField(contract.underlying, "Gateway returned an incomplete derivative contract underlying"),
-      expiration: requireField(contract.expiration, "Gateway returned an incomplete derivative contract expiration"),
-      strike: requireField(contract.strike, "Gateway returned an incomplete derivative contract strike"),
-      right: fromGatewayRight(requireField(contract.right, "Gateway returned an incomplete derivative contract right")),
-      tradingClass: requireField(contract.tradingClass, "Gateway returned an incomplete derivative contract trading class"),
-      exchange: requireField(contract.exchange, "Gateway returned an incomplete derivative contract exchange"),
-      multiplier: requireField(contract.multiplier, "Gateway returned an incomplete derivative contract multiplier"),
+      assetClass: requireField(
+        contract.assetClass,
+        "Gateway returned an incomplete derivative contract asset class"
+      ),
+      underlying: requireField(
+        contract.underlying,
+        "Gateway returned an incomplete derivative contract underlying"
+      ),
+      expiration: requireField(
+        contract.expiration,
+        "Gateway returned an incomplete derivative contract expiration"
+      ),
+      strike: requireField(
+        contract.strike,
+        "Gateway returned an incomplete derivative contract strike"
+      ),
+      right: fromGatewayRight(
+        requireField(contract.right, "Gateway returned an incomplete derivative contract right")
+      ),
+      tradingClass: requireField(
+        contract.tradingClass,
+        "Gateway returned an incomplete derivative contract trading class"
+      ),
+      exchange: requireField(
+        contract.exchange,
+        "Gateway returned an incomplete derivative contract exchange"
+      ),
+      multiplier: requireField(
+        contract.multiplier,
+        "Gateway returned an incomplete derivative contract multiplier"
+      ),
       ...(contract.settlement === null ? {} : { settlement: contract.settlement }),
       ...(contract.exerciseStyle === null ? {} : { exerciseStyle: contract.exerciseStyle }),
     },
@@ -401,7 +440,9 @@ function normalizeDiagnostics(response: GetDiagnosticsResponse): TradingDiagnost
   };
 }
 
-function toReferenceContractRequest(contract: DerivativeContract): ResolveDerivativeContractRequest {
+function toReferenceContractRequest(
+  contract: DerivativeContract
+): ResolveDerivativeContractRequest {
   return {
     by: "query",
     assetClass: contract.identity.assetClass,
@@ -433,7 +474,11 @@ export class IbkrDerivativeAdapter
       derivativeExpiryResponseSchema,
       await this.api.queryDerivativeExpiries(toExpiryQuery(request))
     );
-    return observeList(response.expiries.map(normalizeExpiry), response.status, response.observedAt);
+    return observeList(
+      response.expiries.map(normalizeExpiry),
+      response.status,
+      response.observedAt
+    );
   }
 
   async getContracts(
@@ -475,7 +520,9 @@ export class IbkrDerivativeAdapter
     return observeList(response.quotes.map(normalizeQuote), response.status, response.observedAt);
   }
 
-  async getReferenceQuote(contract: DerivativeContract): Promise<Observation<DerivativeReferenceQuote>> {
+  async getReferenceQuote(
+    contract: DerivativeContract
+  ): Promise<Observation<DerivativeReferenceQuote>> {
     const completeContract = await this.completeReferenceContract(contract);
     const request: QueryDerivativeReferenceQuoteRequest = {
       derivativeContract: {
@@ -509,13 +556,17 @@ export class IbkrDerivativeAdapter
     return normalizeDiagnostics(await this.api.getDiagnostics());
   }
 
-  private async completeReferenceContract(contract: DerivativeContract): Promise<DerivativeContract> {
+  private async completeReferenceContract(
+    contract: DerivativeContract
+  ): Promise<DerivativeContract> {
     if (isReferenceContractComplete(contract)) {
       return contract;
     }
     const resolved = requireObservation(
       "resolveDerivativeContract",
-      await this.apiToObservation(this.api.resolveDerivativeContract(toReferenceContractRequest(contract)))
+      await this.apiToObservation(
+        this.api.resolveDerivativeContract(toReferenceContractRequest(contract))
+      )
     );
     if (resolved.value === null) {
       throw new Error("Derivative contract could not be resolved for a reference quote");

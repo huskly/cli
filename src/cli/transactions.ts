@@ -197,7 +197,9 @@ export function renderTransactionObservation(
   for (const history of histories) {
     lines.push(chalk.bold(accountHeading(history.accountNumber)));
     const transactions = [...history.transactions]
-      .filter((t) => !options.type || displayText(t.type).toUpperCase() === options.type.toUpperCase())
+      .filter(
+        (t) => !options.type || displayText(t.type).toUpperCase() === options.type.toUpperCase()
+      )
       .sort((a, b) => {
         const aDate = parseTransactionDate(a).getTime();
         const bDate = parseTransactionDate(b).getTime();
@@ -239,7 +241,9 @@ export function renderTransactionObservation(
         primaryItem?.transferItemType ??
         "";
       const detailsSource =
-        transaction.status !== "VALID" ? `[${displayText(transaction.status, "UNKNOWN")}] ${baseDetails}` : baseDetails;
+        transaction.status !== "VALID"
+          ? `[${displayText(transaction.status, "UNKNOWN")}] ${baseDetails}`
+          : baseDetails;
       const details = formatColumn(detailsSource, COLUMN_WIDTHS.details);
       const idLabel = formatColumn(String(transaction.activityId ?? "-"), COLUMN_WIDTHS.id);
       const typeLabel = formatColumn(displayText(transaction.type, "-"), COLUMN_WIDTHS.type);

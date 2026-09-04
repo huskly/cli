@@ -62,7 +62,8 @@ void test("runTool redacts read-only authorization failures", async () => {
     error: {
       code: "authorization_failure",
       operation: "createOrderOperation",
-      message: "Gateway authorization failed. The MCP credential may be read-only for this operation.",
+      message:
+        "Gateway authorization failed. The MCP credential may be read-only for this operation.",
     },
   });
 });

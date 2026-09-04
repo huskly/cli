@@ -177,5 +177,12 @@ export async function handleSearch(
   }
 
   const api = await brokerClient(broker);
-  console.log(renderSearchObservation(await api.searchInstruments(symbol, projection), broker, symbol, options));
+  console.log(
+    renderSearchObservation(
+      await api.searchInstruments(symbol, projection),
+      broker,
+      symbol,
+      options
+    )
+  );
 }

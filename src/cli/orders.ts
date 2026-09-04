@@ -131,7 +131,9 @@ export function renderOrdersObservation(
 
   const accountOrders = safeObservation.value;
   const lines = [
-    chalk.bold(`\n📋 Orders (${format(fromDate, DATE_FORMAT)} to ${format(toDate, DATE_FORMAT)})\n`),
+    chalk.bold(
+      `\n📋 Orders (${format(fromDate, DATE_FORMAT)} to ${format(toDate, DATE_FORMAT)})\n`
+    ),
   ];
   if (isPartialObservation(safeObservation)) {
     lines.push(chalk.yellow("Warning: Broker data is partial."));
@@ -171,7 +173,8 @@ export function renderOrdersObservation(
       const instruction = getOrderInstruction(order);
       const quantity = order.quantity?.toString() ?? (order.quantity === null ? "-" : "-");
       const price = getOrderPrice(order);
-      const filled = order.filledQuantity?.toString() ?? (order.filledQuantity === null ? "-" : "0");
+      const filled =
+        order.filledQuantity?.toString() ?? (order.filledQuantity === null ? "-" : "0");
 
       lines.push(
         `${chalk.gray(formatColumn(dateLabel, COLUMN_WIDTHS.date))} ${statusColor(formatColumn(status, COLUMN_WIDTHS.status))} ${chalk.white(formatColumn(orderType, COLUMN_WIDTHS.type))} ${chalk.cyan(formatColumn(symbol, COLUMN_WIDTHS.symbol))} ${chalk.white(formatColumn(instruction, COLUMN_WIDTHS.instruction))} ${chalk.white(formatColumn(quantity, COLUMN_WIDTHS.quantity, "right"))} ${chalk.yellow(formatColumn(price, COLUMN_WIDTHS.price, "right"))} ${chalk.green(formatColumn(filled, COLUMN_WIDTHS.filled, "right"))}`
@@ -206,5 +209,7 @@ export async function handleOrders(broker: BrokerName, options: OrdersOptions): 
   }
 
   const api = await brokerClient(broker);
-  console.log(renderOrdersObservation(await api.fetchOrders(fetchOptions), broker, fromDate, toDate, options));
+  console.log(
+    renderOrdersObservation(await api.fetchOrders(fetchOptions), broker, fromDate, toDate, options)
+  );
 }

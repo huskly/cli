@@ -11,7 +11,10 @@ export interface QuoteToolDependencies {
 
 export function createGetQuoteHandler(
   dependencies: QuoteToolDependencies = {}
-): (input: { symbols: string[]; broker?: "schwab" | "ibkr" | undefined }) => Promise<CallToolResult> {
+): (input: {
+  symbols: string[];
+  broker?: "schwab" | "ibkr" | undefined;
+}) => Promise<CallToolResult> {
   return async ({ symbols, broker }) =>
     runTool(async () => {
       const resolvedBroker = resolveToolBroker(broker);
@@ -48,7 +51,10 @@ export function createGetQuoteHandler(
     });
 }
 
-export function registerGetQuoteTool(server: McpServer, dependencies: QuoteToolDependencies = {}): void {
+export function registerGetQuoteTool(
+  server: McpServer,
+  dependencies: QuoteToolDependencies = {}
+): void {
   server.registerTool(
     "get_quote",
     {

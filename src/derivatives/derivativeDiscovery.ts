@@ -1,7 +1,4 @@
-import type {
-  BrokerName,
-  Observation,
-} from "#src/brokers/brokerClient.js";
+import type { BrokerName, Observation } from "#src/brokers/brokerClient.js";
 
 export type DerivativeAssetClass = "OPT" | "FOP";
 export type DerivativeRight = "CALL" | "PUT";

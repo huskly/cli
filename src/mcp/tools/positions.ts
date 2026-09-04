@@ -12,7 +12,11 @@ export interface PositionsToolDependencies {
 
 export function createGetPositionsHandler(
   dependencies: PositionsToolDependencies = {}
-): (input: { symbol?: string | undefined; type?: string | undefined; broker?: "schwab" | "ibkr" | undefined }) => Promise<CallToolResult> {
+): (input: {
+  symbol?: string | undefined;
+  type?: string | undefined;
+  broker?: "schwab" | "ibkr" | undefined;
+}) => Promise<CallToolResult> {
   return async ({ symbol, type, broker }) =>
     runTool(async () => {
       const resolvedBroker = resolveToolBroker(broker);
@@ -31,7 +35,11 @@ export function createGetPositionsHandler(
         const contractMultiplier = isOption ? 100 : 1;
         const instrumentSymbol = pos.instrument.symbol;
         const symbolLabel =
-          instrumentSymbol === null ? null : isOption ? parseOccSymbol(instrumentSymbol) : instrumentSymbol;
+          instrumentSymbol === null
+            ? null
+            : isOption
+              ? parseOccSymbol(instrumentSymbol)
+              : instrumentSymbol;
         const quantity =
           pos.longQuantity !== null && pos.longQuantity > 0 ? pos.longQuantity : pos.shortQuantity;
         const currentPrice =

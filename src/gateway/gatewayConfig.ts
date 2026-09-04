@@ -41,7 +41,7 @@ function boundedString(field: string, maxLength: number) {
 }
 
 export async function loadGatewayConfig(
-  options: GatewayConfigLoaderOptions,
+  options: GatewayConfigLoaderOptions
 ): Promise<GatewayConfig> {
   const path = resolveGatewayConfigPath(options);
   const uid = options.uid ?? process.getuid?.();
@@ -67,7 +67,9 @@ export async function loadGatewayConfig(
     }
 
     if (stat.size > MAX_CONFIG_BYTES) {
-      throw new Error(`Gateway config at ${path} must be at most 16 KiB (${String(MAX_CONFIG_BYTES)} bytes)`);
+      throw new Error(
+        `Gateway config at ${path} must be at most 16 KiB (${String(MAX_CONFIG_BYTES)} bytes)`
+      );
     }
 
     const source = await readBoundedUtf8(file, path);
@@ -94,8 +96,7 @@ function resolveGatewayConfigPath(options: GatewayConfigLoaderOptions): string {
   }
 
   const homeDirectory = options.homeDirectory ?? homedir();
-  const fileName =
-    options.runtime === "cli" ? "ibkr-gateway-cli.json" : "ibkr-gateway-mcp.json";
+  const fileName = options.runtime === "cli" ? "ibkr-gateway-cli.json" : "ibkr-gateway-mcp.json";
 
   return join(homeDirectory, ".config", "huskly", fileName);
 }
@@ -115,7 +116,10 @@ function isNodeErrorWithCode(error: unknown, code: string): error is NodeJS.Errn
   return error instanceof Error && "code" in error && error.code === code;
 }
 
-async function readBoundedUtf8(file: Awaited<ReturnType<typeof openGatewayConfig>>, path: string): Promise<string> {
+async function readBoundedUtf8(
+  file: Awaited<ReturnType<typeof openGatewayConfig>>,
+  path: string
+): Promise<string> {
   const buffer = Buffer.alloc(MAX_CONFIG_BYTES + 1);
   let totalBytes = 0;
 
@@ -127,7 +131,9 @@ async function readBoundedUtf8(file: Awaited<ReturnType<typeof openGatewayConfig
     totalBytes += bytesRead;
   }
 
-  throw new Error(`Gateway config at ${path} must be at most 16 KiB (${String(MAX_CONFIG_BYTES)} bytes)`);
+  throw new Error(
+    `Gateway config at ${path} must be at most 16 KiB (${String(MAX_CONFIG_BYTES)} bytes)`
+  );
 }
 
 function parseGatewayConfigJson(source: string, path: string): GatewayConfig {
@@ -140,13 +146,19 @@ function parseGatewayConfigJson(source: string, path: string): GatewayConfig {
 
   const result = gatewayConfigSchema.safeParse(raw);
   if (!result.success) {
-    throw new Error(`Gateway config at ${path} is invalid: ${result.error.issues.map((issue) => issue.message).join("; ")}`);
+    throw new Error(
+      `Gateway config at ${path} is invalid: ${result.error.issues.map((issue) => issue.message).join("; ")}`
+    );
   }
 
   return result.data;
 }
 
-function validateGatewayUrl(value: string, field: keyof GatewayConfig, allowHttpLoopback: boolean): void {
+function validateGatewayUrl(
+  value: string,
+  field: keyof GatewayConfig,
+  allowHttpLoopback: boolean
+): void {
   let url: URL;
   try {
     url = new URL(value);
@@ -170,13 +182,14 @@ function validateGatewayUrl(value: string, field: keyof GatewayConfig, allowHttp
     return;
   }
 
-  throw new Error(`${field} must use HTTPS unless allowHttpLoopback is enabled for an exact loopback host`);
+  throw new Error(
+    `${field} must use HTTPS unless allowHttpLoopback is enabled for an exact loopback host`
+  );
 }
 
 function isLoopbackHostname(hostname: string): boolean {
-  const normalized = hostname.startsWith("[") && hostname.endsWith("]")
-    ? hostname.slice(1, -1)
-    : hostname;
+  const normalized =
+    hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
 
   if (normalized === "localhost" || normalized === "::1") {
     return true;

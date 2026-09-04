@@ -66,7 +66,10 @@ void test("server exports registration seams so tests can call MCP handlers with
   assert.ok(server.tools.has("recover_option_spread_order"));
   assert.ok(server.tools.has("reconcile_order_operation"));
 
-  const quote = await requiredTool(server, "get_quote").handler({ symbols: ["SPY"], broker: "ibkr" });
+  const quote = await requiredTool(server, "get_quote").handler({
+    symbols: ["SPY"],
+    broker: "ibkr",
+  });
   assert.equal(quote.isError, true);
   assert.deepEqual(parse(quote), {
     broker: "ibkr",
@@ -155,7 +158,10 @@ void test("shared read tools keep gateway evidence and preserve partial payloads
     createDerivativeTools: () => Promise.reject(new Error("not used")),
   });
 
-  const quote = await requiredTool(server, "get_quote").handler({ symbols: ["SPY"], broker: "ibkr" });
+  const quote = await requiredTool(server, "get_quote").handler({
+    symbols: ["SPY"],
+    broker: "ibkr",
+  });
   assert.deepEqual(parse(quote), {
     broker: "ibkr",
     quotes: [

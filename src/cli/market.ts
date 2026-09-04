@@ -122,9 +122,17 @@ program
   .option("-s, --status <status>", "Filter by order status (FILLED, WORKING, CANCELED, etc.)")
   .option("-m, --max-results <n>", "Maximum number of orders to retrieve")
   .option("--json", "Emit a stable JSON DTO")
-  .action(async (options: { from?: string; to?: string; status?: string; maxResults?: string; json?: boolean }) => {
-    await handleOrders("schwab", options);
-  });
+  .action(
+    async (options: {
+      from?: string;
+      to?: string;
+      status?: string;
+      maxResults?: string;
+      json?: boolean;
+    }) => {
+      await handleOrders("schwab", options);
+    }
+  );
 
 program
   .command("place-order")

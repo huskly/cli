@@ -15,7 +15,23 @@ test("transactions renderer warns on partial data and shows missing numbers", ()
       {
         observedAt: "2026-09-04T00:00:00.000Z",
         completeness: "partial",
-        value: [{ accountNumber: "acct", transactions: [{ activityId: "1", time: "2026-01-02T12:00:00Z", type: "TRADE", status: "VALID", netAmount: null, transferItems: [{ instrument: { assetType: "EQUITY", symbol: "AAPL" }, amount: null }] }] }],
+        value: [
+          {
+            accountNumber: "acct",
+            transactions: [
+              {
+                activityId: "1",
+                time: "2026-01-02T12:00:00Z",
+                type: "TRADE",
+                status: "VALID",
+                netAmount: null,
+                transferItems: [
+                  { instrument: { assetType: "EQUITY", symbol: "AAPL" }, amount: null },
+                ],
+              },
+            ],
+          },
+        ],
       },
       {},
       start,
