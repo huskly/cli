@@ -1,8 +1,6 @@
-#!/usr/bin/env node
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { fileURLToPath } from "node:url";
 import type { BrokerClient, BrokerName } from "#src/brokers/brokerClient.js";
 import { registerGetQuoteTool } from "#src/mcp/tools/quote.js";
 import { registerGetPositionsTool } from "#src/mcp/tools/positions.js";
@@ -93,12 +91,4 @@ export async function startMcpServer(
   await server.connect(transport);
   process.stdin.resume();
   await closed;
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  startMcpServer().catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error("Fatal error starting huskly-cli-mcp:", message);
-    process.exit(1);
-  });
 }
