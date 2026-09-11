@@ -45,9 +45,9 @@ jobs:
             echo "Release tag $RELEASE_TAG does not match package version v$PACKAGE_VERSION" >&2
             exit 1
           fi
-          git fetch --no-tags origin master:refs/remotes/origin/master
-          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/master)" ]; then
-            echo "Release tag $RELEASE_TAG does not point to the current master commit" >&2
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+            echo "Release tag $RELEASE_TAG does not point to the current main commit" >&2
             exit 1
           fi
       - name: Install dependencies
