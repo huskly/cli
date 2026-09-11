@@ -61,29 +61,36 @@ Schwab-only commands also return a clear error under `--broker ibkr`.
 
 ## IBKR gateway setup
 
-Create one private directory for the gateway credential files.
+Use huskly.finance auth as the primary setup flow.
+Your huskly.finance account must have server permission to provision IBKR credentials.
+The server restricts provisioning.
+It uses your logged-in auth session to decide if the request is allowed.
 
 ```bash
-mkdir -p ~/.config/huskly
-chmod 700 ~/.config/huskly
-chmod 600 ~/.config/huskly/ibkr-gateway-cli.json
-chmod 600 ~/.config/huskly/ibkr-gateway-mcp.json
+huskly-cli auth login
+huskly-cli auth ibkr
+huskly-cli broker doctor --broker ibkr --json
 ```
 
-Use separate files for the CLI and MCP server:
+The auth command writes two local runtime credential files:
 
 - `~/.config/huskly/ibkr-gateway-cli.json`
 - `~/.config/huskly/ibkr-gateway-mcp.json`
 
-Each file must contain this exact JSON shape:
+The two credentials are separate.
+Both credentials are read-write.
+The server returns each secret one time.
+The CLI stores the files in a private directory and writes them with private file permissions.
+Do not put gateway credentials in environment variables.
+Do not put credentials in command arguments, URLs, or logs.
 
-```json
-{
-  "gatewayUrl": "https://ibkr-gateway.example",
-  "tokenUrl": "https://huskly.finance/api/v1/machine/token",
-  "clientId": "machine-client-id",
-  "clientSecret": "machine-client-secret"
-}
+Credential rotation is immediate.
+When you rotate, the prior remote credentials stop working.
+If either local credential file already exists, non-interactive use must include `--replace`.
+The command does not show an interactive prompt in non-interactive mode.
+
+```bash
+huskly-cli auth ibkr --replace
 ```
 
 Use only these path override environment variables:
@@ -91,10 +98,37 @@ Use only these path override environment variables:
 - `HUSKLY_IBKR_GATEWAY_CLI_CONFIG`
 - `HUSKLY_IBKR_GATEWAY_MCP_CONFIG`
 
-Do not put gateway credentials in environment variables.
 Gateway authorization comes from the credential scope that the server issues.
-A read-only credential can read, but it cannot submit mutations.
 There is no direct broker fallback.
+
+### Operator recovery: create credential files manually
+
+Use this only when the auth provisioning command is unavailable and an operator gives you replacement credentials through a private channel.
+Create one private directory for the gateway credential files.
+
+```bash
+mkdir -p ~/.config/huskly
+chmod 700 ~/.config/huskly
+```
+
+Write separate files for the CLI and MCP server.
+Each file must contain this exact four-field JSON shape:
+
+```json
+{
+  "gatewayUrl": "https://gateway.example",
+  "tokenUrl": "https://huskly.finance/api/v1/machine/token",
+  "clientId": "mc_example_client_id",
+  "clientSecret": "mc_example_client_secret"
+}
+```
+
+After you write each file, set private file permissions:
+
+```bash
+chmod 600 ~/.config/huskly/ibkr-gateway-cli.json
+chmod 600 ~/.config/huskly/ibkr-gateway-mcp.json
+```
 
 Schwab keychain auth stays the same:
 
@@ -179,14 +213,14 @@ huskly-cli spread preview put-credit NQ --broker ibkr \
   --asset FOP --expiry 2026-08-21 --class QN3 --exchange CME \
   --short 26600 --long 26400 --quantity 1 --credit 39 --json
 
-export HUSKLY_EXT_OPERATOR=felipecsl
+export HUSKLY_EXT_OPERATOR=operator-example
 huskly-cli spread submit <preview-id> --broker ibkr --confirm --json
 huskly-cli spread recover <preview-id> --broker ibkr --json
 huskly-cli order show <operation-id> --broker ibkr --json
 huskly-cli order watch <operation-id> --broker ibkr --json
 huskly-cli order acknowledge <operation-id> --reply <reply-id> --broker ibkr --confirm --json
 huskly-cli order reconcile <operation-id> --broker ibkr --confirm --json
-huskly-cli order cancel <operation-id> --broker ibkr --operator felipecsl --confirm --json
+huskly-cli order cancel <operation-id> --broker ibkr --operator operator-example --confirm --json
 huskly-cli broker doctor --broker ibkr --json
 ```
 

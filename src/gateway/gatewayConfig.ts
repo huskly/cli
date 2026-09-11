@@ -73,18 +73,13 @@ export async function loadGatewayConfig(
     }
 
     const source = await readBoundedUtf8(file, path);
-    const parsed = parseGatewayConfigJson(source, path);
-
-    validateGatewayUrl(parsed.gatewayUrl, "gatewayUrl", options.allowHttpLoopback === true);
-    validateGatewayUrl(parsed.tokenUrl, "tokenUrl", options.allowHttpLoopback === true);
-
-    return parsed;
+    return parseGatewayConfig(source, path, options.allowHttpLoopback);
   } finally {
     await file.close();
   }
 }
 
-function resolveGatewayConfigPath(options: GatewayConfigLoaderOptions): string {
+export function resolveGatewayConfigPath(options: GatewayConfigLoaderOptions): string {
   const env = options.env ?? process.env;
   const override =
     options.runtime === "cli"
@@ -136,7 +131,11 @@ async function readBoundedUtf8(
   );
 }
 
-function parseGatewayConfigJson(source: string, path: string): GatewayConfig {
+export function parseGatewayConfig(
+  source: string,
+  path: string,
+  allowHttpLoopback = false
+): GatewayConfig {
   let raw: unknown;
   try {
     raw = JSON.parse(source) as unknown;
@@ -151,12 +150,17 @@ function parseGatewayConfigJson(source: string, path: string): GatewayConfig {
     );
   }
 
-  return result.data;
+  const parsed = result.data;
+
+  validateGatewayUrl(parsed.gatewayUrl, "gatewayUrl", allowHttpLoopback);
+  validateGatewayUrl(parsed.tokenUrl, "tokenUrl", allowHttpLoopback);
+
+  return parsed;
 }
 
-function validateGatewayUrl(
+export function validateGatewayUrl(
   value: string,
-  field: keyof GatewayConfig,
+  field: keyof GatewayConfig | "baseUrl",
   allowHttpLoopback: boolean
 ): void {
   let url: URL;

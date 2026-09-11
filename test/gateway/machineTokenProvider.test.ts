@@ -9,7 +9,7 @@ const validTokenResponse = {
   access_token: "token-1",
   token_type: "Bearer",
   expires_in: 300,
-  scope: "ibkr:read-only",
+  scope: "ibkr:read-write",
 } as const;
 
 function deferred<T>() {
@@ -73,6 +73,47 @@ function createProvider(overrides: Partial<MachineTokenProviderOptions> = {}) {
     },
   };
 }
+
+void test("returns token scope evidence and keeps getToken backed by the same cache", async () => {
+  const fixture = createProvider();
+  fixture.queueResponse(createJsonResponse(validTokenResponse));
+
+  const access = await fixture.provider.getAccess();
+
+  assert.deepEqual(access, { token: "token-1", scope: "ibkr:read-write" });
+  assert.equal(await fixture.provider.getToken(), "token-1");
+  assert.equal(fixture.requests.length, 1);
+});
+
+void test("refresh updates token scope evidence and access results cannot mutate cached state", async () => {
+  const fixture = createProvider();
+  fixture.queueResponse(createJsonResponse(validTokenResponse));
+  fixture.queueResponse(
+    createJsonResponse({
+      ...validTokenResponse,
+      access_token: "token-2",
+      scope: "ibkr:read-only",
+    })
+  );
+
+  const firstAccess = await fixture.provider.getAccess();
+  (firstAccess as { token: string; scope: string }).token = "mutated-token";
+  (firstAccess as { token: string; scope: string }).scope = "mutated-scope";
+
+  assert.deepEqual(await fixture.provider.getAccess(), {
+    token: "token-1",
+    scope: "ibkr:read-write",
+  });
+  assert.equal(fixture.requests.length, 1);
+
+  fixture.setNow(240_000);
+  assert.deepEqual(await fixture.provider.getAccess(), {
+    token: "token-2",
+    scope: "ibkr:read-only",
+  });
+  assert.equal(await fixture.provider.getToken(), "token-2");
+  assert.equal(fixture.requests.length, 2);
+});
 
 void test("reuses tokens before the 60-second refresh boundary, refreshes at the boundary, and shares one exchange across concurrent callers", async () => {
   const fixture = createProvider();
@@ -164,7 +205,7 @@ void test("does not retry HTTP 4xx responses other than 429 or schema failures",
       access_token: "token-1",
       token_type: "Bearer",
       expires_in: 300,
-      scope: "ibkr:read-only",
+      scope: "ibkr:read-write",
       extra: true,
     })
   );

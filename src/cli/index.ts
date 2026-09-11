@@ -74,6 +74,15 @@ authCmd
     await auth.status();
   });
 
+authCmd
+  .command("ibkr")
+  .description("Provision admin-authorized IBKR gateway credentials")
+  .option("--replace", "Rotate and replace existing CLI and MCP credentials")
+  .action(async (options: { replace?: boolean }) => {
+    const { runIbkrAuthCommand } = await import("../auth/ibkrAuthCommand.js");
+    await runIbkrAuthCommand({ replace: options.replace === true });
+  });
+
 program.addCommand(authCmd);
 
 // Market commands (now top-level)

@@ -3,7 +3,13 @@ import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadGatewayConfig, type GatewayConfig } from "#src/gateway/gatewayConfig.js";
+import {
+  loadGatewayConfig,
+  parseGatewayConfig,
+  resolveGatewayConfigPath,
+  validateGatewayUrl,
+  type GatewayConfig,
+} from "#src/gateway/gatewayConfig.js";
 
 const validConfig: GatewayConfig = {
   gatewayUrl: "https://ibkr-gateway.example",
@@ -47,6 +53,53 @@ function requiredUid(): number {
   }
   return uid;
 }
+
+void test("exports strict gateway config path resolution and parsing helpers", () => {
+  const homeDirectory = "/synthetic-home";
+  assert.equal(
+    resolveGatewayConfigPath({ runtime: "cli", env: {}, homeDirectory }),
+    join(homeDirectory, ".config", "huskly", "ibkr-gateway-cli.json")
+  );
+  assert.equal(
+    resolveGatewayConfigPath({
+      runtime: "mcp",
+      env: { HUSKLY_IBKR_GATEWAY_MCP_CONFIG: "/override/mcp.json" },
+      homeDirectory,
+    }),
+    "/override/mcp.json"
+  );
+  assert.deepEqual(parseGatewayConfig(JSON.stringify(validConfig), "/config.json"), validConfig);
+  assert.throws(
+    () => parseGatewayConfig(JSON.stringify({ ...validConfig, extra: true }), "/config.json"),
+    /unexpected|unknown|unrecognized/i
+  );
+  assert.throws(
+    () =>
+      parseGatewayConfig(
+        JSON.stringify({ ...validConfig, gatewayUrl: "http://gateway.example" }),
+        "/config.json"
+      ),
+    /HTTPS/i
+  );
+});
+
+void test("validates gateway URLs through the exported helper without relaxing policy", () => {
+  assert.doesNotThrow(() => {
+    validateGatewayUrl("https://gateway.example", "gatewayUrl", false);
+  });
+  assert.throws(() => {
+    validateGatewayUrl("http://gateway.example", "gatewayUrl", false);
+  }, /HTTPS/iu);
+  assert.throws(() => {
+    validateGatewayUrl("https://user:pass@gateway.example", "gatewayUrl", false);
+  }, /credentials/iu);
+  assert.throws(() => {
+    validateGatewayUrl("https://gateway.example/#frag", "gatewayUrl", false);
+  }, /fragment/iu);
+  assert.doesNotThrow(() => {
+    validateGatewayUrl("http://localhost:3000", "gatewayUrl", true);
+  });
+});
 
 void test("loads the CLI credential only from a private regular file", async () => {
   const directory = await makeDirectory();

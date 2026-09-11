@@ -44,9 +44,12 @@ function createTransportFixture(overrides: Partial<GatewayTransportDependencies>
   const dependencies: GatewayTransportDependencies = {
     loadConfig: () => Promise.resolve(config),
     createTokenProvider: () => ({
-      getToken(): Promise<string> {
+      getAccess(): Promise<{ readonly token: string; readonly scope: string }> {
         tokenCalls += 1;
-        return Promise.resolve("bearer-token");
+        return Promise.resolve({ token: "bearer-token", scope: "ibkr:read-write" });
+      },
+      async getToken(): Promise<string> {
+        return (await this.getAccess()).token;
       },
     }),
     fetch: async (input, init) => {
@@ -114,8 +117,11 @@ void test("pre-acquires the token, classifies token failures as authentication f
         clientSecret: "machine-client-secret",
       }),
     createTokenProvider: () => ({
-      getToken(): Promise<string> {
+      getAccess(): Promise<{ readonly token: string; readonly scope: string }> {
         return Promise.reject(new Error("bearer-token client-secret acct-123"));
+      },
+      async getToken(): Promise<string> {
+        return (await this.getAccess()).token;
       },
     }),
   });
