@@ -22,12 +22,19 @@ export interface MachineTokenProviderOptions {
   readonly delay?: (ms: number) => Promise<void>;
 }
 
+export interface MachineTokenAccess {
+  readonly token: string;
+  readonly scope: string;
+}
+
 export interface MachineTokenProvider {
+  getAccess(): Promise<MachineTokenAccess>;
   getToken(): Promise<string>;
 }
 
 interface CachedToken {
   readonly token: string;
+  readonly scope: string;
   readonly expiresAt: number;
 }
 
@@ -45,32 +52,36 @@ export function createMachineTokenProvider(
   const authorization = `Basic ${Buffer.from(`${options.clientId}:${options.clientSecret}`).toString("base64")}`;
 
   let cachedToken: CachedToken | undefined;
-  let refreshPromise: Promise<string> | undefined;
+  let refreshPromise: Promise<CachedToken> | undefined;
 
-  return {
-    async getToken(): Promise<string> {
-      const currentTime = now();
-      if (cachedToken !== undefined && currentTime < cachedToken.expiresAt - REFRESH_WINDOW_MS) {
-        return cachedToken.token;
+  return { getAccess, getToken };
+
+  async function getAccess(): Promise<MachineTokenAccess> {
+    const currentTime = now();
+    if (cachedToken !== undefined && currentTime < cachedToken.expiresAt - REFRESH_WINDOW_MS) {
+      return toAccess(cachedToken);
+    }
+
+    const activeRefresh = refreshPromise ?? startRefresh();
+    try {
+      return toAccess(await activeRefresh);
+    } catch (error: unknown) {
+      if (cachedToken !== undefined && now() < cachedToken.expiresAt) {
+        return toAccess(cachedToken);
       }
+      throw error;
+    }
+  }
 
-      const activeRefresh = refreshPromise ?? startRefresh();
-      try {
-        return await activeRefresh;
-      } catch (error: unknown) {
-        if (cachedToken !== undefined && now() < cachedToken.expiresAt) {
-          return cachedToken.token;
-        }
-        throw error;
-      }
-    },
-  };
+  async function getToken(): Promise<string> {
+    return (await getAccess()).token;
+  }
 
-  function startRefresh(): Promise<string> {
+  function startRefresh(): Promise<CachedToken> {
     refreshPromise = exchangeToken()
       .then((nextToken) => {
         cachedToken = nextToken;
-        return nextToken.token;
+        return nextToken;
       })
       .finally(() => {
         refreshPromise = undefined;
@@ -96,6 +107,7 @@ export function createMachineTokenProvider(
         const parsed = parseTokenResponse(await readBoundedResponseBody(response));
         return {
           token: parsed.access_token,
+          scope: parsed.scope,
           expiresAt: now() + parsed.expires_in * 1000,
         };
       } catch (error: unknown) {
@@ -116,6 +128,10 @@ export function createMachineTokenProvider(
 
     throw new Error("Machine token exchange failed");
   }
+}
+
+function toAccess(cachedToken: CachedToken): MachineTokenAccess {
+  return { token: cachedToken.token, scope: cachedToken.scope };
 }
 
 class RetryableExchangeError extends Error {

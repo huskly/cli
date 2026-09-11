@@ -1,4 +1,3 @@
-import keytar from "keytar";
 import open from "open";
 import chalk from "chalk";
 import ora from "ora";
@@ -6,7 +5,9 @@ import { logger } from "#src/logger.js";
 
 const SERVICE_NAME = "huskly-cli";
 const ACCOUNT_NAME = "huskly-schwab-token";
-const HUSKLY_BASE_URL = "https://huskly.finance";
+const MAX_SESSION_TOKEN_LENGTH = 4096;
+const SESSION_TOKEN_PATTERN = /^[A-Za-z0-9._~-]+$/u;
+export const HUSKLY_BASE_URL = "https://huskly.finance";
 
 /** Response from device code initiation endpoint */
 interface DeviceCodeResponse {
@@ -30,15 +31,55 @@ interface StoredSession {
   expiresAt: string;
 }
 
+function isStoredSession(value: unknown): value is StoredSession {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    isValidSessionToken((value as Record<string, unknown>)["sessionToken"]) &&
+    typeof (value as Record<string, unknown>)["expiresAt"] === "string"
+  );
+}
+
+function isValidSessionToken(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= MAX_SESSION_TOKEN_LENGTH &&
+    SESSION_TOKEN_PATTERN.test(value)
+  );
+}
+
+function parseSessionExpiry(expiresAt: string): Date | null {
+  const expiry = new Date(expiresAt);
+  if (!Number.isFinite(expiry.getTime())) return null;
+  return expiry;
+}
+
+function parseActiveSessionExpiry(expiresAt: string): Date | null {
+  const expiry = parseSessionExpiry(expiresAt);
+  if (expiry === null || expiry <= new Date()) return null;
+  return expiry;
+}
+
 /**
  * Handles OAuth device authorization flow for CLI authentication with huskly.finance.
  * Similar to GitHub CLI, Copilot CLI, and Claude Code auth flows.
  */
+interface KeytarBoundary {
+  getPassword(service: string, account: string): Promise<string | null>;
+  setPassword(service: string, account: string, password: string): Promise<void>;
+  deletePassword(service: string, account: string): Promise<boolean>;
+}
+
 export class HusklyDeviceAuth {
   private baseUrl: string;
+  private keychain: KeytarBoundary | undefined;
+  private keychainPromise: Promise<KeytarBoundary> | undefined;
 
-  constructor(baseUrl: string = HUSKLY_BASE_URL) {
+  constructor(baseUrl: string = HUSKLY_BASE_URL, dependencies: { keytar?: KeytarBoundary } = {}) {
     this.baseUrl = baseUrl;
+    this.keychain = dependencies.keytar;
   }
 
   /**
@@ -83,7 +124,8 @@ export class HusklyDeviceAuth {
    * Logout - clear stored credentials.
    */
   async logout(): Promise<void> {
-    const deleted = await keytar.deletePassword(SERVICE_NAME, ACCOUNT_NAME);
+    const keychain = await this.getKeychain();
+    const deleted = await keychain.deletePassword(SERVICE_NAME, ACCOUNT_NAME);
     if (deleted) {
       console.log(chalk.green("✓ Logged out successfully"));
     } else {
@@ -103,16 +145,15 @@ export class HusklyDeviceAuth {
       return;
     }
 
-    const expiresAt = new Date(session.expiresAt);
-    const now = new Date();
+    const expiresAt = parseActiveSessionExpiry(session.expiresAt);
 
-    if (expiresAt <= now) {
+    if (expiresAt === null) {
       console.log(chalk.yellow("Session expired"));
       console.log(chalk.dim("Run 'huskly-cli auth login' to re-authenticate"));
       return;
     }
 
-    const daysRemaining = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    const daysRemaining = Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
     console.log(chalk.green("✓ Logged in"));
     console.log(chalk.dim(`Session expires in ${String(daysRemaining)} day(s)`));
   }
@@ -129,8 +170,7 @@ export class HusklyDeviceAuth {
       return null;
     }
 
-    const expiresAt = new Date(session.expiresAt);
-    if (expiresAt <= new Date()) {
+    if (parseActiveSessionExpiry(session.expiresAt) === null) {
       logger.debug("Stored session has expired");
       return null;
     }
@@ -145,14 +185,16 @@ export class HusklyDeviceAuth {
       if (!response.ok) {
         if (response.status === 401) {
           // Session invalid, clear it
-          await keytar.deletePassword(SERVICE_NAME, ACCOUNT_NAME);
+          const keychain = await this.getKeychain();
+          await keychain.deletePassword(SERVICE_NAME, ACCOUNT_NAME);
           logger.warn("Stored session is invalid, cleared stored credentials");
           return null;
         }
         throw new Error(`Failed to get access token: ${response.statusText}`);
       } else if (response.status === 502) {
         // Bad gateway, likely Schwab Oauth token expired. Tell the user to re-authenticate.
-        await keytar.deletePassword(SERVICE_NAME, ACCOUNT_NAME);
+        const keychain = await this.getKeychain();
+        await keychain.deletePassword(SERVICE_NAME, ACCOUNT_NAME);
         logger.warn(
           "Schwab OAuth token expired, please re-authenticate at huskly.finance and try 'auth login' again"
         );
@@ -168,14 +210,23 @@ export class HusklyDeviceAuth {
   }
 
   /**
+   * Get the valid huskly CLI session token without exchanging it for a Schwab token.
+   * Returns null if not authenticated or session expired.
+   */
+  async getSessionToken(): Promise<string | null> {
+    const session = await this.getStoredSession();
+    if (session === null || parseActiveSessionExpiry(session.expiresAt) === null) return null;
+    return session.sessionToken;
+  }
+
+  /**
    * Check if user is authenticated with a valid session.
    */
   async isAuthenticated(): Promise<boolean> {
     const session = await this.getStoredSession();
     if (!session) return false;
 
-    const expiresAt = new Date(session.expiresAt);
-    return expiresAt > new Date();
+    return parseActiveSessionExpiry(session.expiresAt) !== null;
   }
 
   /**
@@ -289,23 +340,35 @@ export class HusklyDeviceAuth {
    * Store session credentials securely in OS keychain.
    */
   private async storeSession(session: StoredSession): Promise<void> {
-    await keytar.setPassword(SERVICE_NAME, ACCOUNT_NAME, JSON.stringify(session));
+    const keychain = await this.getKeychain();
+    await keychain.setPassword(SERVICE_NAME, ACCOUNT_NAME, JSON.stringify(session));
   }
 
   /**
    * Retrieve stored session from OS keychain.
    */
   private async getStoredSession(): Promise<StoredSession | null> {
-    const stored = await keytar.getPassword(SERVICE_NAME, ACCOUNT_NAME);
+    const keychain = await this.getKeychain();
+    const stored = await keychain.getPassword(SERVICE_NAME, ACCOUNT_NAME);
     if (!stored) return null;
 
     try {
-      return JSON.parse(stored) as StoredSession;
+      const session: unknown = JSON.parse(stored);
+      if (isStoredSession(session)) {
+        if (parseSessionExpiry(session.expiresAt) !== null) return session;
+      }
     } catch {
-      // Corrupted data, clear it
-      await keytar.deletePassword(SERVICE_NAME, ACCOUNT_NAME);
-      return null;
+      // Corrupted data is cleared below.
     }
+
+    await keychain.deletePassword(SERVICE_NAME, ACCOUNT_NAME);
+    return null;
+  }
+
+  private getKeychain(): Promise<KeytarBoundary> {
+    if (this.keychain !== undefined) return Promise.resolve(this.keychain);
+
+    return (this.keychainPromise ??= import("keytar").then(({ default: keytar }) => keytar));
   }
 
   private sleep(ms: number): Promise<void> {
