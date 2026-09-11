@@ -18,7 +18,7 @@
   "bin": {
     "huskly-cli": "./dist/cli/index.js",
     "huskly-cli-auth": "./dist/auth/cli.js",
-    "huskly-cli-mcp": "./dist/mcp/server.js"
+    "huskly-cli-mcp": "./dist/mcp/bin.js"
   },
   "engines": {
     "node": ">=20.0.0"
