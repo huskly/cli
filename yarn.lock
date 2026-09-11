@@ -319,7 +319,7 @@ __metadata:
   dependencies:
     "@eslint/js": "npm:^10.0.1"
     "@huskly/ibkr-gateway-client": "npm:0.5.0"
-    "@huskly/schwab-client": "npm:^0.8.0"
+    "@huskly/schwab-client": "npm:^1.3.0"
     "@modelcontextprotocol/sdk": "npm:^1.29.0"
     "@types/asciichart": "npm:^1.5.8"
     "@types/node": "npm:^26"
@@ -357,12 +357,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@huskly/schwab-client@npm:^0.8.0":
-  version: 0.8.0
-  resolution: "@huskly/schwab-client@npm:0.8.0"
+"@huskly/schwab-client@npm:^1.3.0":
+  version: 1.3.0
+  resolution: "@huskly/schwab-client@npm:1.3.0"
   dependencies:
     date-fns: "npm:^4.1.0"
-  checksum: 10c0/ab5b3e1a6741bc5527f502dcbc2b65e5e3d5f695cd79bb467cb9df7d9a1df4c2fc8c7f098c3c965bf63a6e6285d7dea7173c722d2dafd1a9c1ee6752a51b3892
+  checksum: 10c0/6487b0908e1653eeb9075f260c1497fd17c05ccfbcf1b3b6204b542ce1b62bf9ce9c48a2e7e0da1424a6bccafe753e1605538b87a27b84c27f2722798e5e7797
   languageName: node
   linkType: hard
 
