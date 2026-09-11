@@ -1,11 +1,11 @@
 {
   "name": "@huskly/cli",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Terminal-based trading tools for Schwab and IBKR through the IBKR gateway",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "repository": "github.com/felipecsl/huskly-cli",
+  "repository": "https://github.com/felipecsl/huskly-cli",
   "author": "Felipe Lima",
   "license": "MIT",
   "packageManager": "yarn@4.18.0",
