@@ -24,21 +24,33 @@ import {
 
 export type SubmissionState = "submission_pending" | "submission_uncertain" | "operation_known";
 
-export interface SubmissionRecord {
+interface SubmissionRecordBase {
   readonly schemaVersion: 1;
   readonly previewId: string;
-  readonly operationKind: "single" | "combo";
   readonly idempotencyKey: string;
-  readonly canonicalIntent: CanonicalComboIntent | CanonicalEquityIntent;
-  readonly operator?: string;
-  readonly intentHash?: string;
-  readonly account: { readonly maskedId: string | null; readonly environment: BrokerEnvironment };
   readonly state: SubmissionState;
   readonly operationId: string | null;
-  readonly operation: OrderOperationView | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
+
+export interface ComboSubmissionRecord extends SubmissionRecordBase {
+  readonly operationKind: "combo";
+  readonly canonicalIntent: CanonicalComboIntent;
+  readonly account: { readonly maskedId: string | null; readonly environment: BrokerEnvironment };
+  readonly operation: OrderOperationView | null;
+}
+
+export interface SingleEquitySubmissionRecord extends SubmissionRecordBase {
+  readonly operationKind: "single";
+  readonly canonicalIntent: CanonicalEquityIntent;
+  readonly operator: string;
+  readonly intentHash: string;
+  readonly account: { readonly maskedId: null; readonly environment: BrokerEnvironment };
+  readonly operation: OrderOperationView | null;
+}
+
+export type SubmissionRecord = ComboSubmissionRecord | SingleEquitySubmissionRecord;
 
 export interface ActionRecord {
   readonly schemaVersion: 1;
@@ -243,27 +255,39 @@ const executionEquityIntentSchema = z.strictObject({
   orderType: z.literal("LMT"),
   limit: z.number().positive(),
 });
-const submissionSchema = z.strictObject({
+const submissionBaseSchema = {
   schemaVersion: z.literal(1),
   previewId: z.string().regex(/^[a-f0-9]{64}$/u),
-  operationKind: z.enum(["single", "combo"]),
   idempotencyKey: z.string().min(1).max(128),
-  canonicalIntent: z.union([canonicalComboIntentSchema, executionEquityIntentSchema]),
-  operator: z.string().min(1).max(64).optional(),
-  intentHash: z
-    .string()
-    .regex(/^[a-f0-9]{64}$/u)
-    .optional(),
-  account: z.strictObject({
-    maskedId: z.string().nullable(),
-    environment: z.enum(["paper", "live"]),
-  }),
   state: z.enum(["submission_pending", "submission_uncertain", "operation_known"]),
   operationId: z.string().nullable(),
-  operation: operationSchema.nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
-}) as unknown as z.ZodType<SubmissionRecord>;
+};
+const submissionSchema = z.discriminatedUnion("operationKind", [
+  z.strictObject({
+    ...submissionBaseSchema,
+    operationKind: z.literal("combo"),
+    canonicalIntent: canonicalComboIntentSchema,
+    account: z.strictObject({
+      maskedId: z.string().nullable(),
+      environment: z.enum(["paper", "live"]),
+    }),
+    operation: operationSchema.nullable(),
+  }),
+  z.strictObject({
+    ...submissionBaseSchema,
+    operationKind: z.literal("single"),
+    canonicalIntent: executionEquityIntentSchema,
+    operator: z.string().min(1).max(64),
+    intentHash: z.string().regex(/^[a-f0-9]{64}$/u),
+    account: z.strictObject({
+      maskedId: z.null(),
+      environment: z.enum(["paper", "live"]),
+    }),
+    operation: operationSchema.nullable(),
+  }),
+]) as unknown as z.ZodType<SubmissionRecord>;
 const actionSchema = z.strictObject({
   schemaVersion: z.literal(1),
   operationId: z.string().min(1),

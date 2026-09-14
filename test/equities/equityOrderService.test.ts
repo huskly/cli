@@ -50,6 +50,7 @@ class Gateway implements EquityGatewayClient {
     environment: "paper",
     accountVerified: true,
     newMutationReady: true,
+    recoveryMutationReady: true,
   };
   public accepted = true;
   public resolveCalls: string[] = [];
@@ -212,6 +213,7 @@ test("hash corruption fails closed before diagnostics or a write", async () => {
         canonicalIntent: { ...stored.canonicalIntent, quantity: 3 },
       }),
     delete: () => Promise.resolve(),
+    pruneExpired: () => Promise.resolve(),
   };
   const next = service(base.gateway, corrupt).value;
   await assert.rejects(
@@ -239,11 +241,74 @@ test("two service instances reserve once and make one network write", async () =
   release();
   const values = await Promise.all([firstCall, secondCall]);
   assert.equal(gateway.createCalls.length, 1);
-  assert.equal(gateway.lookupCalls.length, 0);
+  assert.equal(gateway.lookupCalls.length, 1);
   assert.deepEqual(
     values.map((value) => value.operation.operationId),
     ["operation-1", "operation-1"]
   );
+});
+
+test("reserved submissions recover when new writes are blocked", async () => {
+  const fx = service();
+  const result = await preview(fx.value);
+  fx.gateway.created = Promise.reject(new Error("lost response"));
+  await assert.rejects(
+    fx.value.submit({ previewId: result.previewId, operator: "operator-7", confirm: true }),
+    /lost response/u
+  );
+  fx.gateway.created = Promise.resolve();
+  fx.gateway.diagnostics = {
+    ...fx.gateway.diagnostics,
+    newMutationReady: false,
+    recoveryMutationReady: true,
+  };
+  const recovered = await fx.value.submit({
+    previewId: result.previewId,
+    operator: "operator-7",
+    confirm: true,
+  });
+  assert.equal(recovered.recovered, true);
+  assert.equal(fx.gateway.createCalls.length, 1);
+  assert.equal(fx.gateway.lookupCalls.length, 1);
+});
+
+test("a durable reservation recovers after its short-lived preview expires", async () => {
+  let current = new Date("2026-09-14T12:00:00.000Z");
+  const fx = service(undefined, undefined, undefined, () => current);
+  const result = await preview(fx.value);
+  await fx.value.submit({ previewId: result.previewId, operator: "operator-7", confirm: true });
+  current = new Date("2026-09-14T12:02:00.000Z");
+  await fx.previews.pruneExpired(current);
+  assert.equal(await fx.previews.load(result.previewId), undefined);
+  fx.gateway.diagnostics = {
+    ...fx.gateway.diagnostics,
+    newMutationReady: false,
+    recoveryMutationReady: true,
+  };
+  const recovered = await fx.value.submit({
+    previewId: result.previewId,
+    operator: "operator-7",
+    confirm: true,
+  });
+  assert.equal(recovered.recovered, true);
+  assert.equal(recovered.order.contract.symbol, "IBIT");
+  assert.equal(fx.gateway.createCalls.length, 1);
+});
+
+test("creating a preview prunes abandoned expired preview files", async () => {
+  const root = await mkdtemp(join(tmpdir(), "huskly-equity-prune-"));
+  let current = new Date("2026-09-14T12:00:00.000Z");
+  try {
+    const previews = new FileEquityPreviewStore(root);
+    const fx = service(new Gateway(), previews, undefined, () => current);
+    const expired = await preview(fx.value);
+    current = new Date("2026-09-14T12:02:00.000Z");
+    const currentPreview = await preview(fx.value);
+    assert.equal(await previews.load(expired.previewId), undefined);
+    assert.ok(await previews.load(currentPreview.previewId));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("shared lifecycle storage indexes an equity operation for generic tools", async () => {

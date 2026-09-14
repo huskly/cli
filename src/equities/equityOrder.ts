@@ -36,6 +36,7 @@ export interface EquityTradingDiagnostics {
   readonly environment: BrokerEnvironment;
   readonly accountVerified: boolean;
   readonly newMutationReady: boolean;
+  readonly recoveryMutationReady: boolean;
 }
 
 export interface EquityGatewayClient {

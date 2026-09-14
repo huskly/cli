@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -115,6 +116,7 @@ export interface EquityPreviewStore {
   create(value: EquityPreviewRecord): Promise<boolean>;
   load(previewId: string): Promise<EquityPreviewRecord | undefined>;
   delete(previewId: string): Promise<void>;
+  pruneExpired(now: Date): Promise<void>;
 }
 
 export interface EquitySubmissionStore {
@@ -136,6 +138,13 @@ export class InMemoryEquityPreviewStore implements EquityPreviewStore {
   }
   public delete(previewId: string): Promise<void> {
     this.values.delete(previewId);
+    return Promise.resolve();
+  }
+  public pruneExpired(now: Date): Promise<void> {
+    const cutoff = now.getTime();
+    for (const [previewId, value] of this.values) {
+      if (new Date(value.expiresAt).getTime() <= cutoff) this.values.delete(previewId);
+    }
     return Promise.resolve();
   }
 }
@@ -176,6 +185,24 @@ export class FileEquityPreviewStore implements EquityPreviewStore {
     validatePreviewId(previewId);
     return this.file(previewId).delete();
   }
+  public async pruneExpired(now: Date): Promise<void> {
+    let names: string[];
+    try {
+      names = await readdir(this.directory);
+    } catch (error: unknown) {
+      if (isNodeErrorWithCode(error, "ENOENT")) return;
+      throw error;
+    }
+    if (names.length > 4096) throw new Error("Equity preview directory is too large");
+    const cutoff = now.getTime();
+    for (const name of names) {
+      const match = /^([a-f0-9]{64})\.json$/u.exec(name);
+      if (match?.[1] === undefined) continue;
+      const preview = await this.load(match[1]);
+      if (preview !== undefined && new Date(preview.expiresAt).getTime() <= cutoff)
+        await this.delete(preview.previewId);
+    }
+  }
   private file(previewId: string): PrivateJsonFile<EquityPreviewRecord> {
     validatePreviewId(previewId);
     return new PrivateJsonFile({
@@ -204,7 +231,7 @@ export class FileEquitySubmissionStore implements EquitySubmissionStore {
     if (value === undefined) return undefined;
     if (value.operationKind !== "single" || !("contract" in value.canonicalIntent))
       throw new Error("Submission record is not an equity order");
-    return value as EquitySubmissionRecord;
+    return value;
   }
   public save(value: EquitySubmissionRecord): Promise<void> {
     return this.store.saveSubmission(value satisfies SubmissionRecord);
@@ -225,6 +252,7 @@ export class EquityOrderService {
   }
 
   public async preview(input: PreviewEquityOrderInput): Promise<EquityPreviewDto> {
+    await this.previews.pruneExpired(this.now());
     const symbol = normalizeSymbol(input.symbol);
     const diagnostics = await this.gateway.getTradingDiagnostics();
     requireMutationReady(diagnostics);
@@ -264,7 +292,11 @@ export class EquityOrderService {
     readonly confirm: boolean;
   }): Promise<EquitySubmissionDto> {
     if (!input.confirm) throw new Error("Confirmation must be exactly true");
+    validatePreviewId(input.previewId);
     const operator = validateOperator(input.operator);
+    const existing = await this.submissions.load(input.previewId);
+    if (existing !== undefined) return this.recoverExisting(existing, operator);
+
     const preview = await this.requiredPreview(input.previewId);
     const diagnostics = await this.gateway.getTradingDiagnostics();
     requireMutationReady(diagnostics);
@@ -288,10 +320,10 @@ export class EquityOrderService {
       updatedAt: now,
     };
     if (!(await this.submissions.reserve(pending))) {
-      const existing = await this.submissions.load(preview.previewId);
-      if (existing === undefined) throw new Error("Submission reservation is unavailable");
-      this.validateExisting(existing, preview, operator, intentHash);
-      return this.recover(existing, preview);
+      const raced = await this.submissions.load(preview.previewId);
+      if (raced === undefined) throw new Error("Submission reservation is unavailable");
+      this.validateExisting(raced, operator, preview);
+      return this.recoverExisting(raced, operator, diagnostics);
     }
     try {
       const operation = await this.gateway.create(
@@ -307,7 +339,7 @@ export class EquityOrderService {
         operation,
         updatedAt: this.now().toISOString(),
       });
-      return submissionDto(preview, operation, false);
+      return submissionDto(pending, operation, false);
     } catch (error: unknown) {
       await this.submissions.save({
         ...pending,
@@ -334,27 +366,35 @@ export class EquityOrderService {
 
   private validateExisting(
     existing: EquitySubmissionRecord,
-    preview: EquityPreviewRecord,
     operator: string,
-    intentHash: string
+    preview?: EquityPreviewRecord
   ): void {
     if (
-      existing.previewId !== preview.previewId ||
-      existing.account.environment !== preview.environment ||
-      existing.intentHash !== intentHash ||
-      existing.operator !== operator
+      existing.operator !== operator ||
+      existing.intentHash !== hash(existing.canonicalIntent) ||
+      (preview !== undefined &&
+        (existing.previewId !== preview.previewId ||
+          existing.account.environment !== preview.environment ||
+          existing.intentHash !== hash(preview.canonicalIntent)))
     )
       throw new Error("Submission reservation does not match the preview");
   }
 
-  private async recover(
+  private async recoverExisting(
     record: EquitySubmissionRecord,
-    preview: EquityPreviewRecord
+    operator: string,
+    knownDiagnostics?: Awaited<ReturnType<EquityGatewayClient["getTradingDiagnostics"]>>
   ): Promise<EquitySubmissionDto> {
-    const operation =
-      record.state === "operation_known" && record.operation !== null
-        ? record.operation
-        : await this.gateway.lookup(record.idempotencyKey);
+    this.validateExisting(record, operator);
+    if (record.state === "operation_known" && record.operation !== null) {
+      validateOperation(record.operation);
+      return submissionDto(record, record.operation, true);
+    }
+    const diagnostics = knownDiagnostics ?? (await this.gateway.getTradingDiagnostics());
+    requireRecoveryReady(diagnostics);
+    if (diagnostics.environment !== record.account.environment)
+      throw new Error("Submission environment does not match the current gateway");
+    const operation = await this.gateway.lookup(record.idempotencyKey);
     validateOperation(operation);
     await this.submissions.save({
       ...record,
@@ -363,7 +403,7 @@ export class EquityOrderService {
       operation,
       updatedAt: this.now().toISOString(),
     });
-    return submissionDto(preview, operation, true);
+    return submissionDto(record, operation, true);
   }
 }
 
@@ -381,14 +421,14 @@ function previewDto(record: EquityPreviewRecord): EquityPreviewDto {
 }
 
 function submissionDto(
-  preview: EquityPreviewRecord,
+  record: Pick<EquitySubmissionRecord, "previewId" | "canonicalIntent" | "account">,
   operation: OrderOperation,
   recovered: boolean
 ): EquitySubmissionDto {
   return {
-    previewId: preview.previewId,
-    environment: preview.environment,
-    order: preview.canonicalIntent,
+    previewId: record.previewId,
+    environment: record.account.environment,
+    order: record.canonicalIntent,
     operation,
     recovered,
   };
@@ -422,6 +462,18 @@ function requireMutationReady(diagnostics: {
 }): void {
   if (!diagnostics.accountVerified || !diagnostics.newMutationReady)
     throw new Error("Gateway is not ready for a new order mutation");
+}
+
+function requireRecoveryReady(diagnostics: {
+  readonly accountVerified: boolean;
+  readonly recoveryMutationReady: boolean;
+}): void {
+  if (!diagnostics.accountVerified || !diagnostics.recoveryMutationReady)
+    throw new Error("Gateway is not ready for order recovery");
+}
+
+function isNodeErrorWithCode(error: unknown, code: string): boolean {
+  return error instanceof Error && "code" in error && error.code === code;
 }
 
 function hash(value: unknown): string {
