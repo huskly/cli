@@ -13,14 +13,47 @@ import type {
   PreviewOrdersRequest,
   PreviewOrdersResponse,
   ReconciliationResponse,
-  ResolveEquityContractRequest,
-  ResolveEquityContractResponse,
 } from "@huskly/ibkr-gateway-client";
 import type { GatewayTransport } from "./gatewayTransport.js";
 import type {
   CanonicalComboIntent,
   DerivativeComboPreviewResult,
 } from "../derivatives/derivativePreview.js";
+interface EquityContractRequest {
+  readonly symbol: string;
+}
+interface EquityContractResponse {
+  readonly observedAt: string;
+  readonly status: "available";
+  readonly contract: {
+    readonly conid: number;
+    readonly assetClass: "STK";
+    readonly symbol: string;
+    readonly exchange: "SMART";
+    readonly primaryExchange: string;
+    readonly currency: "USD";
+  };
+}
+interface EquityPreviewRequest {
+  readonly contract: EquityContractResponse["contract"];
+  readonly side: "BUY" | "SELL";
+  readonly quantity: number;
+  readonly tif: "DAY" | "GTC";
+  readonly session: "REGULAR" | "OVERNIGHT";
+  readonly orderType: "LMT";
+  readonly limit: number;
+}
+interface EquitySubmissionRequest extends EquityPreviewRequest {
+  readonly kind: "single";
+  readonly extOperator: string;
+  readonly manualIndicator: boolean;
+}
+type GatewayPreviewRequest = PreviewOrdersRequest | EquityPreviewRequest;
+type GatewayCreateRequest = CreateOrderOperationRequest | EquitySubmissionRequest;
+interface EquityGatewayWireClient {
+  resolveEquityContract(body: EquityContractRequest): Promise<EquityContractResponse>;
+}
+
 import type {
   DerivativeExecutionClient,
   OperationKind,
@@ -30,10 +63,10 @@ import type {
 
 export interface GatewayMutationApi {
   getDiagnostics(): Promise<GetDiagnosticsResponse>;
-  resolveEquityContract(body: ResolveEquityContractRequest): Promise<ResolveEquityContractResponse>;
-  previewOrders(body: PreviewOrdersRequest): Promise<PreviewOrdersResponse>;
+  resolveEquityContract(body: EquityContractRequest): Promise<EquityContractResponse>;
+  previewOrders(body: GatewayPreviewRequest): Promise<PreviewOrdersResponse>;
   createOrderOperation(
-    body: CreateOrderOperationRequest,
+    body: GatewayCreateRequest,
     idempotencyKey: CreateOrderOperationIdempotencyKey
   ): Promise<CreateOrderOperationResponse>;
   lookupOrderOperation(body: LookupOrderOperationRequest): Promise<LookupOrderOperationResponse>;
@@ -55,11 +88,17 @@ export function createGatewayMutationApi(transport: GatewayTransport): GatewayMu
   return {
     getDiagnostics: () => transport.call("getDiagnostics", (client) => client.getDiagnostics()),
     resolveEquityContract: (body) =>
-      transport.call("resolveEquityContract", (client) => client.resolveEquityContract(body)),
+      transport.call("resolveEquityContract", (client) =>
+        (client as unknown as EquityGatewayWireClient).resolveEquityContract(body)
+      ),
     previewOrders: (body) =>
-      transport.call("previewOrders", (client) => client.previewOrders(body)),
+      transport.call("previewOrders", (client) =>
+        client.previewOrders(body as PreviewOrdersRequest)
+      ),
     createOrderOperation: (body, key) =>
-      transport.call("createOrderOperation", (client) => client.createOrderOperation(body, key)),
+      transport.call("createOrderOperation", (client) =>
+        client.createOrderOperation(body as CreateOrderOperationRequest, key)
+      ),
     lookupOrderOperation: (body) =>
       transport.call("lookupOrderOperation", (client) => client.lookupOrderOperation(body)),
     getOrderOperation: (operationId) =>
