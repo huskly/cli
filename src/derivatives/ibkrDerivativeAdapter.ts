@@ -433,7 +433,7 @@ function normalizeCollection<Source, Target>(
   });
 }
 
-function normalizeDiagnostics(response: GetDiagnosticsResponse): TradingDiagnostics {
+export function normalizeDiagnostics(response: GetDiagnosticsResponse): TradingDiagnostics {
   const diagnostics = parseGatewayResponse("getDiagnostics", diagnosticsSchema, response);
   return {
     accountId: diagnostics.account,

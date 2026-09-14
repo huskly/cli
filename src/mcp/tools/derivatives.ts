@@ -404,7 +404,7 @@ export function registerDerivativeTools(
   server.registerTool(
     "get_order_status",
     {
-      title: "Get guarded IBKR derivative order status",
+      title: "Get guarded IBKR order status",
       description:
         "Fetch fresh lifecycle state and verify the gateway operation against its persisted exact preview.",
       inputSchema: { operationId: z.string().min(1) },
@@ -434,7 +434,7 @@ export function registerDerivativeTools(
   server.registerTool(
     "cancel_order",
     {
-      title: "Cancel a guarded IBKR derivative order",
+      title: "Cancel a guarded IBKR order",
       description:
         "Request cancellation, then poll until a verified CANCELED state. Other terminal states are returned as errors.",
       inputSchema: {

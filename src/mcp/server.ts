@@ -15,6 +15,10 @@ import {
   registerDerivativeTools,
   type DerivativeToolDependencies,
 } from "#src/mcp/tools/derivatives.js";
+import {
+  registerEquityOrderTools,
+  type EquityToolDependencies,
+} from "#src/mcp/tools/equityOrders.js";
 
 export interface RegisteredMcpTool {
   definition: {
@@ -33,7 +37,7 @@ export interface McpToolRegistrar {
   ): void;
 }
 
-export interface McpServerDependencies extends DerivativeToolDependencies {
+export interface McpServerDependencies extends DerivativeToolDependencies, EquityToolDependencies {
   readonly resolveBrokerClient?: (broker: BrokerName) => Promise<BrokerClient>;
   readonly createDerivativeTools?: DerivativeToolDependencies["createTools"];
 }
@@ -72,6 +76,7 @@ export function registerMcpTools(
       ? {}
       : { createTools: dependencies.createDerivativeTools }),
   });
+  registerEquityOrderTools(server, dependencies);
 }
 
 export function createMcpServer(dependencies: McpServerDependencies = {}): McpServer {

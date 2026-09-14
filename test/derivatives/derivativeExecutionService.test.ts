@@ -571,6 +571,31 @@ void test("watch uses injected time at the exact deadline", async () => {
   assert.equal(network.getCalls, 3);
 });
 
+void test("file store rejects a submission kind that does not match its intent", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "execution-corrupt-"));
+  try {
+    const store = new FileExecutionStateStore(directory);
+    const mismatched = {
+      schemaVersion: 1,
+      previewId: preview.previewId,
+      operationKind: "single",
+      idempotencyKey: "key",
+      canonicalIntent: intent,
+      operator: "operator-7",
+      intentHash: "a".repeat(64),
+      account: preview.account,
+      state: "submission_pending",
+      operationId: null,
+      operation: null,
+      createdAt: preview.createdAt,
+      updatedAt: preview.createdAt,
+    } as unknown as SubmissionRecord;
+    await assert.rejects(store.reserveSubmission(mismatched));
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 void test("file store keeps one canonical submission and a derived private operation index", async () => {
   const directory = await mkdtemp(join(tmpdir(), "execution-v1-"));
   try {

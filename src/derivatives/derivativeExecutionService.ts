@@ -5,6 +5,7 @@ import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
+import type { CanonicalEquityIntent } from "#src/equities/equityOrder.js";
 import type { DerivativeDiscoveryClient } from "./derivativeDiscovery.js";
 import type {
   DerivativeExecutionClient,
@@ -23,19 +24,36 @@ import {
 
 export type SubmissionState = "submission_pending" | "submission_uncertain" | "operation_known";
 
-export interface SubmissionRecord {
+interface SubmissionRecordBase {
   readonly schemaVersion: 1;
   readonly previewId: string;
-  readonly operationKind: "combo";
   readonly idempotencyKey: string;
-  readonly canonicalIntent: CanonicalComboIntent;
-  readonly account: { readonly maskedId: string | null; readonly environment: BrokerEnvironment };
   readonly state: SubmissionState;
   readonly operationId: string | null;
-  readonly operation: OrderOperationView | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
+
+export interface ComboSubmissionRecord extends SubmissionRecordBase {
+  readonly operationKind: "combo";
+  readonly canonicalIntent: CanonicalComboIntent;
+  readonly account: { readonly maskedId: string | null; readonly environment: BrokerEnvironment };
+  readonly operation: OrderOperationView | null;
+}
+
+export interface SingleEquitySubmissionRecord extends SubmissionRecordBase {
+  readonly operationKind: "single";
+  readonly canonicalIntent: CanonicalEquityIntent;
+  readonly operator: string;
+  readonly intentHash: string;
+  readonly account: {
+    readonly maskedId: string | null;
+    readonly environment: BrokerEnvironment;
+  };
+  readonly operation: OrderOperationView | null;
+}
+
+export type SubmissionRecord = ComboSubmissionRecord | SingleEquitySubmissionRecord;
 
 export interface ActionRecord {
   readonly schemaVersion: 1;
@@ -224,22 +242,55 @@ const operationSchema = z.strictObject({
   createdAt: z.iso.datetime(),
   latestTransitionAt: z.iso.datetime(),
 }) satisfies z.ZodType<OrderOperationView>;
-const submissionSchema = z.strictObject({
+const executionEquityIntentSchema = z.strictObject({
+  contract: z.strictObject({
+    conid: z.number().int().positive(),
+    assetClass: z.literal("STK"),
+    symbol: z.string().regex(/^[A-Z0-9][A-Z0-9 .-]{0,31}$/u),
+    exchange: z.literal("SMART"),
+    primaryExchange: z.string().min(1).max(32),
+    currency: z.literal("USD"),
+  }),
+  side: z.enum(["BUY", "SELL"]),
+  quantity: z.number().int().positive(),
+  tif: z.enum(["DAY", "GTC"]),
+  session: z.enum(["REGULAR", "OVERNIGHT"]),
+  orderType: z.literal("LMT"),
+  limit: z.number().positive(),
+});
+const submissionBaseSchema = {
   schemaVersion: z.literal(1),
   previewId: z.string().regex(/^[a-f0-9]{64}$/u),
-  operationKind: z.literal("combo"),
   idempotencyKey: z.string().min(1).max(128),
-  canonicalIntent: canonicalComboIntentSchema,
-  account: z.strictObject({
-    maskedId: z.string().nullable(),
-    environment: z.enum(["paper", "live"]),
-  }),
   state: z.enum(["submission_pending", "submission_uncertain", "operation_known"]),
   operationId: z.string().nullable(),
-  operation: operationSchema.nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
-}) as unknown as z.ZodType<SubmissionRecord>;
+};
+const submissionSchema = z.discriminatedUnion("operationKind", [
+  z.strictObject({
+    ...submissionBaseSchema,
+    operationKind: z.literal("combo"),
+    canonicalIntent: canonicalComboIntentSchema,
+    account: z.strictObject({
+      maskedId: z.string().nullable(),
+      environment: z.enum(["paper", "live"]),
+    }),
+    operation: operationSchema.nullable(),
+  }),
+  z.strictObject({
+    ...submissionBaseSchema,
+    operationKind: z.literal("single"),
+    canonicalIntent: executionEquityIntentSchema,
+    operator: z.string().min(1).max(64),
+    intentHash: z.string().regex(/^[a-f0-9]{64}$/u),
+    account: z.strictObject({
+      maskedId: z.string().nullable(),
+      environment: z.enum(["paper", "live"]),
+    }),
+    operation: operationSchema.nullable(),
+  }),
+]) as unknown as z.ZodType<SubmissionRecord>;
 const actionSchema = z.strictObject({
   schemaVersion: z.literal(1),
   operationId: z.string().min(1),
@@ -436,6 +487,8 @@ export class DerivativeExecutionService {
     if (!(await this.store.reserveSubmission(pending))) {
       throw new Error("A submission record already exists for this preview");
     }
+    if (!("legs" in pending.canonicalIntent))
+      throw new Error("Derivative submission has an invalid stored intent");
     let operation: OrderOperationView;
     try {
       operation = await this.execution.create(
