@@ -3,7 +3,7 @@ import type { CanonicalComboIntent, DerivativeComboPreviewResult } from "./deriv
 
 export type OrderOperationView = OrderOperation;
 export type OrderReconciliationView = ReconciliationResponse;
-export type OperationKind = "combo";
+export type OperationKind = "single" | "combo";
 
 /** The narrow durable mutation boundary. It never accepts an account or client-order ID. */
 export interface DerivativeExecutionClient {

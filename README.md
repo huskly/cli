@@ -11,8 +11,8 @@ The CLI and MCP server do not talk to IBKR directly.
 - Market data for quotes, search, price history, movers, charts, and VIX
 - Shared account reads for balances, positions, transactions, and orders
 - Exact derivative research for IBKR
-- Guarded derivative preview and order lifecycle commands for IBKR
-- MCP server for read tools and derivative tools
+- Guarded derivative and equity preview and order lifecycle tools for IBKR
+- MCP server for read, derivative, and equity tools
 - Schwab-only Redis caching
 
 ## Broker support
@@ -29,31 +29,31 @@ huskly-cli --broker ibkr orders
 huskly-cli --broker ibkr repl
 ```
 
-| Command | Schwab | IBKR |
-| --- | --- | --- |
-| `quote` | ✓ | ✓ |
-| `search` | ✓ | ✓ |
-| `movers` | ✓ | ✗ |
-| `history` | ✓ | ✗ |
-| `chart` | ✓ | ✗ |
-| `vix` | ✓ | ✗ |
-| `expiries` | ✓ | ✗ |
-| `chain` | ✓ | ✗ |
-| `option resolve` | ✗ | ✓ |
-| `option chain` | ✗ | ✓ |
-| `spread quote` | ✗ | ✓ |
-| `spread preview` | ✗ | ✓ |
-| `spread submit` | ✗ | ✓ |
-| `spread recover` | ✗ | ✓ |
-| `order show/watch/acknowledge/reconcile/cancel` | ✗ | ✓ |
-| `broker doctor` | ✗ | ✓ |
-| `account` | ✓ | ✓ |
-| `user-preference` | ✓ | ✗ |
-| `positions` | ✓ | ✓ |
-| `transactions` | ✓ | ✓ |
-| `orders` | ✓ | ✓ |
-| `place-order` | ✓ | ✗ |
-| `repl` | ✓ | ✓ |
+| Command                                         | Schwab | IBKR |
+| ----------------------------------------------- | ------ | ---- |
+| `quote`                                         | ✓      | ✓    |
+| `search`                                        | ✓      | ✓    |
+| `movers`                                        | ✓      | ✗    |
+| `history`                                       | ✓      | ✗    |
+| `chart`                                         | ✓      | ✗    |
+| `vix`                                           | ✓      | ✗    |
+| `expiries`                                      | ✓      | ✗    |
+| `chain`                                         | ✓      | ✗    |
+| `option resolve`                                | ✗      | ✓    |
+| `option chain`                                  | ✗      | ✓    |
+| `spread quote`                                  | ✗      | ✓    |
+| `spread preview`                                | ✗      | ✓    |
+| `spread submit`                                 | ✗      | ✓    |
+| `spread recover`                                | ✗      | ✓    |
+| `order show/watch/acknowledge/reconcile/cancel` | ✗      | ✓    |
+| `broker doctor`                                 | ✗      | ✓    |
+| `account`                                       | ✓      | ✓    |
+| `user-preference`                               | ✓      | ✗    |
+| `positions`                                     | ✓      | ✓    |
+| `transactions`                                  | ✓      | ✓    |
+| `orders`                                        | ✓      | ✓    |
+| `place-order`                                   | ✓      | ✗    |
+| `repl`                                          | ✓      | ✓    |
 
 IBKR `search` supports `symbol-search` and `search`.
 Schwab-only search projections return a clear error under `--broker ibkr`.
@@ -227,9 +227,41 @@ huskly-cli broker doctor --broker ibkr --json
 Preview and execution state store masked account data only.
 Live execution stays fail-closed behind the existing live-execution controls.
 
+### Guarded equity MCP workflow
+
+Equity preview resolves exactly one USD US-listed stock or ETF contract.
+It accepts positive whole-share quantities and limit BUY or SELL orders only.
+It uses `DAY` and `REGULAR` by default.
+Preview never submits an order.
+
+Call `preview_equity_order` first:
+
+```json
+{
+  "symbol": "IBIT",
+  "side": "BUY",
+  "quantity": 2,
+  "limit": 52.25
+}
+```
+
+Review the returned contract, What-If result, environment, and expiry time.
+Then call `submit_equity_order` with only the preview ID, operator, and exact confirmation:
+
+```json
+{
+  "previewId": "<preview-id>",
+  "operator": "operator-example",
+  "confirm": true
+}
+```
+
+Submission uses only the immutable terms in the unexpired preview.
+Use `get_order_status`, `acknowledge_order_warning`, `reconcile_order_operation`, and `cancel_order` for the returned operation ID.
+
 ## MCP server
 
-`huskly-cli-mcp` exposes read tools and derivative tools over stdio.
+`huskly-cli-mcp` exposes read, derivative, and guarded equity tools over stdio.
 `place_option_order` stays Schwab-only.
 The IBKR tools use the same gateway transport and safety rules as the CLI.
 There is no direct broker fallback.
@@ -237,7 +269,7 @@ There is no direct broker fallback.
 Build first, then register the server:
 
 ```bash
-claude mcp add huskly-cli-mcp -- node /path/to/huskly-cli/dist/mcp/server.js
+claude mcp add huskly-cli-mcp -- node /path/to/huskly-cli/dist/mcp/bin.js
 claude mcp add huskly-cli-mcp -- huskly-cli-mcp
 ```
 
@@ -277,7 +309,8 @@ test/
 - `HUSKLY_EXT_OPERATOR` - CME operator identity for submit and cancel when `--operator` is omitted
 - `HUSKLY_ENABLE_LIVE_EXECUTION` - Must be `true` to allow live derivative execution
 - `HUSKLY_LIVE_ACCOUNT_ALLOWLIST` - Comma-separated live accounts allowed for derivative execution
-- `HUSKLY_PREVIEW_DIR` - Private preview state directory override
+- `HUSKLY_PREVIEW_DIR` - Private derivative preview state directory override
+- `HUSKLY_EQUITY_PREVIEW_DIR` - Private equity preview state directory override
 - `HUSKLY_EXECUTION_DIR` - Private execution state directory override
 - `HUSKLY_IBKR_GATEWAY_CLI_CONFIG` - CLI gateway config path override
 - `HUSKLY_IBKR_GATEWAY_MCP_CONFIG` - MCP gateway config path override

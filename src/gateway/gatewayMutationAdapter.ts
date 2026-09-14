@@ -6,12 +6,15 @@ import type {
   CreateOrderOperationIdempotencyKey,
   CreateOrderOperationRequest,
   CreateOrderOperationResponse,
+  GetDiagnosticsResponse,
   GetOrderOperationResponse,
   LookupOrderOperationRequest,
   LookupOrderOperationResponse,
   PreviewOrdersRequest,
   PreviewOrdersResponse,
   ReconciliationResponse,
+  ResolveEquityContractRequest,
+  ResolveEquityContractResponse,
 } from "@huskly/ibkr-gateway-client";
 import type { GatewayTransport } from "./gatewayTransport.js";
 import type {
@@ -26,6 +29,8 @@ import type {
 } from "../derivatives/derivativeExecution.js";
 
 export interface GatewayMutationApi {
+  getDiagnostics(): Promise<GetDiagnosticsResponse>;
+  resolveEquityContract(body: ResolveEquityContractRequest): Promise<ResolveEquityContractResponse>;
   previewOrders(body: PreviewOrdersRequest): Promise<PreviewOrdersResponse>;
   createOrderOperation(
     body: CreateOrderOperationRequest,
@@ -48,6 +53,9 @@ export interface GatewayMutationApi {
 /** One transport call per generated gateway operation. The transport performs no retry. */
 export function createGatewayMutationApi(transport: GatewayTransport): GatewayMutationApi {
   return {
+    getDiagnostics: () => transport.call("getDiagnostics", (client) => client.getDiagnostics()),
+    resolveEquityContract: (body) =>
+      transport.call("resolveEquityContract", (client) => client.resolveEquityContract(body)),
     previewOrders: (body) =>
       transport.call("previewOrders", (client) => client.previewOrders(body)),
     createOrderOperation: (body, key) =>
@@ -96,7 +104,9 @@ function contract(intent: CanonicalComboIntent, index: 0 | 1) {
   };
 }
 
-function previewRequest(intent: CanonicalComboIntent): PreviewOrdersRequest {
+type DerivativePreviewRequest = Extract<PreviewOrdersRequest, { legs: unknown }>;
+
+function previewRequest(intent: CanonicalComboIntent): DerivativePreviewRequest {
   return {
     legs: [
       { contract: contract(intent, 0), ratio: 1 },

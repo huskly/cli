@@ -318,7 +318,7 @@ __metadata:
   resolution: "@huskly/cli@workspace:."
   dependencies:
     "@eslint/js": "npm:^10.0.1"
-    "@huskly/ibkr-gateway-client": "npm:^0.8.0"
+    "@huskly/ibkr-gateway-client": "file:/tmp/huskly-ibkr-gateway-client-equity-orders.tgz"
     "@huskly/schwab-client": "npm:^1.3.0"
     "@modelcontextprotocol/sdk": "npm:^1.29.0"
     "@types/asciichart": "npm:^1.5.8"
@@ -350,10 +350,10 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@huskly/ibkr-gateway-client@npm:^0.8.0":
+"@huskly/ibkr-gateway-client@file:/tmp/huskly-ibkr-gateway-client-equity-orders.tgz::locator=%40huskly%2Fcli%40workspace%3A.":
   version: 0.8.0
-  resolution: "@huskly/ibkr-gateway-client@npm:0.8.0"
-  checksum: 10c0/daca237be390b297dcd6d49ed534fb84a171984488cc9d12c0103fa16b763362733f89f45592a5cbd58157b1cbd99670b3f2f4690d3b6999b1320df680432b2d
+  resolution: "@huskly/ibkr-gateway-client@file:/tmp/huskly-ibkr-gateway-client-equity-orders.tgz#/tmp/huskly-ibkr-gateway-client-equity-orders.tgz::hash=9e0ba9&locator=%40huskly%2Fcli%40workspace%3A."
+  checksum: 10c0/f052b976af6dd93e12b3c6e44edc9fa76265f5446d14c434e51c3c858d636e1983440412e01adbc5c2527362445dcc3124faf968a19684163c05ab0543b39546
   languageName: node
   linkType: hard
 

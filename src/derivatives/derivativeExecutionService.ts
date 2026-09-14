@@ -5,6 +5,7 @@ import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
+import type { CanonicalEquityIntent } from "#src/equities/equityOrder.js";
 import type { DerivativeDiscoveryClient } from "./derivativeDiscovery.js";
 import type {
   DerivativeExecutionClient,
@@ -26,9 +27,11 @@ export type SubmissionState = "submission_pending" | "submission_uncertain" | "o
 export interface SubmissionRecord {
   readonly schemaVersion: 1;
   readonly previewId: string;
-  readonly operationKind: "combo";
+  readonly operationKind: "single" | "combo";
   readonly idempotencyKey: string;
-  readonly canonicalIntent: CanonicalComboIntent;
+  readonly canonicalIntent: CanonicalComboIntent | CanonicalEquityIntent;
+  readonly operator?: string;
+  readonly intentHash?: string;
   readonly account: { readonly maskedId: string | null; readonly environment: BrokerEnvironment };
   readonly state: SubmissionState;
   readonly operationId: string | null;
@@ -224,12 +227,33 @@ const operationSchema = z.strictObject({
   createdAt: z.iso.datetime(),
   latestTransitionAt: z.iso.datetime(),
 }) satisfies z.ZodType<OrderOperationView>;
+const executionEquityIntentSchema = z.strictObject({
+  contract: z.strictObject({
+    conid: z.number().int().positive(),
+    assetClass: z.literal("STK"),
+    symbol: z.string().regex(/^[A-Z0-9][A-Z0-9 .-]{0,31}$/u),
+    exchange: z.literal("SMART"),
+    primaryExchange: z.string().min(1).max(32),
+    currency: z.literal("USD"),
+  }),
+  side: z.enum(["BUY", "SELL"]),
+  quantity: z.number().int().positive(),
+  tif: z.enum(["DAY", "GTC"]),
+  session: z.enum(["REGULAR", "OVERNIGHT"]),
+  orderType: z.literal("LMT"),
+  limit: z.number().positive(),
+});
 const submissionSchema = z.strictObject({
   schemaVersion: z.literal(1),
   previewId: z.string().regex(/^[a-f0-9]{64}$/u),
-  operationKind: z.literal("combo"),
+  operationKind: z.enum(["single", "combo"]),
   idempotencyKey: z.string().min(1).max(128),
-  canonicalIntent: canonicalComboIntentSchema,
+  canonicalIntent: z.union([canonicalComboIntentSchema, executionEquityIntentSchema]),
+  operator: z.string().min(1).max(64).optional(),
+  intentHash: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/u)
+    .optional(),
   account: z.strictObject({
     maskedId: z.string().nullable(),
     environment: z.enum(["paper", "live"]),
@@ -436,6 +460,8 @@ export class DerivativeExecutionService {
     if (!(await this.store.reserveSubmission(pending))) {
       throw new Error("A submission record already exists for this preview");
     }
+    if (!("legs" in pending.canonicalIntent))
+      throw new Error("Derivative submission has an invalid stored intent");
     let operation: OrderOperationView;
     try {
       operation = await this.execution.create(
