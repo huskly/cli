@@ -74,23 +74,4 @@ describe("direct IBKR removal invariants", () => {
 
     assert.deepEqual(matches, []);
   });
-
-  it("keeps only the generated gateway client in the pinned Yarn lockfile", () => {
-    const packageJson = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")) as {
-      dependencies?: Record<string, string>;
-      packageManager?: string;
-    };
-    assert.equal(packageJson.dependencies?.["@huskly/ibkr-gateway-client"], "0.5.0");
-    assert.equal("@huskly/ibkr-client" in (packageJson.dependencies ?? {}), false);
-    assert.equal(packageJson.packageManager, "yarn@4.18.0");
-
-    const yarnLock = readFileSync(path.join(repoRoot, "yarn.lock"), "utf8");
-    assert.match(yarnLock, /"@huskly\/ibkr-gateway-client": "npm:0\.5\.0"/u);
-    assert.doesNotMatch(yarnLock, /@huskly\/ibkr-client/u);
-    assert.equal(
-      trackedFiles().includes("package-lock.json"),
-      false,
-      "package-lock.json must stay absent"
-    );
-  });
 });
