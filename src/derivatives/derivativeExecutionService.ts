@@ -46,7 +46,10 @@ export interface SingleEquitySubmissionRecord extends SubmissionRecordBase {
   readonly canonicalIntent: CanonicalEquityIntent;
   readonly operator: string;
   readonly intentHash: string;
-  readonly account: { readonly maskedId: null; readonly environment: BrokerEnvironment };
+  readonly account: {
+    readonly maskedId: string | null;
+    readonly environment: BrokerEnvironment;
+  };
   readonly operation: OrderOperationView | null;
 }
 
@@ -282,7 +285,7 @@ const submissionSchema = z.discriminatedUnion("operationKind", [
     operator: z.string().min(1).max(64),
     intentHash: z.string().regex(/^[a-f0-9]{64}$/u),
     account: z.strictObject({
-      maskedId: z.null(),
+      maskedId: z.string().nullable(),
       environment: z.enum(["paper", "live"]),
     }),
     operation: operationSchema.nullable(),

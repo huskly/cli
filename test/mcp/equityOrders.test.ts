@@ -42,6 +42,7 @@ function tools() {
           createdAt: "2026-09-14T12:00:00.000Z",
           expiresAt: "2026-09-14T12:05:00.000Z",
           environment: "paper",
+          account: { maskedId: "D***567", environment: "paper" },
           order: {
             contract: {
               conid: 8314,
@@ -77,6 +78,7 @@ function tools() {
         return {
           previewId: input.previewId,
           environment: "paper",
+          account: { maskedId: "D***567", environment: "paper" },
           order: {
             contract: {
               conid: 8314,
@@ -181,6 +183,7 @@ test("submission returns warning and recovery states without changing preview te
           return {
             previewId: input.previewId,
             environment: "paper",
+            account: { maskedId: "D***567", environment: "paper" },
             order: {
               contract: {
                 conid: 8314,

@@ -37,6 +37,7 @@ export interface EquityTradingDiagnostics {
   readonly accountVerified: boolean;
   readonly newMutationReady: boolean;
   readonly recoveryMutationReady: boolean;
+  readonly maskedAccountDisplay: string;
 }
 
 export interface EquityGatewayClient {

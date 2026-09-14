@@ -1,4 +1,6 @@
 import type { OrderOperation } from "@huskly/ibkr-gateway-client";
+import { normalizeDiagnostics } from "#src/derivatives/ibkrDerivativeAdapter.js";
+import { maskAccountId } from "#src/derivatives/derivativePreviewService.js";
 import type { GatewayMutationApi } from "#src/gateway/gatewayMutationAdapter.js";
 import type {
   CanonicalEquityIntent,
@@ -11,8 +13,15 @@ import type {
 export class EquityGatewayAdapter implements EquityGatewayClient {
   public constructor(private readonly api: GatewayMutationApi) {}
 
-  public getTradingDiagnostics(): Promise<EquityTradingDiagnostics> {
-    return this.api.getDiagnostics();
+  public async getTradingDiagnostics(): Promise<EquityTradingDiagnostics> {
+    const diagnostics = normalizeDiagnostics(await this.api.getDiagnostics());
+    return {
+      environment: diagnostics.environment,
+      accountVerified: diagnostics.accountVerified,
+      newMutationReady: diagnostics.newMutationReady,
+      recoveryMutationReady: diagnostics.recoveryMutationReady,
+      maskedAccountDisplay: maskAccountId(diagnostics.accountId),
+    };
   }
 
   public async resolveContract(symbol: string): Promise<EquityContract> {

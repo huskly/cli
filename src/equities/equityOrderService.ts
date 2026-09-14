@@ -32,6 +32,10 @@ export interface EquityPreviewRecord {
   readonly createdAt: string;
   readonly expiresAt: string;
   readonly environment: "live" | "paper";
+  readonly account: {
+    readonly maskedId: string | null;
+    readonly environment: "live" | "paper";
+  };
   readonly canonicalIntent: CanonicalEquityIntent;
   readonly previewResult: EquityPreviewResult;
 }
@@ -41,6 +45,10 @@ export interface EquityPreviewDto {
   readonly createdAt: string;
   readonly expiresAt: string;
   readonly environment: "live" | "paper";
+  readonly account: {
+    readonly maskedId: string | null;
+    readonly environment: "live" | "paper";
+  };
   readonly order: CanonicalEquityIntent;
   readonly whatIf: Omit<EquityPreviewResult, "environment">;
   readonly submitted: false;
@@ -54,7 +62,10 @@ export interface EquitySubmissionRecord {
   readonly canonicalIntent: CanonicalEquityIntent;
   readonly operator: string;
   readonly intentHash: string;
-  readonly account: { readonly maskedId: null; readonly environment: "live" | "paper" };
+  readonly account: {
+    readonly maskedId: string | null;
+    readonly environment: "live" | "paper";
+  };
   readonly state: "submission_pending" | "submission_uncertain" | "operation_known";
   readonly operationId: string | null;
   readonly operation: OrderOperation | null;
@@ -65,6 +76,10 @@ export interface EquitySubmissionRecord {
 export interface EquitySubmissionDto {
   readonly previewId: string;
   readonly environment: "live" | "paper";
+  readonly account: {
+    readonly maskedId: string | null;
+    readonly environment: "live" | "paper";
+  };
   readonly order: CanonicalEquityIntent;
   readonly operation: OrderOperation;
   readonly recovered: boolean;
@@ -108,6 +123,10 @@ const previewRecordSchema = z.strictObject({
   createdAt: z.iso.datetime(),
   expiresAt: z.iso.datetime(),
   environment: z.enum(["live", "paper"]),
+  account: z.strictObject({
+    maskedId: z.string().nullable(),
+    environment: z.enum(["live", "paper"]),
+  }),
   canonicalIntent: canonicalEquityIntentSchema,
   previewResult: previewResultSchema,
 });
@@ -277,6 +296,10 @@ export class EquityOrderService {
       createdAt: createdAt.toISOString(),
       expiresAt: new Date(createdAt.getTime() + this.ttlMs).toISOString(),
       environment: diagnostics.environment,
+      account: {
+        maskedId: diagnostics.maskedAccountDisplay,
+        environment: diagnostics.environment,
+      },
       canonicalIntent,
       previewResult,
     };
@@ -312,7 +335,7 @@ export class EquityOrderService {
       canonicalIntent: preview.canonicalIntent,
       operator,
       intentHash,
-      account: { maskedId: null, environment: preview.environment },
+      account: preview.account,
       state: "submission_pending",
       operationId: null,
       operation: null,
@@ -325,21 +348,14 @@ export class EquityOrderService {
       this.validateExisting(raced, operator, preview);
       return this.recoverExisting(raced, operator, diagnostics);
     }
+    let operation: OrderOperation;
     try {
-      const operation = await this.gateway.create(
+      operation = await this.gateway.create(
         preview.canonicalIntent,
         pending.idempotencyKey,
         operator
       );
       validateOperation(operation);
-      await this.submissions.save({
-        ...pending,
-        state: "operation_known",
-        operationId: operation.operationId,
-        operation,
-        updatedAt: this.now().toISOString(),
-      });
-      return submissionDto(pending, operation, false);
     } catch (error: unknown) {
       await this.submissions.save({
         ...pending,
@@ -348,6 +364,14 @@ export class EquityOrderService {
       });
       throw error;
     }
+    await this.submissions.save({
+      ...pending,
+      state: "operation_known",
+      operationId: operation.operationId,
+      operation,
+      updatedAt: this.now().toISOString(),
+    });
+    return submissionDto(pending, operation, false);
   }
 
   private async requiredPreview(previewId: string): Promise<EquityPreviewRecord> {
@@ -375,6 +399,7 @@ export class EquityOrderService {
       (preview !== undefined &&
         (existing.previewId !== preview.previewId ||
           existing.account.environment !== preview.environment ||
+          existing.account.maskedId !== preview.account.maskedId ||
           existing.intentHash !== hash(preview.canonicalIntent)))
     )
       throw new Error("Submission reservation does not match the preview");
@@ -414,6 +439,7 @@ function previewDto(record: EquityPreviewRecord): EquityPreviewDto {
     createdAt: record.createdAt,
     expiresAt: record.expiresAt,
     environment: record.environment,
+    account: record.account,
     order: record.canonicalIntent,
     whatIf,
     submitted: false,
@@ -428,6 +454,7 @@ function submissionDto(
   return {
     previewId: record.previewId,
     environment: record.account.environment,
+    account: record.account,
     order: record.canonicalIntent,
     operation,
     recovered,

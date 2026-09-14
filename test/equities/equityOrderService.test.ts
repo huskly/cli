@@ -51,6 +51,7 @@ class Gateway implements EquityGatewayClient {
     accountVerified: true,
     newMutationReady: true,
     recoveryMutationReady: true,
+    maskedAccountDisplay: "D***567",
   };
   public accepted = true;
   public resolveCalls: string[] = [];
@@ -126,6 +127,7 @@ test("preview resolves one exact contract and stores canonical defaults without 
   assert.equal(fx.gateway.createCalls.length, 0);
   assert.equal(result.submitted, false);
   assert.equal(result.environment, "paper");
+  assert.deepEqual(result.account, { maskedId: "D***567", environment: "paper" });
   assert.deepEqual(result.order, {
     contract,
     side: "BUY",
@@ -246,6 +248,32 @@ test("two service instances reserve once and make one network write", async () =
     values.map((value) => value.operation.operationId),
     ["operation-1", "operation-1"]
   );
+});
+
+test("an operation-index failure cannot downgrade a durably known operation", async () => {
+  const base = new InMemoryEquitySubmissionStore();
+  let failed = false;
+  const submissions: EquitySubmissionStore = {
+    reserve: (value) => base.reserve(value),
+    load: (previewId) => base.load(previewId),
+    save: async (value) => {
+      await base.save(value);
+      if (value.state === "operation_known" && !failed) {
+        failed = true;
+        throw new Error("injected index failure");
+      }
+    },
+  };
+  const fx = service(new Gateway(), undefined, submissions);
+  const result = await preview(fx.value);
+  await assert.rejects(
+    fx.value.submit({ previewId: result.previewId, operator: "operator-7", confirm: true }),
+    /injected index failure/u
+  );
+  const stored = await submissions.load(result.previewId);
+  assert.equal(stored?.state, "operation_known");
+  assert.equal(stored.operationId, "operation-1");
+  assert.equal(stored.operation?.operationId, "operation-1");
 });
 
 test("reserved submissions recover when new writes are blocked", async () => {

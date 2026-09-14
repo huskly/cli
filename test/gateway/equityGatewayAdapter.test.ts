@@ -17,9 +17,24 @@ test("equity adapter resolves previews and submits one exact generated request",
   const api = {
     getDiagnostics: () =>
       Promise.resolve({
-        environment: "paper",
-        accountVerified: true,
+        version: "1.0.0",
+        state: "ready",
+        readReady: true,
         newMutationReady: true,
+        recoveryMutationReady: true,
+        lockOwned: true,
+        accountVerified: true,
+        account: "DU1234567",
+        environment: "paper",
+        authenticated: true,
+        connected: true,
+        competingSession: false,
+        lastTickleAt: null,
+        nextRenewalAt: null,
+        lastBrokerRequestAt: null,
+        readQueueDepth: 0,
+        pendingWarnings: 0,
+        reconciliationRequiredOperations: 0,
       }),
     resolveEquityContract: (...args: unknown[]) => {
       calls.push({ name: "resolve", args });
@@ -53,6 +68,8 @@ test("equity adapter resolves previews and submits one exact generated request",
     },
   } as unknown as GatewayMutationApi;
   const adapter = new EquityGatewayAdapter(api);
+  const diagnostics = await adapter.getTradingDiagnostics();
+  assert.equal(diagnostics.maskedAccountDisplay, "D***567");
   const resolved = await adapter.resolveContract("IBIT");
   const intent = {
     contract: resolved,
@@ -80,4 +97,21 @@ test("equity adapter resolves previews and submits one exact generated request",
     { name: "lookup", args: [{ kind: "single", idempotencyKey: "equity-key" }] },
   ]);
   assert.equal(JSON.stringify(calls).includes("accountId"), false);
+});
+
+test("equity adapter rejects malformed diagnostics before readiness checks", async () => {
+  const api = {
+    getDiagnostics: () =>
+      Promise.resolve({
+        environment: "paper",
+        accountVerified: "true",
+        newMutationReady: "true",
+        recoveryMutationReady: "true",
+        account: "DU1234567",
+      }),
+  } as unknown as GatewayMutationApi;
+  await assert.rejects(
+    new EquityGatewayAdapter(api).getTradingDiagnostics(),
+    /Gateway request failed/u
+  );
 });
