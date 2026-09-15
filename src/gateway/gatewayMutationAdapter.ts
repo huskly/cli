@@ -19,6 +19,8 @@ import type {
   CanonicalComboIntent,
   DerivativeComboPreviewResult,
 } from "../derivatives/derivativePreview.js";
+import type { DerivativeContract } from "../derivatives/derivativeDiscovery.js";
+import type { OptionOrderContract } from "../options/optionOrder.js";
 interface EquityContractRequest {
   readonly symbol: string;
 }
@@ -118,8 +120,14 @@ export function createGatewayMutationApi(transport: GatewayTransport): GatewayMu
   };
 }
 
-function contract(intent: CanonicalComboIntent, index: 0 | 1) {
-  const source = intent.legs[index].contract;
+/**
+ * Map a resolved derivative contract to the exact gateway mutation contract.
+ *
+ * @remarks
+ * Every option mutation, single-leg or combo, routes through this one mapping,
+ * so a contract that has no exact IBKR identity fails closed in one place.
+ */
+export function derivativeMutationContract(source: DerivativeContract): OptionOrderContract {
   if (source.brokerReference?.broker !== "ibkr") {
     throw new Error("Gateway mutation requires an exact IBKR contract identity");
   }
@@ -137,10 +145,14 @@ function contract(intent: CanonicalComboIntent, index: 0 | 1) {
     exchange: identity.exchange,
     multiplier: identity.multiplier,
     strike: identity.strike,
-    right: identity.right === "CALL" ? ("C" as const) : ("P" as const),
+    right: identity.right === "CALL" ? "C" : "P",
     ...(identity.settlement === undefined ? {} : { settlement: identity.settlement }),
     ...(identity.exerciseStyle === undefined ? {} : { exerciseStyle: identity.exerciseStyle }),
   };
+}
+
+function contract(intent: CanonicalComboIntent, index: 0 | 1): OptionOrderContract {
+  return derivativeMutationContract(intent.legs[index].contract);
 }
 
 type DerivativePreviewRequest = Extract<PreviewOrdersRequest, { legs: unknown }>;

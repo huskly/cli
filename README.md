@@ -55,6 +55,7 @@ huskly-cli --broker ibkr repl
 | `transactions`                                  | ✓      | ✓    |
 | `orders`                                        | ✓      | ✓    |
 | `place-order`                                   | ✓      | ✗    |
+| `place-option-order`                            | ✓      | ✓    |
 | `cancel-order`                                  | ✓      | ✗    |
 | `repl`                                          | ✓      | ✓    |
 
@@ -100,6 +101,32 @@ huskly-cli equity submit <preview-id> --operator alice --confirm
 
 `equity preview` and `equity submit` drive the same guarded service as the
 `preview_equity_order` and `submit_equity_order` MCP tools.
+
+### Single-leg option orders
+
+`place-option-order` takes the same arguments for both brokers.
+
+```bash
+huskly-cli place-option-order AAPL 2026-01-16 250 CALL 1 BUY_TO_OPEN -p 5.10
+
+huskly-cli --broker ibkr place-option-order IBIT 2026-10-02 42 PUT 1 SELL_TO_OPEN \
+  -p 0.99 --confirm
+```
+
+Schwab places the order directly from the OCC symbol and accepts `MARKET` or
+`LIMIT`. IBKR routes through the guarded gateway, which resolves the exact
+contract first and accepts `LIMIT` orders only. An IBKR order needs
+`--confirm` and an operator identity from `--operator` or
+`HUSKLY_EXT_OPERATOR`. Give `--class` or `--exchange` only when the series is
+ambiguous.
+
+The gateway has no What-If for one option leg, so this command has no
+preview step. It writes a durable order reference before it calls the broker
+and prints that reference with the result. If the response is lost, run the
+same command with `--recover <order-ref>`. Recovery reads the outcome back
+through the same reservation. It never submits the order twice. Use
+`order show`, `order watch`, and `order cancel` with the operation ID for the
+rest of the lifecycle.
 
 ### Working without Redis
 

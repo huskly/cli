@@ -4,7 +4,7 @@ import { createEquityTools, type EquityTools } from "#src/mcp/tools/equityOrders
 import type { EquityPreviewDto, EquitySubmissionDto } from "#src/equities/equityOrderService.js";
 import { cliGatewayTransport } from "#src/gateway/gatewayTransport.js";
 import { renderSafeOperation, safeOperation, type SafeOperationView } from "./operationView.js";
-import type { BrokerResolver } from "./shared.js";
+import { requireOperator, type BrokerResolver } from "./shared.js";
 
 /** Every gateway-backed command declares the same broker flag and fallback. */
 const GATEWAY_BROKER_FLAG: readonly [string, string] = [
@@ -97,14 +97,6 @@ function limitPrice(value: string): number {
     throw new Error(`Invalid limit price '${value}'.`);
   }
   return parsed;
-}
-
-function operator(value: string | undefined): string {
-  const result = value ?? process.env["HUSKLY_EXT_OPERATOR"];
-  if (!result?.trim()) {
-    throw new Error("An exact --operator or HUSKLY_EXT_OPERATOR is required.");
-  }
-  return result;
 }
 
 function confirmed(value: boolean | undefined): true {
@@ -278,7 +270,7 @@ Examples:
     )
     .action(async (previewId: string, options: SubmitOptions) => {
       const confirm = confirmed(options.confirm);
-      const extOperator = operator(options.operator);
+      const extOperator = requireOperator(options.operator);
       const result = await (
         await createEquityOrders(broker(options.broker))
       ).submit({ previewId, operator: extOperator, confirm });

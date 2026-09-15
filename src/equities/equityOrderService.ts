@@ -10,6 +10,7 @@ import {
   type SubmissionRecord,
 } from "#src/derivatives/derivativeExecutionService.js";
 import type { OrderOperation } from "@huskly/ibkr-gateway-client";
+import type { CanonicalSingleOptionIntent } from "#src/options/optionOrder.js";
 import type {
   CanonicalEquityIntent,
   EquityGatewayClient,
@@ -248,9 +249,9 @@ export class FileEquitySubmissionStore implements EquitySubmissionStore {
     validatePreviewId(previewId);
     const value = await this.store.loadSubmission(previewId);
     if (value === undefined) return undefined;
-    if (value.operationKind !== "single" || !("contract" in value.canonicalIntent))
+    if (value.operationKind !== "single" || !isEquityIntent(value.canonicalIntent))
       throw new Error("Submission record is not an equity order");
-    return value;
+    return { ...value, canonicalIntent: value.canonicalIntent };
   }
   public save(value: EquitySubmissionRecord): Promise<void> {
     return this.store.saveSubmission(value satisfies SubmissionRecord);
@@ -464,6 +465,13 @@ function submissionDto(
 function validateOperation(operation: OrderOperation): void {
   if (operation.kind !== "single" || operation.operationId.length === 0)
     throw new Error("Gateway returned an invalid equity operation");
+}
+
+/** A `single` submission record can hold an equity or an option intent. */
+function isEquityIntent(
+  intent: CanonicalEquityIntent | CanonicalSingleOptionIntent
+): intent is CanonicalEquityIntent {
+  return intent.contract.assetClass === "STK";
 }
 
 function normalizeSymbol(value: string): string {

@@ -10,7 +10,7 @@ import { handlePositions } from "./positions.js";
 import { handleTransactions } from "./transactions.js";
 import { handleOrders } from "./orders.js";
 import { handlePlaceOrder } from "./placeOrder.js";
-import { handlePlaceOptionOrder } from "./placeOptionOrder.js";
+import { handlePlaceOptionOrder, type PlaceOptionOrderOptions } from "./placeOptionOrder.js";
 import { handleCancelOrder } from "./cancelOrder.js";
 import { handleRepl } from "./repl.js";
 import { handleUserPreference } from "./userPreference.js";
@@ -385,6 +385,27 @@ Omit the expiry to use the nearest listed expiry.`
     .option("-p, --price <price>", "Limit price per contract (required for LIMIT orders)")
     .option("-s, --session <session>", "Trading session: NORMAL, AM, PM, SEAMLESS", "NORMAL")
     .option("-d, --duration <duration>", "Order duration: DAY, GOOD_TILL_CANCEL, etc.", "DAY")
+    .option("--broker <name>", "Broker to use: schwab or ibkr")
+    .option("--confirm", "IBKR only: confirm this real order submission")
+    .option("--operator <name>", "IBKR only: CME operator; defaults to HUSKLY_EXT_OPERATOR")
+    .option("--class <trading-class>", "IBKR only: exact broker trading class")
+    .option("--exchange <exchange>", "IBKR only: exact listing/routing exchange")
+    .option("--recover <order-ref>", "IBKR only: recover this exact order reference")
+    .option("--json", "IBKR only: emit a stable JSON DTO")
+    .addHelpText(
+      "after",
+      `
+  Schwab places the order directly and accepts MARKET or LIMIT. IBKR routes
+  through the guarded gateway, which resolves the exact contract and takes
+  LIMIT orders only. An IBKR order needs --confirm and an operator identity.
+  Keep the printed order reference: --recover reads a lost response back
+  without a second submission.
+
+  Examples:
+    $ huskly-cli place-option-order AAPL 2026-01-16 250 CALL 1 BUY_TO_OPEN -p 5.10
+    $ huskly-cli --broker ibkr place-option-order IBIT 2026-10-02 42 PUT 1 SELL_TO_OPEN -p 0.99 --confirm
+    $ huskly-cli --broker ibkr place-option-order IBIT 2026-10-02 42 PUT 1 SELL_TO_OPEN -p 0.99 --confirm --recover <order-ref>`
+    )
     .action(
       async (
         symbol: string,
@@ -393,10 +414,10 @@ Omit the expiry to use the nearest listed expiry.`
         putCall: string,
         quantity: string,
         instruction: string,
-        options: { type: string; price?: string; session?: string; duration?: string }
+        options: PlaceOptionOrderOptions & { broker?: string }
       ) => {
-        guardSchwab("place-option-order");
         await handlePlaceOptionOrder(
+          broker(options.broker),
           symbol,
           expiry,
           strike,

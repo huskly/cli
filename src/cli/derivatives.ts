@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { BrokerName } from "#src/brokers/brokerClient.js";
-import { apiClient, type BrokerResolver } from "./shared.js";
+import { apiClient, requireOperator, type BrokerResolver } from "./shared.js";
 import { renderSafeOperation, safeOperation, type SafeOperationView } from "./operationView.js";
 import {
   collectSchwabDiagnostics,
@@ -245,14 +245,6 @@ function spreadKind(value: string): VerticalSpreadKind {
     throw new Error(`Invalid vertical kind '${value}'. Expected one of: ${kinds.join(", ")}.`);
   }
   return normalized as VerticalSpreadKind;
-}
-
-function operator(value: string | undefined): string {
-  const result = value ?? process.env["HUSKLY_EXT_OPERATOR"];
-  if (!result?.trim()) {
-    throw new Error("An exact --operator or HUSKLY_EXT_OPERATOR is required.");
-  }
-  return result;
 }
 
 function confirmed(value: boolean | undefined): true {
@@ -794,7 +786,7 @@ export function addDerivativeCommands(
     .option("--json", "Emit a stable JSON DTO")
     .action(async (previewId: string, options: ExecutionOptions) => {
       const confirm = confirmed(options.confirm);
-      const extOperator = operator(options.operator);
+      const extOperator = requireOperator(options.operator);
       const result = await (
         await createExecutionService(broker(options.broker))
       ).submit({

@@ -74,6 +74,21 @@ export function resolveBroker(value: string | undefined): BrokerName {
   return broker;
 }
 
+/**
+ * Resolve the CME operator identity for a guarded gateway mutation.
+ *
+ * @remarks
+ * Every gateway mutation needs operator evidence. The flag wins, then the
+ * ambient `HUSKLY_EXT_OPERATOR`, so scripts and interactive use share one rule.
+ */
+export function requireOperator(value: string | undefined): string {
+  const result = value ?? process.env["HUSKLY_EXT_OPERATOR"];
+  if (!result?.trim()) {
+    throw new Error("An exact --operator or HUSKLY_EXT_OPERATOR is required.");
+  }
+  return result;
+}
+
 /** Guard for Schwab-only commands: throws a clear error under any other broker. */
 export function requireSchwab(broker: BrokerName, command: string): void {
   if (broker !== "schwab") {

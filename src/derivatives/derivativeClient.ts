@@ -2,7 +2,10 @@ import type { BrokerName } from "#src/brokers/brokerClient.js";
 import {
   createGatewayMutationApi,
   GatewayMutationAdapter,
+  type GatewayMutationApi,
 } from "#src/gateway/gatewayMutationAdapter.js";
+import { OptionOrderGatewayAdapter } from "#src/options/optionGatewayAdapter.js";
+import type { OptionOrderGatewayClient } from "#src/options/optionOrder.js";
 import { cliGatewayTransport } from "#src/gateway/gatewayTransport.js";
 import type { DerivativeDiscoveryClient } from "./derivativeDiscovery.js";
 import type { DerivativeExecutionClient } from "./derivativeExecution.js";
@@ -41,14 +44,28 @@ const resolveDerivativeDiscovery = createDerivativeDiscoveryResolver({
     return new IbkrDerivativeAdapter(createIbkrGatewayDerivativeReadApi(transport));
   },
 });
-let mutationPromise: Promise<GatewayMutationAdapter> | undefined;
-function mutationClient(): Promise<GatewayMutationAdapter> {
-  return (mutationPromise ??= cliGatewayTransport()
-    .then((transport) => new GatewayMutationAdapter(createGatewayMutationApi(transport)))
+let mutationApiPromise: Promise<GatewayMutationApi> | undefined;
+function mutationApi(): Promise<GatewayMutationApi> {
+  return (mutationApiPromise ??= cliGatewayTransport()
+    .then(createGatewayMutationApi)
     .catch((error: unknown) => {
-      mutationPromise = undefined;
+      mutationApiPromise = undefined;
       throw error;
     }));
+}
+
+async function mutationClient(): Promise<GatewayMutationAdapter> {
+  return new GatewayMutationAdapter(await mutationApi());
+}
+
+/** The single-leg option mutation boundary. Only the gateway serves it. */
+export async function optionOrderGatewayClient(
+  broker: BrokerName
+): Promise<OptionOrderGatewayClient> {
+  if (broker !== "ibkr") {
+    throw new Error(`Option order execution is not implemented for broker '${broker}' yet.`);
+  }
+  return new OptionOrderGatewayAdapter(await mutationApi());
 }
 
 export function derivativeDiscoveryClient(broker: BrokerName): Promise<DerivativeDiscoveryClient> {

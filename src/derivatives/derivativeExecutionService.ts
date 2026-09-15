@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import type { CanonicalEquityIntent } from "#src/equities/equityOrder.js";
+import type { CanonicalSingleOptionIntent } from "#src/options/optionOrder.js";
 import type { DerivativeDiscoveryClient } from "./derivativeDiscovery.js";
 import type {
   DerivativeExecutionClient,
@@ -41,9 +42,17 @@ export interface ComboSubmissionRecord extends SubmissionRecordBase {
   readonly operation: OrderOperationView | null;
 }
 
-export interface SingleEquitySubmissionRecord extends SubmissionRecordBase {
+/**
+ * One guarded single-instrument submission.
+ *
+ * @remarks
+ * The gateway uses the same `single` operation kind for an equity order and a
+ * single-leg option order, so both share one durable record shape. The intent
+ * contract asset class separates them.
+ */
+export interface SingleSubmissionRecord extends SubmissionRecordBase {
   readonly operationKind: "single";
-  readonly canonicalIntent: CanonicalEquityIntent;
+  readonly canonicalIntent: CanonicalEquityIntent | CanonicalSingleOptionIntent;
   readonly operator: string;
   readonly intentHash: string;
   readonly account: {
@@ -53,7 +62,7 @@ export interface SingleEquitySubmissionRecord extends SubmissionRecordBase {
   readonly operation: OrderOperationView | null;
 }
 
-export type SubmissionRecord = ComboSubmissionRecord | SingleEquitySubmissionRecord;
+export type SubmissionRecord = ComboSubmissionRecord | SingleSubmissionRecord;
 
 export interface ActionRecord {
   readonly schemaVersion: 1;
@@ -258,6 +267,27 @@ const executionEquityIntentSchema = z.strictObject({
   orderType: z.literal("LMT"),
   limit: z.number().positive(),
 });
+const executionOptionIntentSchema = z.strictObject({
+  contract: z.strictObject({
+    conid: z.number().int().positive(),
+    assetClass: z.enum(["OPT", "FOP"]),
+    underlying: z.string().min(1).max(32),
+    expiration: z.string(),
+    tradingClass: z.string().min(1).max(32),
+    exchange: z.string().min(1).max(32),
+    multiplier: z.number().positive(),
+    strike: z.number().positive(),
+    right: z.enum(["C", "P"]),
+    settlement: z.string().optional(),
+    exerciseStyle: z.string().optional(),
+  }),
+  side: z.enum(["BUY", "SELL"]),
+  quantity: z.number().int().positive(),
+  tif: z.enum(["DAY", "GTC"]),
+  session: z.enum(["REGULAR", "OVERNIGHT"]),
+  orderType: z.literal("LMT"),
+  limit: z.number().positive(),
+});
 const submissionBaseSchema = {
   schemaVersion: z.literal(1),
   previewId: z.string().regex(/^[a-f0-9]{64}$/u),
@@ -281,7 +311,7 @@ const submissionSchema = z.discriminatedUnion("operationKind", [
   z.strictObject({
     ...submissionBaseSchema,
     operationKind: z.literal("single"),
-    canonicalIntent: executionEquityIntentSchema,
+    canonicalIntent: z.union([executionEquityIntentSchema, executionOptionIntentSchema]),
     operator: z.string().min(1).max(64),
     intentHash: z.string().regex(/^[a-f0-9]{64}$/u),
     account: z.strictObject({
