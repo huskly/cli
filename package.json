@@ -21,7 +21,7 @@
     "huskly-cli-mcp": "./dist/mcp/bin.js"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24.0.0 <26.0.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -34,13 +34,13 @@
     "format:check": "prettier --check \"{src,test}/**/*.ts\"",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "check": "npm run lint && npm run format:check && npm run typecheck && npm run test",
-    "prepublishOnly": "npm run build"
+    "check": "yarn lint && yarn format:check && yarn typecheck && yarn test",
+    "prepublishOnly": "yarn build"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/asciichart": "^1.5.8",
-    "@types/node": "^26",
+    "@types/node": "^24",
     "@typescript-eslint/eslint-plugin": "^8.17.0",
     "@typescript-eslint/parser": "^8.70.0",
     "eslint": "^10.9.1",

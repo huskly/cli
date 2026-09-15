@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   API_VERSION_HEADER,
   IbkrGatewayClient,
+  MIN_CLIENT_API_VERSION_HEADER,
   SUPPORTED_API_VERSION,
   type CreateOrderOperationRequest,
 } from "@huskly/ibkr-gateway-client";
@@ -24,6 +25,7 @@ function createGatewayResponse(body: unknown, init: ResponseInit = {}): Response
     headers: {
       "content-type": "application/json",
       [API_VERSION_HEADER]: SUPPORTED_API_VERSION,
+      [MIN_CLIENT_API_VERSION_HEADER]: SUPPORTED_API_VERSION,
     },
     ...init,
   });
@@ -186,7 +188,11 @@ void test("maps stable gateway failures and preserves successful recovery-requir
       { error: { code: "mutation_unavailable", message: "No mutation" } },
       {
         status: 503,
-        headers: { [API_VERSION_HEADER]: SUPPORTED_API_VERSION, "retry-after": "120" },
+        headers: {
+          [API_VERSION_HEADER]: SUPPORTED_API_VERSION,
+          [MIN_CLIENT_API_VERSION_HEADER]: SUPPORTED_API_VERSION,
+          "retry-after": "120",
+        },
       }
     )
   );
@@ -253,7 +259,11 @@ void test("maps version and transport failures to fixed consumer errors", async 
   fixture.queueResponse(
     new Response(JSON.stringify({ status: "live", version: SUPPORTED_API_VERSION }), {
       status: 200,
-      headers: { "content-type": "application/json", [API_VERSION_HEADER]: "0.4.0" },
+      headers: {
+        "content-type": "application/json",
+        [API_VERSION_HEADER]: "0.4.0",
+        [MIN_CLIENT_API_VERSION_HEADER]: "0.4.0",
+      },
     })
   );
   const transport = await fixture.create();

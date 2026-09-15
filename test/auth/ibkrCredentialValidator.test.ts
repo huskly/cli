@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { API_VERSION_HEADER, SUPPORTED_API_VERSION } from "@huskly/ibkr-gateway-client";
+import {
+  API_VERSION_HEADER,
+  MIN_CLIENT_API_VERSION_HEADER,
+  SUPPORTED_API_VERSION,
+} from "@huskly/ibkr-gateway-client";
 import { validateIbkrCredential } from "#src/auth/ibkrCredentialValidator.js";
 import type { GatewayConfig } from "#src/gateway/gatewayConfig.js";
 
@@ -31,6 +35,7 @@ function createJsonResponse(body: unknown, init: ResponseInit = {}): Response {
     headers: {
       "content-type": "application/json",
       [API_VERSION_HEADER]: SUPPORTED_API_VERSION,
+      [MIN_CLIENT_API_VERSION_HEADER]: SUPPORTED_API_VERSION,
     },
     ...init,
   });
@@ -42,6 +47,7 @@ function createRawResponse(body: string, init: ResponseInit = {}): Response {
     headers: {
       "content-type": "application/json",
       [API_VERSION_HEADER]: SUPPORTED_API_VERSION,
+      [MIN_CLIENT_API_VERSION_HEADER]: SUPPORTED_API_VERSION,
     },
     ...init,
   });
@@ -155,7 +161,13 @@ void test("rejects incompatible gateway API version with a fixed redacted error"
   fixture.queueResponse(
     createJsonResponse(
       { status: "live", version: "0.4.0", secret: "full response body acct-SECRET" },
-      { headers: { "content-type": "application/json", [API_VERSION_HEADER]: "0.4.0" } }
+      {
+        headers: {
+          "content-type": "application/json",
+          [API_VERSION_HEADER]: "0.4.0",
+          [MIN_CLIENT_API_VERSION_HEADER]: "0.4.0",
+        },
+      }
     )
   );
 
@@ -174,7 +186,61 @@ void test("rejects missing gateway API version with a fixed redacted error", asy
   fixture.queueResponse(
     createJsonResponse(
       { status: "live", version: SUPPORTED_API_VERSION, secret: "full response body acct-SECRET" },
-      { headers: { "content-type": "application/json" } }
+      {
+        headers: {
+          "content-type": "application/json",
+          [MIN_CLIENT_API_VERSION_HEADER]: SUPPORTED_API_VERSION,
+        },
+      }
+    )
+  );
+
+  await assertRedactedFailure(
+    validateIbkrCredential("cli", config, { fetch: fixture.fetch }),
+    "IBKR CLI credential failed gateway compatibility validation"
+  );
+  assert.deepEqual(fixture.paths, ["/api/v1/machine/token", "/livez"]);
+});
+
+void test("rejects a missing minimum client API version with a fixed redacted error", async () => {
+  const fixture = createFixture();
+  fixture.queueResponse(
+    createJsonResponse(validTokenResponse, { headers: { "content-type": "application/json" } })
+  );
+  fixture.queueResponse(
+    createJsonResponse(
+      { status: "live", version: SUPPORTED_API_VERSION },
+      {
+        headers: {
+          "content-type": "application/json",
+          [API_VERSION_HEADER]: SUPPORTED_API_VERSION,
+        },
+      }
+    )
+  );
+
+  await assertRedactedFailure(
+    validateIbkrCredential("cli", config, { fetch: fixture.fetch }),
+    "IBKR CLI credential failed gateway compatibility validation"
+  );
+  assert.deepEqual(fixture.paths, ["/api/v1/machine/token", "/livez"]);
+});
+
+void test("rejects a minimum client API version above this client", async () => {
+  const fixture = createFixture();
+  fixture.queueResponse(
+    createJsonResponse(validTokenResponse, { headers: { "content-type": "application/json" } })
+  );
+  fixture.queueResponse(
+    createJsonResponse(
+      { status: "live", version: "0.12.0" },
+      {
+        headers: {
+          "content-type": "application/json",
+          [API_VERSION_HEADER]: "0.12.0",
+          [MIN_CLIENT_API_VERSION_HEADER]: "0.12.0",
+        },
+      }
     )
   );
 

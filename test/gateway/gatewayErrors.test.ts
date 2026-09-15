@@ -40,7 +40,11 @@ void test("translates only stable generated-client failures with fixed messages"
 
   const version = toConsumerError(
     "queryQuotes",
-    new IbkrGatewayVersionError({ expected: "0.5.0", received: "0.4.0" })
+    new IbkrGatewayVersionError({
+      expected: "0.5.0",
+      received: "0.4.0",
+      minimumClient: "0.4.0",
+    })
   );
   assert.equal(version.code, "api_version_mismatch");
   assert.equal(version.message, "Gateway API version is not compatible");

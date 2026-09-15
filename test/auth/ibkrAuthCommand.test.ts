@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
-import { API_VERSION_HEADER, SUPPORTED_API_VERSION } from "@huskly/ibkr-gateway-client";
+import {
+  API_VERSION_HEADER,
+  MIN_CLIENT_API_VERSION_HEADER,
+  SUPPORTED_API_VERSION,
+} from "@huskly/ibkr-gateway-client";
 import { runIbkrAuthCommand } from "#src/auth/ibkrAuthCommand.js";
 import type { IbkrProvisioningResponse } from "#src/auth/ibkrProvisioningClient.js";
 import type {
@@ -305,6 +309,7 @@ void test("integrates provisioning, real installation, and real validation with 
       headers: {
         "content-type": "application/json",
         [API_VERSION_HEADER]: SUPPORTED_API_VERSION,
+        [MIN_CLIENT_API_VERSION_HEADER]: SUPPORTED_API_VERSION,
         ...headers,
       },
     });
