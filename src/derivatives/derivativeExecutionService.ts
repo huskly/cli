@@ -205,6 +205,7 @@ const operationSchema = z.strictObject({
     "broker_refused",
     "unknown_outcome",
     "reconciliation_required",
+    "operator_resolved_absent",
   ]),
   correlations: z.array(
     z.strictObject({
@@ -227,6 +228,7 @@ const operationSchema = z.strictObject({
         "broker_refused",
         "unknown_outcome",
         "reconciliation_required",
+        "operator_resolved_absent",
       ]),
       createdAt: z.iso.datetime(),
       latestTransitionAt: z.iso.datetime(),
@@ -476,7 +478,14 @@ export interface OrderLifecycleDto extends SubmissionDto {
   readonly commissionAndFees: number | null;
 }
 
-const terminalStates = new Set(["accepted", "cancelled", "broker_refused"]);
+// `operator_resolved_absent` is a human attestation that the broker created no
+// order. The gateway states it as terminal and it blocks no further mutation.
+const terminalStates = new Set([
+  "accepted",
+  "cancelled",
+  "broker_refused",
+  "operator_resolved_absent",
+]);
 const defaultDelay = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 

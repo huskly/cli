@@ -544,6 +544,19 @@ void test("reconciliation uses the exact generated envelope and persists returne
   assert.equal(network.reconcileCalls, 1);
 });
 
+void test("watch stops on an operator-resolved absence, which is terminal", async () => {
+  const store = new InMemoryExecutionStateStore();
+  const network = new FakeNetwork();
+  network.created = operation({ state: "operator_resolved_absent" });
+  const execution = service(store, network, () => "key", preview);
+
+  await execution.submit({ previewId: preview.previewId, operator: "x", confirm: true });
+  const status = await execution.watch({ operationId: "op-1", timeoutMs: 1000, pollMs: 10 });
+
+  assert.equal(status.operation.state, "operator_resolved_absent");
+  assert.equal(network.getCalls, 1);
+});
+
 void test("watch uses injected time at the exact deadline", async () => {
   let time = 0;
   const delays: number[] = [];

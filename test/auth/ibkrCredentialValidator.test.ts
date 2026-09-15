@@ -15,6 +15,9 @@ const config: GatewayConfig = {
   clientSecret: "machine-client-secret",
 };
 
+/** A gateway version above this client, whatever version the client is pinned to. */
+const ABOVE_SUPPORTED_API_VERSION = `${String(Number(SUPPORTED_API_VERSION.split(".")[0] ?? "0") + 1)}.0.0`;
+
 const validTokenResponse = {
   access_token: "access-secret-token",
   token_type: "Bearer",
@@ -233,12 +236,12 @@ void test("rejects a minimum client API version above this client", async () => 
   );
   fixture.queueResponse(
     createJsonResponse(
-      { status: "live", version: "0.12.0" },
+      { status: "live", version: ABOVE_SUPPORTED_API_VERSION },
       {
         headers: {
           "content-type": "application/json",
-          [API_VERSION_HEADER]: "0.12.0",
-          [MIN_CLIENT_API_VERSION_HEADER]: "0.12.0",
+          [API_VERSION_HEADER]: ABOVE_SUPPORTED_API_VERSION,
+          [MIN_CLIENT_API_VERSION_HEADER]: ABOVE_SUPPORTED_API_VERSION,
         },
       }
     )
