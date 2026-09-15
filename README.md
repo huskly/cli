@@ -46,14 +46,60 @@ huskly-cli --broker ibkr repl
 | `spread submit`                                 | ✗      | ✓    |
 | `spread recover`                                | ✗      | ✓    |
 | `order show/watch/acknowledge/reconcile/cancel` | ✗      | ✓    |
-| `broker doctor`                                 | ✗      | ✓    |
+| `equity preview`                                | ✗      | ✓    |
+| `equity submit`                                 | ✗      | ✓    |
+| `broker doctor`                                 | ✓      | ✓    |
 | `account`                                       | ✓      | ✓    |
 | `user-preference`                               | ✓      | ✗    |
 | `positions`                                     | ✓      | ✓    |
 | `transactions`                                  | ✓      | ✓    |
 | `orders`                                        | ✓      | ✓    |
 | `place-order`                                   | ✓      | ✗    |
+| `cancel-order`                                  | ✓      | ✗    |
 | `repl`                                          | ✓      | ✓    |
+
+Gateway commands (`option`, `spread`, `order`, `equity`) default to IBKR.
+A `--broker` flag on the command wins, then the global `--broker`, then that
+default.
+
+### Trading and diagnostics
+
+```bash
+huskly-cli broker doctor --broker schwab
+huskly-cli broker doctor --broker ibkr
+
+huskly-cli orders --status WORKING
+huskly-cli cancel-order 1003456789 --confirm
+
+huskly-cli equity preview AAPL BUY 10 --limit 250.00
+huskly-cli equity submit <preview-id> --operator alice --confirm
+```
+
+`equity preview` and `equity submit` drive the same guarded service as the
+`preview_equity_order` and `submit_equity_order` MCP tools.
+
+### Working without Redis
+
+Redis caches Schwab reads. Use `--no-cache` to skip it and read the broker
+directly, which also works while Redis is down.
+
+```bash
+huskly-cli --no-cache quote AAPL
+huskly-cli --no-cache repl
+```
+
+### REPL
+
+`huskly-cli repl` runs every CLI command with the same options and help.
+
+```
+schwab> quote "AAPL  261218C00330000"
+schwab> vix --json
+schwab> help quote
+schwab> exit
+```
+
+The session keeps the broker and the `--no-cache` setting it started with.
 
 IBKR `search` supports `symbol-search` and `search`.
 Schwab-only search projections return a clear error under `--broker ibkr`.
