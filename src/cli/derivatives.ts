@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import type { BrokerName } from "#src/brokers/brokerClient.js";
+import type { BrokerResolver } from "./shared.js";
 import {
   derivativeDiscoveryClient,
   derivativeExecutionClient,
@@ -93,6 +94,12 @@ type ExecutionServiceLike = Pick<
   DerivativeExecutionService,
   "submit" | "recover" | "getStatus" | "watch" | "acknowledgeWarning" | "reconcile" | "cancel"
 >;
+
+/** Every gateway-backed command declares the same broker flag and fallback. */
+const GATEWAY_BROKER_FLAG: readonly [string, string] = [
+  "--broker <name>",
+  "Broker to use: schwab or ibkr (default: ibkr)",
+];
 
 export interface DerivativeCommandDependencies {
   readonly createResearchService?: (broker: BrokerName) => Promise<ResearchServiceLike>;
@@ -305,7 +312,7 @@ function integer(value: string, name: string): number {
 
 function seriesOptions(command: Command): Command {
   return command
-    .option("--broker <name>", "Broker to use: schwab or ibkr")
+    .option(...GATEWAY_BROKER_FLAG)
     .option("--asset <class>", "Derivative asset class: OPT or FOP", "OPT")
     .requiredOption("--expiry <date>", "Expiration date (YYYY-MM-DD)")
     .option("--class <trading-class>", "Exact broker trading class")
@@ -740,9 +747,12 @@ async function executionService(broker: BrokerName): Promise<DerivativeExecution
 /** Register broker-neutral derivative research commands without changing legacy chain commands. */
 export function addDerivativeCommands(
   program: Command,
-  broker: (override?: string) => BrokerName,
+  resolveBrokerFor: BrokerResolver,
   dependencies: DerivativeCommandDependencies = {}
 ): void {
+  /** Gateway commands fall back to IBKR, never to the global Schwab default. */
+  const broker = (override: string | undefined): BrokerName => resolveBrokerFor(override, "ibkr");
+
   const createResearchService = dependencies.createResearchService ?? service;
   const createPreviewService = dependencies.createPreviewService ?? previewService;
   const createExecutionService = dependencies.createExecutionService ?? executionService;
@@ -859,7 +869,7 @@ export function addDerivativeCommands(
     .command("submit")
     .description("Submit the exact, unexpired reviewed preview")
     .argument("<preview-id>", "Exact preview ID")
-    .option("--broker <name>", "Broker to use", "ibkr")
+    .option(...GATEWAY_BROKER_FLAG)
     .option("--operator <name>", "CME operator identity; defaults to HUSKLY_EXT_OPERATOR")
     .option("--confirm", "Confirm this order submission")
     .option("--json", "Emit a stable JSON DTO")
@@ -880,7 +890,7 @@ export function addDerivativeCommands(
     .command("recover")
     .description("Recover a lost submission response for the exact preview")
     .argument("<preview-id>", "Exact preview ID")
-    .option("--broker <name>", "Broker to use", "ibkr")
+    .option(...GATEWAY_BROKER_FLAG)
     .option("--json", "Emit a stable JSON DTO")
     .action(async (previewId: string, options: Omit<ExecutionOptions, "confirm" | "operator">) => {
       const result = await (
@@ -894,7 +904,7 @@ export function addDerivativeCommands(
   order
     .command("show")
     .argument("<operation-id>", "Gateway operation ID")
-    .option("--broker <name>", "Broker to use", "ibkr")
+    .option(...GATEWAY_BROKER_FLAG)
     .option("--json", "Emit a stable JSON DTO")
     .action(
       async (operationId: string, options: Omit<ExecutionOptions, "confirm" | "operator">) => {
@@ -907,7 +917,7 @@ export function addDerivativeCommands(
   order
     .command("watch")
     .argument("<operation-id>", "Gateway operation ID")
-    .option("--broker <name>", "Broker to use", "ibkr")
+    .option(...GATEWAY_BROKER_FLAG)
     .option("--timeout <seconds>", "Maximum watch duration", "300")
     .option("--poll <seconds>", "Polling interval", "2")
     .option("--json", "Emit a stable JSON DTO")
@@ -925,7 +935,7 @@ export function addDerivativeCommands(
     .command("acknowledge")
     .argument("<operation-id>", "Gateway operation ID")
     .requiredOption("--reply <reply-id>", "Exact pending warning reply ID")
-    .option("--broker <name>", "Broker to use", "ibkr")
+    .option(...GATEWAY_BROKER_FLAG)
     .option("--confirm", "Confirm this warning acknowledgment")
     .option("--json", "Emit a stable JSON DTO")
     .action(async (operationId: string, options: AcknowledgeOptions) => {
@@ -942,7 +952,7 @@ export function addDerivativeCommands(
   order
     .command("reconcile")
     .argument("<operation-id>", "Gateway operation ID")
-    .option("--broker <name>", "Broker to use", "ibkr")
+    .option(...GATEWAY_BROKER_FLAG)
     .option("--confirm", "Confirm reconciliation")
     .option("--json", "Emit a stable JSON DTO")
     .action(async (operationId: string, options: ExecutionOptions) => {
@@ -955,7 +965,7 @@ export function addDerivativeCommands(
   order
     .command("cancel")
     .argument("<operation-id>", "Gateway operation ID")
-    .option("--broker <name>", "Broker to use", "ibkr")
+    .option(...GATEWAY_BROKER_FLAG)
     .option("--confirm", "Confirm cancellation")
     .option("--json", "Emit a stable JSON DTO")
     .action(async (operationId: string, options: ExecutionOptions) => {
@@ -974,9 +984,9 @@ export function addDerivativeCommands(
   brokerCommand
     .command("doctor")
     .description("Run gateway trading diagnostics")
-    .option("--broker <name>", "Broker to use: schwab or ibkr", "ibkr")
+    .option(...GATEWAY_BROKER_FLAG)
     .option("--json", "Emit a stable JSON DTO")
-    .action(async (options: { broker: string; json?: boolean }) => {
+    .action(async (options: { broker?: string; json?: boolean }) => {
       const result = await (
         await createPreviewService(broker(options.broker))
       ).getTradingDiagnostics();

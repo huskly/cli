@@ -18,7 +18,7 @@ import { handleUserPreference } from "./userPreference.js";
 import { handleSearch } from "./search.js";
 import { handleMovers } from "./movers.js";
 import { disconnectCache, RedisUnavailableError } from "#src/cache.js";
-import { resolveBroker, requireSchwab } from "./shared.js";
+import { chooseBroker, requireSchwab } from "./shared.js";
 import { packageVersion } from "./packageVersion.js";
 import type { BrokerName } from "#src/brokers/brokerClient.js";
 import { addDerivativeCommands } from "./derivatives.js";
@@ -29,11 +29,18 @@ program
   .name("huskly-cli")
   .description("Terminal-based trading tools for Schwab (huskly auth) and IBKR (gateway)")
   .version(packageVersion())
-  .option("--broker <name>", "Broker to use: schwab or ibkr", "schwab");
+  .option("--broker <name>", "Broker to use: schwab or ibkr (default: schwab)");
 
-/** The broker selected via the global --broker flag (defaults to schwab). */
-function broker(override?: string): BrokerName {
-  return resolveBroker(override ?? program.opts<{ broker?: string }>().broker);
+/**
+ * Resolve the broker for one command.
+ *
+ * @remarks
+ * The global flag carries no Commander default, so an unset value stays
+ * `undefined` and each command can apply its own fallback. This keeps a single
+ * decision point instead of competing defaults on every subcommand.
+ */
+function broker(override?: string, fallback: BrokerName = "schwab"): BrokerName {
+  return chooseBroker(override, program.opts<{ broker?: string }>().broker, fallback);
 }
 
 /** Resolve the broker and assert the command is Schwab-only. */

@@ -46,6 +46,25 @@ export async function brokerClient(broker: BrokerName): Promise<BrokerClient> {
   return promise;
 }
 
+/**
+ * Resolve the broker a command must use.
+ *
+ * @remarks
+ * A subcommand `--broker` wins, then the global `--broker`, then the command's
+ * own default. Gateway-only commands pass `"ibkr"` as the fallback, so the
+ * global Schwab default never sends them to a broker that cannot serve them.
+ */
+export type BrokerResolver = (override: string | undefined, fallback: BrokerName) => BrokerName;
+
+/** Apply the broker precedence rule: subcommand flag, global flag, then fallback. */
+export function chooseBroker(
+  override: string | undefined,
+  globalOverride: string | undefined,
+  fallback: BrokerName
+): BrokerName {
+  return resolveBroker(override ?? globalOverride ?? fallback);
+}
+
 /** Resolve the broker from a Commander option, validating the value. */
 export function resolveBroker(value: string | undefined): BrokerName {
   const broker = (value ?? "schwab").toLowerCase();
