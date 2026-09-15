@@ -118,6 +118,59 @@ function price(value: number | null): string {
   return value !== null ? "$" + value.toFixed(2) : "-";
 }
 
+/** In-the-money cells are shaded; out-of-the-money cells stay dim. */
+const ITM_CALL = (text: string, itm: boolean): string =>
+  itm ? chalk.bgGreen.black.bold(text) : chalk.green.dim(text);
+const ITM_PUT = (text: string, itm: boolean): string =>
+  itm ? chalk.bgRed.white.bold(text) : chalk.red.dim(text);
+
+/** A marker row showing where the underlying sits between two strikes. */
+function atmDivider(underlying: number, estimated: boolean): string {
+  const label = ` ${estimated ? "≈" : ""}$${underlying.toFixed(2)} `;
+  const width = COL_WIDTH * 8 + STRIKE_WIDTH;
+  const left = Math.max(0, Math.floor((width - label.length) / 2));
+  return chalk.yellow(
+    "·".repeat(left) + label + "·".repeat(Math.max(0, width - left - label.length))
+  );
+}
+
+/** The underlying price used to judge moneyness, and whether it was derived. */
+export interface MoneynessReference {
+  readonly price: number;
+  readonly estimated: boolean;
+}
+
+/**
+ * Estimate the underlying price from the chain itself, through put-call parity.
+ *
+ * @remarks
+ * For one strike, call - put equals underlying - strike, so each paired strike
+ * implies a price. The implication is most accurate near the money, where both
+ * legs are liquid, so the strike with the smallest call/put difference wins.
+ * This runs only when the broker cannot price the underlying, which the IBKR
+ * gateway cannot do for some series.
+ */
+export function estimateUnderlying(strikes: readonly ChainStrikeDto[]): number | null {
+  let best: { distance: number; price: number } | null = null;
+  for (const row of strikes) {
+    const call = row.call?.mid;
+    const put = row.put?.mid;
+    if (call === null || call === undefined || put === null || put === undefined) continue;
+    const distance = Math.abs(call - put);
+    if (best === null || distance < best.distance) {
+      best = { distance, price: row.strike + call - put };
+    }
+  }
+  return best === null ? null : best.price;
+}
+
+/** Resolve the moneyness reference: the broker price, else a parity estimate. */
+export function moneynessReference(dto: OptionChainDto): MoneynessReference | null {
+  if (dto.underlyingPrice !== null) return { price: dto.underlyingPrice, estimated: false };
+  const estimated = estimateUnderlying(dto.strikes);
+  return estimated === null ? null : { price: estimated, estimated: true };
+}
+
 export function renderOptionChain(dto: OptionChainDto): string {
   const header = chalk.bold(`\n⛓️  Option Chain: ${dto.symbol} ${dto.expiry}\n`);
   if (dto.strikes.length === 0) {
@@ -155,29 +208,50 @@ export function renderOptionChain(dto: OptionChainDto): string {
     rule,
   ];
 
-  const underlying = dto.underlyingPrice;
+  const reference = moneynessReference(dto);
+  const underlying = reference?.price ?? null;
+  const cell = (value: string): string => value.padStart(COL_WIDTH);
+  const delta = (value: number | null | undefined): string =>
+    cell(value !== null && value !== undefined ? value.toFixed(2) : "-");
+
+  let crossed = underlying === null;
   for (const row of dto.strikes) {
+    // A call is in the money below the underlying, a put above it.
     const callItm = underlying !== null && row.strike < underlying;
     const putItm = underlying !== null && row.strike > underlying;
-    const callColor = callItm ? chalk.greenBright : chalk.cyan;
-    const putColor = putItm ? chalk.redBright : chalk.cyan;
-    const delta = (value: number | null | undefined): string =>
-      (value !== null && value !== undefined ? value.toFixed(2) : "-").padStart(COL_WIDTH);
-    const callMid = price(row.call?.mid ?? null).padStart(COL_WIDTH);
-    const putMid = price(row.put?.mid ?? null).padStart(COL_WIDTH);
+
+    if (!crossed && underlying !== null && row.strike >= underlying) {
+      crossed = true;
+      lines.push(atmDivider(underlying, reference?.estimated === true));
+    }
 
     lines.push(
-      callColor(price(row.call?.bid ?? null).padStart(COL_WIDTH)) +
-        callColor(price(row.call?.ask ?? null).padStart(COL_WIDTH)) +
-        (callItm ? chalk.yellowBright(callMid) : chalk.yellow(callMid)) +
+      ITM_CALL(
+        cell(price(row.call?.bid ?? null)) +
+          cell(price(row.call?.ask ?? null)) +
+          cell(price(row.call?.mid ?? null)),
+        callItm
+      ) +
         chalk.gray(delta(row.call?.delta)) +
-        chalk.white(("$" + row.strike.toFixed(2)).padStart(STRIKE_WIDTH)) +
+        chalk.white.bold(("$" + row.strike.toFixed(2)).padStart(STRIKE_WIDTH)) +
         chalk.gray(delta(row.put?.delta)) +
-        (putItm ? chalk.yellowBright(putMid) : chalk.yellow(putMid)) +
-        putColor(price(row.put?.ask ?? null).padStart(COL_WIDTH)) +
-        putColor(price(row.put?.bid ?? null).padStart(COL_WIDTH))
+        ITM_PUT(
+          cell(price(row.put?.mid ?? null)) +
+            cell(price(row.put?.ask ?? null)) +
+            cell(price(row.put?.bid ?? null)),
+          putItm
+        )
     );
   }
+
+  lines.push(
+    rule,
+    underlying === null
+      ? chalk.gray("  Moneyness unknown: no underlying price available.")
+      : chalk.gray(
+          `  ${ITM_CALL(" ITM ", true)} in the money    ${ITM_PUT(" ITM ", true)} in the money    underlying ${reference?.estimated === true ? "≈" : ""}$${underlying.toFixed(2)}`
+        )
+  );
   lines.push("");
   return lines.join("\n");
 }

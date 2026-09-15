@@ -80,6 +80,11 @@ or `--exchange` only when the default series for the underlying is ambiguous.
 If the broker cannot price the underlying, the chain still prints and the
 missing price is reported above the table.
 
+In-the-money contracts are shaded: green on the call side, red on the put
+side. A marker row shows where the underlying sits between two strikes.
+When the broker cannot price the underlying, the price is derived from
+put-call parity and shown with `≈`.
+
 ### Trading and diagnostics
 
 ```bash
