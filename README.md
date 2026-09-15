@@ -163,12 +163,39 @@ npm run build
 
 ```bash
 huskly-cli quote AAPL
+huskly-cli quote SPY QQQ NVDA
 huskly-cli search AAPL
 huskly-cli history AAPL --days 30
 huskly-cli chart SPY --days 60
 huskly-cli movers '$SPX' --sort PERCENT_CHANGE_UP
 huskly-cli vix
 ```
+
+Under Schwab, `quote` also accepts 21-character OSI option symbols.
+Quote the symbol so the shell keeps the space padding as one argument.
+
+```bash
+huskly-cli quote "AAPL  260116C00250000"   # AAPL 2026-01-16 250 call
+huskly-cli quote "SPY   251219P00600000"   # SPY 2025-12-19 600 put
+```
+
+Under `--broker ibkr`, `quote` accepts equity symbols only.
+Use `option chain` to quote IBKR option series.
+
+Every market-data and account read command accepts `--json` for a stable DTO.
+
+```bash
+huskly-cli quote --json AAPL
+huskly-cli history AAPL --days 30 --json
+huskly-cli chain AAPL 2026-01-16 --strikes 5 --json
+huskly-cli expiries AAPL --json
+huskly-cli movers '$SPX' --json
+huskly-cli vix --json
+```
+
+The `chain --json` DTO also gives volume, open interest, and the `delayed` flag,
+which the table view does not show.
+`chart --image` and `chart --json` are exclusive.
 
 ### Shared account reads
 

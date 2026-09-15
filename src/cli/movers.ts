@@ -5,7 +5,6 @@ import type {
   SchwabMoversIndexSymbol,
   SchwabMoversSort,
   SchwabMoversFrequency,
-  SchwabMover,
 } from "@huskly/schwab-client";
 
 const VALID_INDEX_SYMBOLS: SchwabMoversIndexSymbol[] = [
@@ -31,88 +30,107 @@ const VALID_SORTS: SchwabMoversSort[] = [
 
 const VALID_FREQUENCIES: SchwabMoversFrequency[] = [0, 1, 5, 10, 30, 60];
 
-function formatChange(change: number | undefined): string {
-  if (change === undefined) return "-";
-  const formatted = change * 100;
-  if (change > 0) {
-    return chalk.green(`+${formatted.toFixed(2)}%`);
-  } else {
-    return chalk.red(`${formatted.toFixed(2)}%`);
-  }
+export interface MoverDto {
+  readonly rank: number;
+  readonly symbol: string | null;
+  readonly description: string | null;
+  readonly lastPrice: number | null;
+  readonly netPercentChange: number | null;
+  readonly volume: number | null;
 }
 
-function printMover(mover: SchwabMover, index: number): void {
-  const rank = chalk.gray(`${String(index + 1).padStart(2)}.`);
-  const symbol = chalk.cyan.bold((mover.symbol ?? "-").padEnd(8));
-  const price = chalk.white(`$${formatNumber(mover.lastPrice)}`);
-  const change = formatChange(mover.netPercentChange);
-  const volume = chalk.gray(`Vol: ${formatVolume(mover.volume)}`);
-  const description = chalk.gray((mover.description ?? "").slice(0, 30));
-
-  console.log(`${rank} ${symbol} ${price.padStart(12)}  ${change.padStart(18)}  ${volume}`);
-  console.log(`    ${description}`);
+export interface MoversDto {
+  readonly index: SchwabMoversIndexSymbol;
+  readonly sort: SchwabMoversSort | null;
+  readonly frequency: SchwabMoversFrequency | null;
+  readonly count: number;
+  readonly movers: readonly MoverDto[];
 }
 
 export interface MoversOptions {
   sort?: string;
   frequency?: string;
+  json?: boolean;
+}
+
+/** Reject an unsupported enum value with the full list of accepted values. */
+function oneOf<T extends string | number>(value: T, valid: readonly T[], name: string): T {
+  if (!valid.includes(value)) {
+    throw new Error(`Invalid ${name}: ${String(value)}. Valid options: ${valid.join(", ")}.`);
+  }
+  return value;
+}
+
+function formatChange(change: number | null): string {
+  if (change === null) return "-";
+  const formatted = `${(change * 100).toFixed(2)}%`;
+  return change > 0 ? chalk.green(`+${formatted}`) : chalk.red(formatted);
+}
+
+export function renderMovers(dto: MoversDto): string {
+  const sortLabel = dto.sort ?? "default";
+  const freqLabel = dto.frequency !== null ? `${String(dto.frequency)} min` : "default";
+  const lines = [
+    chalk.bold(`\nTop Movers for ${dto.index}\n`),
+    chalk.gray(`Sort: ${sortLabel}  |  Frequency: ${freqLabel}\n`),
+    chalk.gray("-".repeat(70)),
+  ];
+  if (dto.count === 0) {
+    lines.push(chalk.yellow(`No movers found for ${dto.index}`));
+    return lines.join("\n");
+  }
+
+  lines.push("");
+  for (const mover of dto.movers) {
+    const rank = chalk.gray(`${String(mover.rank).padStart(2)}.`);
+    const symbol = chalk.cyan.bold((mover.symbol ?? "-").padEnd(8));
+    const price = chalk.white(`$${formatNumber(mover.lastPrice ?? undefined)}`);
+    const volume = chalk.gray(`Vol: ${formatVolume(mover.volume ?? undefined)}`);
+    lines.push(
+      `${rank} ${symbol} ${price.padStart(12)}  ${formatChange(mover.netPercentChange).padStart(18)}  ${volume}`,
+      `    ${chalk.gray((mover.description ?? "").slice(0, 30))}`
+    );
+  }
+  lines.push("");
+  return lines.join("\n");
 }
 
 export async function handleMovers(symbolId: string, options: MoversOptions): Promise<void> {
-  const upperSymbolId = symbolId.toUpperCase() as SchwabMoversIndexSymbol;
-
-  if (!VALID_INDEX_SYMBOLS.includes(upperSymbolId)) {
-    console.error(
-      chalk.red(`Invalid index symbol: ${symbolId}`),
-      chalk.gray(`\nValid options: ${VALID_INDEX_SYMBOLS.join(", ")}`)
-    );
-    process.exit(1);
-  }
-
-  let sort: SchwabMoversSort | undefined;
-  if (options.sort) {
-    const upperSort = options.sort.toUpperCase() as SchwabMoversSort;
-    if (!VALID_SORTS.includes(upperSort)) {
-      console.error(
-        chalk.red(`Invalid sort: ${options.sort}`),
-        chalk.gray(`\nValid options: ${VALID_SORTS.join(", ")}`)
-      );
-      process.exit(1);
-    }
-    sort = upperSort;
-  }
-
-  let frequency: SchwabMoversFrequency | undefined;
-  if (options.frequency !== undefined) {
-    const freq = parseInt(options.frequency, 10) as SchwabMoversFrequency;
-    if (!VALID_FREQUENCIES.includes(freq)) {
-      console.error(
-        chalk.red(`Invalid frequency: ${options.frequency}`),
-        chalk.gray(`\nValid options: ${VALID_FREQUENCIES.join(", ")}`)
-      );
-      process.exit(1);
-    }
-    frequency = freq;
-  }
-
-  console.log(chalk.bold(`\nTop Movers for ${upperSymbolId}\n`));
-
-  const sortLabel = sort ?? "default";
-  const freqLabel = frequency !== undefined ? `${String(frequency)} min` : "default";
-  console.log(chalk.gray(`Sort: ${sortLabel}  |  Frequency: ${freqLabel}\n`));
-  console.log(chalk.gray("-".repeat(70)));
+  const index = oneOf(
+    symbolId.toUpperCase() as SchwabMoversIndexSymbol,
+    VALID_INDEX_SYMBOLS,
+    "index symbol"
+  );
+  const sort =
+    options.sort === undefined
+      ? null
+      : oneOf(options.sort.toUpperCase() as SchwabMoversSort, VALID_SORTS, "sort");
+  const frequency =
+    options.frequency === undefined
+      ? null
+      : oneOf(
+          parseInt(options.frequency, 10) as SchwabMoversFrequency,
+          VALID_FREQUENCIES,
+          "frequency"
+        );
 
   const api = await apiClient();
-  const response = await api.getMovers(upperSymbolId, sort, frequency);
+  const response = await api.getMovers(index, sort ?? undefined, frequency ?? undefined);
+  const screeners = response.screeners ?? [];
+  const dto: MoversDto = {
+    index,
+    sort,
+    frequency,
+    count: screeners.length,
+    movers: screeners.map((mover, position) => ({
+      rank: position + 1,
+      symbol: mover.symbol ?? null,
+      description: mover.description ?? null,
+      lastPrice: mover.lastPrice ?? null,
+      netPercentChange: mover.netPercentChange ?? null,
+      volume: mover.volume ?? null,
+    })),
+  };
 
-  if (!response.screeners || response.screeners.length === 0) {
-    console.log(chalk.yellow(`No movers found for ${upperSymbolId}`));
-    return;
-  }
-
-  console.log();
-  response.screeners.forEach((mover, index) => {
-    printMover(mover, index);
-  });
-  console.log();
+  console.log(options.json === true ? JSON.stringify(dto, null, 2) : renderMovers(dto));
 }

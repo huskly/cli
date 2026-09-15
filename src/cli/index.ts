@@ -19,6 +19,7 @@ import { handleSearch } from "./search.js";
 import { handleMovers } from "./movers.js";
 import { disconnectCache, RedisUnavailableError } from "#src/cache.js";
 import { resolveBroker, requireSchwab } from "./shared.js";
+import { packageVersion } from "./packageVersion.js";
 import type { BrokerName } from "#src/brokers/brokerClient.js";
 import { addDerivativeCommands } from "./derivatives.js";
 
@@ -27,7 +28,7 @@ const program = new Command();
 program
   .name("huskly-cli")
   .description("Terminal-based trading tools for Schwab (huskly auth) and IBKR (gateway)")
-  .version("1.0.0")
+  .version(packageVersion())
   .option("--broker <name>", "Broker to use: schwab or ibkr", "schwab");
 
 /** The broker selected via the global --broker flag (defaults to schwab). */
@@ -88,9 +89,27 @@ program.addCommand(authCmd);
 // Market commands (now top-level)
 program
   .command("quote")
-  .description("Get current price quotes for one or more symbols")
-  .argument("<symbols...>", "Stock symbols to quote")
+  .description("Get current price quotes for one or more equity or option symbols")
+  .argument("<symbols...>", "Equity tickers, or OSI option symbols under Schwab")
   .option("--json", "Emit a stable JSON DTO")
+  .addHelpText(
+    "after",
+    `
+Option symbols (Schwab only) use the 21-character OSI format:
+  <root padded to 6><YYMMDD><C|P><strike x 1000 padded to 8>
+
+Examples:
+  $ huskly-cli quote AAPL
+  $ huskly-cli quote SPY QQQ NVDA
+  $ huskly-cli quote --json AAPL
+  $ huskly-cli --broker ibkr quote AAPL
+  $ huskly-cli quote "AAPL  260116C00250000"    # AAPL 2026-01-16 250 call
+  $ huskly-cli quote "SPY   251219P00600000"    # SPY 2025-12-19 600 put
+
+Quote the space-padded OSI symbol so the shell keeps it as one argument.
+Under --broker ibkr, quote accepts equity symbols only; use "option chain"
+to quote IBKR option series.`
+  )
   .action(async (symbols: string[], options: { json?: boolean }) => {
     await handleQuote(broker(), symbols, options.json);
   });
@@ -118,7 +137,8 @@ program
   )
   .option("-s, --sort <type>", "Sort by: VOLUME, TRADES, PERCENT_CHANGE_UP, PERCENT_CHANGE_DOWN")
   .option("-f, --frequency <minutes>", "Frequency in minutes: 0, 1, 5, 10, 30, 60 (default: 0)")
-  .action(async (index: string, options: { sort?: string; frequency?: string }) => {
+  .option("--json", "Emit a stable JSON DTO")
+  .action(async (index: string, options: { sort?: string; frequency?: string; json?: boolean }) => {
     guardSchwab("movers");
     await handleMovers(index, options);
   });
@@ -128,9 +148,10 @@ program
   .description("Get price history for a symbol")
   .argument("<symbol>", "Stock symbol")
   .option("-d, --days <n>", "Number of days of history", "10")
-  .action(async (symbol: string, options: { days: string }) => {
+  .option("--json", "Emit a stable JSON DTO")
+  .action(async (symbol: string, options: { days: string; json?: boolean }) => {
     guardSchwab("history");
-    await handleHistory(symbol, parseInt(options.days));
+    await handleHistory(symbol, parseInt(options.days), options.json);
   });
 
 program
@@ -140,17 +161,30 @@ program
   .option("-d, --days <n>", "Number of days of history", "30")
   .option("-h, --height <n>", "Chart height in rows", "15")
   .option("-i, --image", "Generate image chart and open in browser")
-  .action(async (symbol: string, options: { days: string; height: string; image?: boolean }) => {
-    guardSchwab("chart");
-    await handleChart(symbol, parseInt(options.days), parseInt(options.height), options.image);
-  });
+  .option("--json", "Emit a stable JSON DTO")
+  .action(
+    async (
+      symbol: string,
+      options: { days: string; height: string; image?: boolean; json?: boolean }
+    ) => {
+      guardSchwab("chart");
+      await handleChart(
+        symbol,
+        parseInt(options.days),
+        parseInt(options.height),
+        options.image,
+        options.json
+      );
+    }
+  );
 
 program
   .command("vix")
   .description("Get current VIX level with sentiment indicator")
-  .action(async () => {
+  .option("--json", "Emit a stable JSON DTO")
+  .action(async (options: { json?: boolean }) => {
     guardSchwab("vix");
-    await handleVix();
+    await handleVix(options.json);
   });
 
 program
@@ -160,10 +194,16 @@ program
   .option("-t, --type <type>", "Contract type (PUT or CALL)", "PUT")
   .option("-f, --from <date>", "Start date (YYYY-MM-DD)")
   .option("-e, --to <date>", "End date (YYYY-MM-DD)")
-  .action(async (symbol: string, options: { type: string; from?: string; to?: string }) => {
-    guardSchwab("expiries");
-    await handleExpiries(symbol, options);
-  });
+  .option("--json", "Emit a stable JSON DTO")
+  .action(
+    async (
+      symbol: string,
+      options: { type: string; from?: string; to?: string; json?: boolean }
+    ) => {
+      guardSchwab("expiries");
+      await handleExpiries(symbol, options);
+    }
+  );
 
 program
   .command("chain")
@@ -172,11 +212,12 @@ program
   .argument("[expiry]", "Expiration date (YYYY-MM-DD)")
   .option("-a, --around <strike>", "Filter strikes around this price, defaults to the last price")
   .option("-s, --strikes <count>", "Number of strikes to show above/below center", "10")
+  .option("--json", "Emit a stable JSON DTO")
   .action(
     async (
       symbol: string,
       expiry: string | undefined,
-      options: { around?: string; strikes: string }
+      options: { around?: string; strikes: string; json?: boolean }
     ) => {
       guardSchwab("chain");
       await handleChain(symbol, expiry, options);

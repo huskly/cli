@@ -2,72 +2,79 @@ import chalk from "chalk";
 import { format, subDays, addDays } from "date-fns";
 import open from "open";
 import { apiClient, asciichart } from "./shared.js";
+import { closes, toPriceSeriesDto, type PriceSeriesDto } from "./priceSeries.js";
+
+export function renderChart(dto: PriceSeriesDto, height: number): string {
+  const header = chalk.bold(`\n📈 Price Chart: ${dto.symbol} (${String(dto.days)} days)\n`);
+  if (dto.latest === null || dto.high === null || dto.low === null) {
+    return `${header}\n${chalk.yellow("No price history available")}`;
+  }
+
+  const change = dto.changePercent ?? 0;
+  const changeStr =
+    change >= 0 ? chalk.green("+" + change.toFixed(2) + "%") : chalk.red(change.toFixed(2) + "%");
+  const rule = chalk.gray("─".repeat(70));
+  const chart = asciichart.plot(closes(dto), {
+    height,
+    colors: [change >= 0 ? asciichart.green : asciichart.red],
+    format: (x: number) => ("$" + x.toFixed(2)).padStart(10),
+  });
+
+  // Date axis labels, aligned past the 11-column y-axis gutter.
+  const chartWidth = chart.split("\n")[0]?.length ?? 70;
+  const startLabel = format(subDays(new Date(), dto.days), "MMM dd");
+  const endLabel = format(new Date(), "MMM dd");
+  const padding = chartWidth - 11 - startLabel.length - endLabel.length;
+
+  return [
+    header,
+    rule,
+    `  ${chalk.white("$" + dto.latest.toFixed(2))} ${changeStr}  │  ` +
+      `High: ${chalk.green("$" + dto.high.toFixed(2))}  │  ` +
+      `Low: ${chalk.red("$" + dto.low.toFixed(2))}`,
+    rule,
+    chart,
+    " ".repeat(11) + chalk.gray(startLabel + " ".repeat(Math.max(0, padding)) + endLabel),
+    "",
+  ].join("\n");
+}
 
 export async function handleChart(
   symbol: string,
   days: number,
   height: number,
-  useImage = false
+  useImage = false,
+  json = false
 ): Promise<void> {
-  console.log(chalk.bold(`\n📈 Price Chart: ${symbol} (${String(days)} days)\n`));
+  if (useImage && json) {
+    throw new Error("Use either --image or --json, not both.");
+  }
 
   const api = await apiClient();
-  const prices = (await api.getPriceHistory({ symbol, days })).map((c) => c.close);
+  const dto = toPriceSeriesDto(symbol, days, await api.getPriceHistory({ symbol, days }));
 
-  if (prices.length === 0) {
-    console.log(chalk.yellow("No price history available"));
+  if (json) {
+    console.log(JSON.stringify(dto, null, 2));
     return;
   }
-
-  const min = Math.min(...prices);
-  const max = Math.max(...prices);
-  const latest = prices[prices.length - 1] ?? 0;
-  const first = prices[0] ?? latest;
-  const change = ((latest - first) / first) * 100;
-
-  // Calculate date range
-  const today = new Date();
-  const startDate = subDays(today, days);
-
   if (useImage) {
-    await renderImageChart(symbol, prices, startDate, days, change, min, max, latest);
+    if (dto.latest === null || dto.high === null || dto.low === null) {
+      console.log(chalk.yellow("No price history available"));
+      return;
+    }
+    await renderImageChart(
+      symbol,
+      closes(dto),
+      subDays(new Date(), days),
+      days,
+      dto.changePercent ?? 0,
+      dto.low,
+      dto.high,
+      dto.latest
+    );
     return;
   }
-
-  const changeStr =
-    change >= 0 ? chalk.green("+" + change.toFixed(2) + "%") : chalk.red(change.toFixed(2) + "%");
-
-  console.log(chalk.gray("─".repeat(70)));
-  console.log(
-    `  ${chalk.white("$" + latest.toFixed(2))} ${changeStr}  │  ` +
-      `High: ${chalk.green("$" + max.toFixed(2))}  │  ` +
-      `Low: ${chalk.red("$" + min.toFixed(2))}`
-  );
-  console.log(chalk.gray("─".repeat(70)));
-
-  // Determine chart color based on overall trend
-  const chartColor = change >= 0 ? asciichart.green : asciichart.red;
-
-  // Render the ASCII chart
-  const chart = asciichart.plot(prices, {
-    height,
-    colors: [chartColor],
-    format: (x: number) => ("$" + x.toFixed(2)).padStart(10),
-  });
-
-  console.log(chart);
-
-  // Date axis labels
-  const chartWidth = chart.split("\n")[0]?.length ?? 70;
-  const labelWidth = chartWidth - 11; // Account for y-axis labels
-  const startLabel = format(startDate, "MMM dd");
-  const endLabel = format(today, "MMM dd");
-  const padding = labelWidth - startLabel.length - endLabel.length;
-
-  console.log(
-    " ".repeat(11) + chalk.gray(startLabel + " ".repeat(Math.max(0, padding)) + endLabel)
-  );
-  console.log();
+  console.log(renderChart(dto, height));
 }
 
 /**

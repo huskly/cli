@@ -1,150 +1,194 @@
 import chalk from "chalk";
 import { addDays, format, parse } from "date-fns";
 import { apiClient } from "./shared.js";
+import type { OptionQuote } from "@huskly/schwab-client";
+
+const DEFAULT_DAYS_AHEAD = 30;
+const COL_WIDTH = 8;
+const STRIKE_WIDTH = 10;
+
+export interface ChainLegDto {
+  readonly symbol: string;
+  readonly bid: number | null;
+  readonly ask: number | null;
+  readonly mid: number;
+  readonly delta: number;
+  readonly volume: number | null;
+  readonly openInterest: number | null;
+}
+
+export interface ChainStrikeDto {
+  readonly strike: number;
+  readonly call: ChainLegDto | null;
+  readonly put: ChainLegDto | null;
+}
+
+export interface OptionChainDto {
+  readonly symbol: string;
+  readonly expiry: string;
+  readonly underlyingPrice: number | null;
+  readonly center: number | null;
+  readonly delayed: boolean | null;
+  readonly strikes: readonly ChainStrikeDto[];
+}
+
+export interface ChainOptions {
+  around?: string;
+  strikes: string;
+  json?: boolean;
+}
+
+function toLegDto(quote: OptionQuote | undefined): ChainLegDto | null {
+  if (quote === undefined) return null;
+  return {
+    symbol: quote.symbol,
+    bid: quote.bid,
+    ask: quote.ask,
+    mid: quote.mid,
+    delta: quote.delta,
+    volume: quote.volume,
+    openInterest: quote.openInterest,
+  };
+}
+
+/** Keep `count` strikes on each side of the strike closest to `center`. */
+function selectStrikes(all: number[], center: number | null, count: number): number[] {
+  if (center === null) return all;
+  const closest = all.reduce(
+    (best, strike, index) =>
+      Math.abs(strike - center) < Math.abs((all[best] ?? 0) - center) ? index : best,
+    0
+  );
+  return all.slice(Math.max(0, closest - count), Math.min(all.length, closest + count + 1));
+}
+
+export function toOptionChainDto(
+  symbol: string,
+  expiry: Date,
+  chain: readonly OptionQuote[],
+  underlyingPrice: number | null,
+  center: number | null,
+  strikeCount: number
+): OptionChainDto {
+  const allStrikes = Array.from(new Set(chain.map((quote) => quote.strike))).sort((a, b) => a - b);
+  const selected = selectStrikes(allStrikes, center, strikeCount);
+  const calls = new Map(chain.filter((q) => q.isCall).map((q) => [q.strike, q]));
+  const puts = new Map(chain.filter((q) => !q.isCall).map((q) => [q.strike, q]));
+
+  return {
+    symbol,
+    expiry: format(expiry, "yyyy-MM-dd"),
+    underlyingPrice,
+    center,
+    delayed: chain[0]?.delayed ?? null,
+    strikes: selected.map((strike) => ({
+      strike,
+      call: toLegDto(calls.get(strike)),
+      put: toLegDto(puts.get(strike)),
+    })),
+  };
+}
+
+function price(value: number | null): string {
+  return value !== null ? "$" + value.toFixed(2) : "-";
+}
+
+export function renderOptionChain(dto: OptionChainDto): string {
+  const header = chalk.bold(`\n⛓️  Option Chain: ${dto.symbol} ${dto.expiry}\n`);
+  if (dto.strikes.length === 0) {
+    return `${header}\n${chalk.yellow("No options found for this expiry")}`;
+  }
+
+  const lineWidth = COL_WIDTH * 8 + STRIKE_WIDTH;
+  const rule = chalk.gray("─".repeat(lineWidth));
+  const lines = [
+    header,
+    rule,
+    chalk.green("CALLS".padStart(COL_WIDTH * 2)) +
+      " ".repeat(STRIKE_WIDTH + COL_WIDTH * 2) +
+      chalk.red("PUTS"),
+    rule,
+    chalk.green("Bid".padStart(COL_WIDTH)) +
+      chalk.green("Ask".padStart(COL_WIDTH)) +
+      chalk.green("Mid".padStart(COL_WIDTH)) +
+      chalk.green("Δ".padStart(COL_WIDTH)) +
+      chalk.white("Strike".padStart(STRIKE_WIDTH)) +
+      chalk.red("Δ".padStart(COL_WIDTH)) +
+      chalk.red("Mid".padStart(COL_WIDTH)) +
+      chalk.red("Ask".padStart(COL_WIDTH)) +
+      chalk.red("Bid".padStart(COL_WIDTH)),
+    rule,
+  ];
+
+  const underlying = dto.underlyingPrice;
+  for (const row of dto.strikes) {
+    const callItm = underlying !== null && row.strike < underlying;
+    const putItm = underlying !== null && row.strike > underlying;
+    const callColor = callItm ? chalk.greenBright : chalk.cyan;
+    const putColor = putItm ? chalk.redBright : chalk.cyan;
+    const delta = (value: number | undefined): string =>
+      (value !== undefined ? value.toFixed(2) : "-").padStart(COL_WIDTH);
+    const callMid = price(row.call?.mid ?? null).padStart(COL_WIDTH);
+    const putMid = price(row.put?.mid ?? null).padStart(COL_WIDTH);
+
+    lines.push(
+      callColor(price(row.call?.bid ?? null).padStart(COL_WIDTH)) +
+        callColor(price(row.call?.ask ?? null).padStart(COL_WIDTH)) +
+        (callItm ? chalk.yellowBright(callMid) : chalk.yellow(callMid)) +
+        chalk.gray(delta(row.call?.delta)) +
+        chalk.white(("$" + row.strike.toFixed(2)).padStart(STRIKE_WIDTH)) +
+        chalk.gray(delta(row.put?.delta)) +
+        (putItm ? chalk.yellowBright(putMid) : chalk.yellow(putMid)) +
+        putColor(price(row.put?.ask ?? null).padStart(COL_WIDTH)) +
+        putColor(price(row.put?.bid ?? null).padStart(COL_WIDTH))
+    );
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+/** Resolve the requested expiry, or fall back to the nearest listed expiry. */
+async function resolveExpiry(
+  api: Awaited<ReturnType<typeof apiClient>>,
+  symbol: string,
+  expiryArg: string | undefined
+): Promise<Date> {
+  // Parse as a local date so the calendar day survives the timezone offset.
+  if (expiryArg !== undefined) return parse(expiryArg, "yyyy-MM-dd", new Date());
+
+  const [nearest] = await api.getAvailableExpiries(
+    symbol,
+    "PUT",
+    format(new Date(), "yyyy-MM-dd"),
+    format(addDays(new Date(), DEFAULT_DAYS_AHEAD), "yyyy-MM-dd")
+  );
+  if (!nearest) throw new Error(`No expiries available for ${symbol}.`);
+  return nearest;
+}
 
 export async function handleChain(
   symbol: string,
   expiryArg: string | undefined,
-  options: { around?: string; strikes: string }
+  options: ChainOptions
 ): Promise<void> {
-  let expiry: Date;
-  const defaultDaysAhead = 30;
   const api = await apiClient();
-  if (expiryArg) {
-    // Parse as local date to avoid timezone offset issues
-    expiry = parse(expiryArg, "yyyy-MM-dd", new Date());
-  } else {
-    // Default to nearest expiry
-    const [exp] = await api.getAvailableExpiries(
-      symbol,
-      "PUT",
-      format(new Date(), "yyyy-MM-dd"),
-      format(addDays(new Date(), defaultDaysAhead), "yyyy-MM-dd")
-    );
-    if (!exp) {
-      console.error(chalk.red("No expiries available for this symbol"));
-      process.exit(1);
-    }
-    expiry = exp;
-  }
-
-  console.log(chalk.bold(`\n⛓️  Option Chain: ${symbol} ${format(expiry, "yyyy-MM-dd")}\n`));
-
+  const expiry = await resolveExpiry(api, symbol, expiryArg);
   const [chain, quotes] = await Promise.all([
     api.getOptionChain(symbol, expiry),
     api.getQuotes([symbol]),
   ]);
 
-  if (chain.length === 0) {
-    console.log(chalk.yellow("No options found for this expiry"));
-    return;
-  }
-
-  // Separate calls and puts
-  const calls = chain.filter((o) => o.isCall);
-  const puts = chain.filter((o) => !o.isCall);
-
-  // Default to current stock price if --around not specified
-  const quoteData = quotes[symbol];
-  const currentPrice = quoteData?.quote.mark ?? quoteData?.quote.lastPrice;
-  const aroundStrike = options.around ? parseFloat(options.around) : (currentPrice ?? null);
-  const strikeCount = parseInt(options.strikes, 10);
-
-  // Get all unique strikes sorted
-  const allStrikes = Array.from(new Set(chain.map((o) => o.strike))).sort((a, b) => a - b);
-
-  // Find strikes to display based on aroundStrike and strikeCount
-  let strikesToInclude: Set<number>;
-  if (aroundStrike) {
-    // Find the index of the closest strike to aroundStrike
-    const closestIdx = allStrikes.reduce(
-      (bestIdx, strike, idx) =>
-        Math.abs(strike - aroundStrike) < Math.abs((allStrikes[bestIdx] ?? 0) - aroundStrike)
-          ? idx
-          : bestIdx,
-      0
-    );
-    const startIdx = Math.max(0, closestIdx - strikeCount);
-    const endIdx = Math.min(allStrikes.length, closestIdx + strikeCount + 1);
-    strikesToInclude = new Set(allStrikes.slice(startIdx, endIdx));
-  } else {
-    strikesToInclude = new Set(allStrikes);
-  }
-
-  const filteredCalls = calls.filter((o) => strikesToInclude.has(o.strike));
-  const filteredPuts = puts.filter((o) => strikesToInclude.has(o.strike));
-
-  // Build a map of strike -> { call, put }
-  const strikes = new Set([...filteredCalls, ...filteredPuts].map((o) => o.strike));
-  const sortedStrikes = Array.from(strikes).sort((a, b) => a - b);
-
-  const callsByStrike = new Map(filteredCalls.map((c) => [c.strike, c]));
-  const putsByStrike = new Map(filteredPuts.map((p) => [p.strike, p]));
-
-  const colWidth = 8;
-  const strikeWidth = 10;
-  const headerLine =
-    chalk.green("Bid".padStart(colWidth)) +
-    chalk.green("Ask".padStart(colWidth)) +
-    chalk.green("Mid".padStart(colWidth)) +
-    chalk.green("Δ".padStart(colWidth)) +
-    chalk.white("Strike".padStart(strikeWidth)) +
-    chalk.red("Δ".padStart(colWidth)) +
-    chalk.red("Mid".padStart(colWidth)) +
-    chalk.red("Ask".padStart(colWidth)) +
-    chalk.red("Bid".padStart(colWidth));
-
-  const lineWidth = colWidth * 8 + strikeWidth;
-  console.log(chalk.gray("─".repeat(lineWidth)));
-  console.log(
-    chalk.green("CALLS".padStart(colWidth * 2)) +
-      " ".repeat(strikeWidth + colWidth * 2) +
-      chalk.red("PUTS")
+  const quote = quotes[symbol]?.quote;
+  const underlyingPrice = quote?.mark ?? quote?.lastPrice ?? null;
+  const center = options.around !== undefined ? parseFloat(options.around) : underlyingPrice;
+  const dto = toOptionChainDto(
+    symbol,
+    expiry,
+    chain,
+    underlyingPrice,
+    center,
+    parseInt(options.strikes, 10)
   );
-  console.log(chalk.gray("─".repeat(lineWidth)));
-  console.log(headerLine);
-  console.log(chalk.gray("─".repeat(lineWidth)));
 
-  for (const strike of sortedStrikes) {
-    const call = callsByStrike.get(strike);
-    const put = putsByStrike.get(strike);
-
-    const formatPrice = (val: number | null): string => (val !== null ? "$" + val.toFixed(2) : "-");
-    const formatDelta = (val: number | undefined): string =>
-      val !== undefined ? val.toFixed(2) : "-";
-
-    // Determine if options are in-the-money
-    const callItm = currentPrice !== undefined && strike < currentPrice;
-    const putItm = currentPrice !== undefined && strike > currentPrice;
-
-    // Use brighter colors for ITM options
-    const callColor = callItm ? chalk.greenBright : chalk.cyan;
-    const putColor = putItm ? chalk.redBright : chalk.cyan;
-
-    const callBid = formatPrice(call?.bid ?? null).padStart(colWidth);
-    const callAsk = formatPrice(call?.ask ?? null).padStart(colWidth);
-    const callMid = formatPrice(call?.mid ?? null).padStart(colWidth);
-    const callDelta = formatDelta(call?.delta).padStart(colWidth);
-
-    const putBid = formatPrice(put?.bid ?? null).padStart(colWidth);
-    const putAsk = formatPrice(put?.ask ?? null).padStart(colWidth);
-    const putMid = formatPrice(put?.mid ?? null).padStart(colWidth);
-    const putDelta = formatDelta(put?.delta).padStart(colWidth);
-
-    const strikeStr = ("$" + strike.toFixed(2)).padStart(strikeWidth);
-
-    console.log(
-      callColor(callBid) +
-        callColor(callAsk) +
-        (callItm ? chalk.yellowBright(callMid) : chalk.yellow(callMid)) +
-        chalk.gray(callDelta) +
-        chalk.white(strikeStr) +
-        chalk.gray(putDelta) +
-        (putItm ? chalk.yellowBright(putMid) : chalk.yellow(putMid)) +
-        putColor(putAsk) +
-        putColor(putBid)
-    );
-  }
-
-  console.log();
+  console.log(options.json === true ? JSON.stringify(dto, null, 2) : renderOptionChain(dto));
 }

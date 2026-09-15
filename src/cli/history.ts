@@ -1,46 +1,45 @@
 import chalk from "chalk";
 import { apiClient } from "./shared.js";
+import { closes, toPriceSeriesDto, type PriceSeriesDto } from "./priceSeries.js";
 
-export async function handleHistory(symbol: string, days: number): Promise<void> {
-  console.log(chalk.bold(`\n📊 Price History: ${symbol} (${days.toFixed(0)} days)\n`));
+const SPARKLINE_WIDTH = 40;
+const SPARKLINE_BLOCKS = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"] as const;
 
-  const api = await apiClient();
-  const prices = (await api.getPriceHistory({ symbol, days })).map((c) => c.close);
+function sparkline(prices: number[], low: number, high: number): string {
+  const range = high - low || 1;
+  const blocks = prices.map((price) => {
+    const index = Math.floor(((price - low) / range) * (SPARKLINE_BLOCKS.length - 1));
+    return SPARKLINE_BLOCKS[index] ?? SPARKLINE_BLOCKS[0];
+  });
+  if (blocks.length <= SPARKLINE_WIDTH) return blocks.join("");
+  const step = Math.ceil(blocks.length / SPARKLINE_WIDTH);
+  return blocks.filter((_, index) => index % step === 0).join("");
+}
 
-  if (prices.length === 0) {
-    console.log(chalk.yellow("No price history available"));
-    return;
+export function renderPriceHistory(dto: PriceSeriesDto): string {
+  const header = chalk.bold(`\n📊 Price History: ${dto.symbol} (${dto.days.toFixed(0)} days)\n`);
+  if (dto.latest === null || dto.high === null || dto.low === null) {
+    return `${header}\n${chalk.yellow("No price history available")}`;
   }
 
-  const min = Math.min(...prices);
-  const max = Math.max(...prices);
-  const latest = prices[prices.length - 1] ?? 0;
-  const first = prices[0] ?? latest;
-  const change = ((latest - first) / first) * 100;
+  const change = dto.changePercent ?? 0;
+  const rule = chalk.gray("─".repeat(50));
+  return [
+    header,
+    rule,
+    `Latest:   ${chalk.white("$" + dto.latest.toFixed(2))}`,
+    `High:     ${chalk.green("$" + dto.high.toFixed(2))}`,
+    `Low:      ${chalk.red("$" + dto.low.toFixed(2))}`,
+    `Change:   ${change >= 0 ? chalk.green("+" + change.toFixed(2) + "%") : chalk.red(change.toFixed(2) + "%")}`,
+    rule,
+    "",
+    chalk.cyan(sparkline(closes(dto), dto.low, dto.high)),
+    "",
+  ].join("\n");
+}
 
-  console.log(chalk.gray("─".repeat(50)));
-  console.log(`Latest:   ${chalk.white("$" + latest.toFixed(2))}`);
-  console.log(`High:     ${chalk.green("$" + max.toFixed(2))}`);
-  console.log(`Low:      ${chalk.red("$" + min.toFixed(2))}`);
-  console.log(
-    `Change:   ${change >= 0 ? chalk.green("+" + change.toFixed(2) + "%") : chalk.red(change.toFixed(2) + "%")}`
-  );
-  console.log(chalk.gray("─".repeat(50)));
-
-  // Simple sparkline visualization
-  const width = 40;
-  const range = max - min || 1;
-  const sparkline = prices.map((p) => {
-    const normalized = (p - min) / range;
-    const blocks = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
-    return blocks[Math.floor(normalized * 7)] ?? blocks[0];
-  });
-
-  // Sample if too many points
-  const sampled =
-    sparkline.length > width
-      ? sparkline.filter((_, i) => i % Math.ceil(sparkline.length / width) === 0)
-      : sparkline;
-
-  console.log(`\n${chalk.cyan(sampled.join(""))}\n`);
+export async function handleHistory(symbol: string, days: number, json = false): Promise<void> {
+  const api = await apiClient();
+  const dto = toPriceSeriesDto(symbol, days, await api.getPriceHistory({ symbol, days }));
+  console.log(json ? JSON.stringify(dto, null, 2) : renderPriceHistory(dto));
 }
