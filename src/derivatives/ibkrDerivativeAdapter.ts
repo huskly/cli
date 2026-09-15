@@ -611,7 +611,9 @@ export class IbkrDerivativeAdapter
     }
     const complete = resolved.value;
     if (!isReferenceContractComplete(complete)) {
-      throw new Error("Derivative contract is incomplete for a reference quote");
+      throw new Error(
+        "The broker states no settlement or exercise style for this contract, so the gateway cannot quote its underlying."
+      );
     }
     return complete;
   }

@@ -310,11 +310,16 @@ function observationDetails(observedAt: string | null, completeness: string): st
   return `[${detail}]`;
 }
 
+/** State why the underlying reference market is missing. */
+function missingReference(error: string | null): string {
+  return `Reference: ${error ?? "not requested"}`;
+}
+
 export function renderOptionDiscovery(result: OptionDiscoveryResearch): string {
   const reference = result.referenceQuote;
   const lines = [
     reference === null
-      ? "Reference: not requested"
+      ? missingReference(result.referenceQuoteError)
       : `Reference ${reference.value.symbol}: bid ${formatPrice(reference.value.bid)}  ask ${formatPrice(reference.value.ask)}  last ${formatPrice(reference.value.last)}  mark ${formatPrice(reference.value.mark)}  data ${reference.value.dataAvailability} ${observationDetails(reference.observedAt, reference.completeness)}`,
     `Contracts: ${String(result.contracts.value.length)} ${observationDetails(result.contracts.observedAt, result.contracts.completeness)}`,
     "EXPIRY  STRIKE  RIGHT  ASSET  CLASS  EXCHANGE  MULTIPLIER  BROKER-REFERENCE",
@@ -342,7 +347,7 @@ export function renderOptionChain(result: OptionChainResearch): string {
   const reference = result.referenceQuote;
   const lines = [
     reference === null
-      ? `Reference: ${result.referenceQuoteError ?? "not requested"}`
+      ? missingReference(result.referenceQuoteError)
       : `Reference ${reference.value.symbol}: ${formatPrice(reference.value.mark ?? reference.value.last)} (${reference.value.dataAvailability}) ${observationDetails(reference.observedAt, reference.completeness)}`,
     `Center: ${formatPrice(result.center)}  Contracts: ${String(result.quotes.value.length)} ${observationDetails(result.quotes.observedAt, result.quotes.completeness)}`,
     "STRIKE  RIGHT  BID  ASK  MARK  DELTA  CLASS  EXCHANGE  MULTIPLIER  DATA",
@@ -372,7 +377,9 @@ export function renderVerticalSpread(result: VerticalSpreadResearch): string {
   const lines = [
     `${spread.kind} x${String(spread.quantity)}  width ${String(spread.width)}  multiplier ${String(spread.multiplier)}`,
     `Evidence: ${observationDetails(result.observation.observedAt, result.observation.completeness)}`,
-    `Reference ${result.referenceQuote.value.symbol}: ${formatPrice(result.referenceQuote.value.mark ?? result.referenceQuote.value.last)} (${result.referenceQuote.value.dataAvailability}) ${observationDetails(result.referenceQuote.observedAt, result.referenceQuote.completeness)}`,
+    result.referenceQuote === null
+      ? missingReference(result.referenceQuoteError)
+      : `Reference ${result.referenceQuote.value.symbol}: ${formatPrice(result.referenceQuote.value.mark ?? result.referenceQuote.value.last)} (${result.referenceQuote.value.dataAvailability}) ${observationDetails(result.referenceQuote.observedAt, result.referenceQuote.completeness)}`,
     `Long ${String(spread.longLeg.quote.contract.identity.strike)} @ ${formatPrice(spread.longLeg.quote.bid)} x ${formatPrice(spread.longLeg.quote.ask)} ${observationDetails(result.longQuote.observedAt, result.longQuote.completeness)}`,
     `Short ${String(spread.shortLeg.quote.contract.identity.strike)} @ ${formatPrice(spread.shortLeg.quote.bid)} x ${formatPrice(spread.shortLeg.quote.ask)} ${observationDetails(result.shortQuote.observedAt, result.shortQuote.completeness)}`,
   ];

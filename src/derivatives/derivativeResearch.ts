@@ -21,6 +21,8 @@ export interface OptionResolution {
 export interface OptionDiscoveryResearch {
   contracts: Observation<DerivativeContract[]>;
   referenceQuote: Observation<DerivativeReferenceQuote> | null;
+  /** Why the underlying reference quote is missing, when it is. */
+  referenceQuoteError: string | null;
 }
 
 export interface OptionChainRequest extends DerivativeContractRequest {
@@ -57,7 +59,9 @@ export interface VerticalSpreadResearchRequest {
 }
 
 export interface VerticalSpreadResearch {
-  referenceQuote: Observation<DerivativeReferenceQuote>;
+  referenceQuote: Observation<DerivativeReferenceQuote> | null;
+  /** Why the underlying reference quote is missing, when it is. */
+  referenceQuoteError: string | null;
   longQuote: Observation<DerivativeQuote>;
   shortQuote: Observation<DerivativeQuote>;
   observation: Observation<VerticalSpreadQuote>;
@@ -165,6 +169,11 @@ function combineObservation<T>(
   };
 }
 
+interface ReferenceQuoteAttempt {
+  readonly quote: Observation<DerivativeReferenceQuote> | null;
+  readonly error: string | null;
+}
+
 /** Read-only option and spread research shared by CLI and MCP presentation layers. */
 export class DerivativeResearchService {
   constructor(private readonly client: DerivativeDiscoveryClient) {}
@@ -173,10 +182,31 @@ export class DerivativeResearchService {
     const contracts = await this.client.getContracts(request);
     requireObservation("queryDerivativeContracts", contracts);
     const first = contracts.value[0];
+    const reference =
+      first === undefined ? { quote: null, error: null } : await this.referenceQuoteAttempt(first);
     return {
       contracts,
-      referenceQuote: first === undefined ? null : await this.client.getReferenceQuote(first),
+      referenceQuote: reference.quote,
+      referenceQuoteError: reference.error,
     };
+  }
+
+  /**
+   * Read the underlying reference quote, or state why it is missing.
+   *
+   * @remarks
+   * Some brokers state no reference market for a contract they price well.
+   * A missing underlying must never destroy contract evidence that was
+   * already observed, so every research path reports the reason instead.
+   */
+  private async referenceQuoteAttempt(
+    contract: DerivativeContract
+  ): Promise<ReferenceQuoteAttempt> {
+    try {
+      return { quote: await this.client.getReferenceQuote(contract), error: null };
+    } catch (error: unknown) {
+      return { quote: null, error: error instanceof Error ? error.message : String(error) };
+    }
   }
 
   async resolve(
@@ -209,13 +239,9 @@ export class DerivativeResearchService {
     const first = quotes.value[0];
     if (first === undefined) throw new Error("Derivative chain unexpectedly has no first quote");
 
-    let referenceQuote: Observation<DerivativeReferenceQuote> | null = null;
-    let referenceQuoteError: string | null = null;
-    try {
-      referenceQuote = await this.client.getReferenceQuote(first.contract);
-    } catch (error: unknown) {
-      referenceQuoteError = error instanceof Error ? error.message : String(error);
-    }
+    const { quote: referenceQuote, error: referenceQuoteError } = await this.referenceQuoteAttempt(
+      first.contract
+    );
 
     const center =
       around ??
@@ -247,10 +273,11 @@ export class DerivativeResearchService {
       this.exactQuote({ ...base, strike: request.longStrike }),
       this.exactQuote({ ...base, strike: request.shortStrike }),
     ]);
-    const referenceQuote = requireObservation(
-      "queryDerivativeReferenceQuote",
-      await this.client.getReferenceQuote(longQuote.value.contract)
-    );
+    const reference = await this.referenceQuoteAttempt(longQuote.value.contract);
+    const referenceQuote =
+      reference.quote === null
+        ? null
+        : requireObservation("queryDerivativeReferenceQuote", reference.quote);
     const spread = buildVerticalSpread({
       kind: request.kind,
       quantity: request.quantity,
@@ -260,9 +287,13 @@ export class DerivativeResearchService {
     });
     return {
       referenceQuote,
+      referenceQuoteError: reference.error,
       longQuote,
       shortQuote,
-      observation: combineObservation(spread, [longQuote, shortQuote, referenceQuote]),
+      observation: combineObservation(
+        spread,
+        referenceQuote === null ? [longQuote, shortQuote] : [longQuote, shortQuote, referenceQuote]
+      ),
       spread,
       pricingNotice:
         "Natural and midpoint prices are synthesized from individual leg markets; they are not a broker combo NBBO or executable preview.",

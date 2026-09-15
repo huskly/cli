@@ -443,3 +443,45 @@ void test("contract-real partial nullable items are omitted with safe count evid
   assert.equal(resolved.value, null);
   assert.equal(resolved.omittedCount, 1);
 });
+
+void test("a contract the broker cannot classify states one clear reference-quote reason", async () => {
+  const adapter = new IbkrDerivativeAdapter(
+    fakeApi({
+      resolveDerivativeContract: () =>
+        Promise.resolve({
+          observedAt: "2026-07-29T12:00:00.000Z",
+          status: "available",
+          contract: {
+            brokerId: 910975252,
+            symbol: "IBIT",
+            assetClass: "OPT",
+            underlying: "IBIT",
+            expiration: "2026-10-02",
+            tradingClass: "IBIT",
+            exchange: "SMART",
+            multiplier: 100,
+            strike: 42,
+            right: "P",
+            settlement: null,
+            exerciseStyle: null,
+          },
+        }),
+    })
+  );
+
+  await assert.rejects(
+    adapter.getReferenceQuote({
+      identity: {
+        assetClass: "OPT",
+        underlying: "IBIT",
+        expiration: "2026-10-02",
+        strike: 42,
+        right: "PUT",
+        tradingClass: "IBIT",
+        exchange: "SMART",
+        multiplier: 100,
+      },
+    }),
+    /no settlement or exercise style/
+  );
+});

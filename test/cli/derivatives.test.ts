@@ -4,6 +4,7 @@ import test from "node:test";
 import { Command } from "commander";
 import {
   addDerivativeCommands,
+  renderOptionDiscovery,
   renderVerticalSpread,
   type DerivativeCommandDependencies,
 } from "#src/cli/derivatives.js";
@@ -574,6 +575,7 @@ void test("CLI spread presentation labels the weakest partial leg evidence", () 
   };
   const result: VerticalSpreadResearch = {
     referenceQuote: observe(reference, "available", "2026-09-04T00:02:00.000Z"),
+    referenceQuoteError: null,
     longQuote: observe(long, "partial", "2026-09-04T00:00:00.000Z"),
     shortQuote: observe(short, "available", "2026-09-04T00:01:00.000Z"),
     observation: observe(spread, "partial", "2026-09-04T00:00:00.000Z"),
@@ -584,6 +586,43 @@ void test("CLI spread presentation labels the weakest partial leg evidence", () 
   assert.match(rendered, /Evidence: \[partial @ 2026-09-04T00:00:00.000Z\]/u);
   assert.match(rendered, /Long .*\[partial @/u);
   assert.match(rendered, /Reference .*\[available @/u);
+
+  const unpriced = renderVerticalSpread({
+    ...result,
+    referenceQuote: null,
+    referenceQuoteError: "The broker states no settlement",
+  });
+  assert.match(unpriced, /Reference: The broker states no settlement/u);
+  assert.match(unpriced, /Long .*\[partial @/u);
+});
+
+void test("option discovery states why an underlying reference is missing", () => {
+  const identity = {
+    assetClass: "OPT",
+    underlying: "IBIT",
+    expiration: "2026-10-02",
+    right: "PUT",
+    tradingClass: "IBIT",
+    exchange: "SMART",
+    multiplier: 100,
+  } as const;
+  const contracts = observe(
+    [{ identity: { ...identity, strike: 41 } }, { identity: { ...identity, strike: 42 } }],
+    "available",
+    "2026-09-04T00:00:00.000Z"
+  );
+  const rendered = renderOptionDiscovery({
+    contracts,
+    referenceQuote: null,
+    referenceQuoteError: "The broker states no settlement",
+  });
+  assert.match(rendered, /Reference: The broker states no settlement/u);
+  assert.match(rendered, /Contracts: 2 \[available @/u);
+
+  assert.match(
+    renderOptionDiscovery({ contracts, referenceQuote: null, referenceQuoteError: null }),
+    /Reference: not requested/u
+  );
 });
 
 void test("CLI lifecycle JSON keeps unavailable account and broker lifecycle facts null", async () => {

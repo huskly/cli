@@ -133,6 +133,7 @@ void test("vertical research resolves exact legs and preserves synthetic-price s
     exchange: "CME",
     limit: 39,
   });
+  assert.ok(result.referenceQuote);
   assert.equal(result.referenceQuote.value.symbol, "NQ");
   assert.equal(result.referenceQuote.completeness, "partial");
   assert.equal(result.observation.completeness, "partial");
@@ -194,6 +195,7 @@ void test("vertical evidence uses the weakest leg completeness even with an avai
     shortStrike: 26600,
     quantity: 1,
   });
+  assert.ok(result.referenceQuote);
   assert.equal(result.referenceQuote.completeness, "available");
   assert.equal(result.observation.completeness, "partial");
   assert.equal(result.observation.observedAt, "2026-07-29T12:00:00.000Z");
@@ -315,4 +317,37 @@ void test("vertical research preserves empty and unavailable leg failures", asyn
       }),
     (error: unknown) => error instanceof Error && error.name === "BrokerDataUnavailableError"
   );
+});
+
+void test("an unpriced underlying never destroys contract or spread evidence", async () => {
+  const unpriced = {
+    ...client(),
+    getReferenceQuote: () => Promise.reject(new Error("The broker states no settlement")),
+  };
+  const service = new DerivativeResearchService(unpriced);
+
+  const discovery = await service.discover({
+    assetClass: "FOP",
+    underlying: "NQ",
+    expiration: "2026-08-21",
+    right: "PUT",
+  });
+  assert.equal(discovery.referenceQuote, null);
+  assert.equal(discovery.referenceQuoteError, "The broker states no settlement");
+  assert.equal(discovery.contracts.value.length, 4);
+
+  const vertical = await service.quoteVertical({
+    kind: "put-credit",
+    assetClass: "FOP",
+    underlying: "NQ",
+    expiration: "2026-08-21",
+    longStrike: 26400,
+    shortStrike: 26600,
+    quantity: 1,
+  });
+  assert.equal(vertical.referenceQuote, null);
+  assert.equal(vertical.referenceQuoteError, "The broker states no settlement");
+  assert.equal(vertical.spread.scenarios[0]?.price, 33.5);
+  assert.equal(vertical.observation.completeness, "partial");
+  assert.equal(vertical.observation.observedAt, "2026-07-29T12:00:00.000Z");
 });
