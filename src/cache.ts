@@ -9,6 +9,24 @@ interface CacheEntry<T> {
 export const CACHE_DURATION = 5 * 60; // 5 minutes in seconds
 
 let redisClient: Redis | null = null;
+let cacheEnabled = true;
+
+/**
+ * Turn the Redis read-cache off for this process.
+ *
+ * @remarks
+ * The cache is an optimization, not a data source. With it disabled every
+ * read goes straight to the broker, so `--no-cache` lets the CLI work while
+ * Redis is down and lets a caller force fresh broker data.
+ */
+export function setCacheEnabled(enabled: boolean): void {
+  cacheEnabled = enabled;
+}
+
+/** True when cached reads are allowed. */
+export function isCacheEnabled(): boolean {
+  return cacheEnabled;
+}
 
 /** Give up quickly instead of reconnecting forever when Redis is down. */
 const MAX_CONNECTION_ATTEMPTS = 3;
@@ -16,7 +34,9 @@ const MAX_CONNECTION_ATTEMPTS = 3;
 /** Raised when Redis cannot be reached, so the CLI can exit with clear advice. */
 export class RedisUnavailableError extends Error {
   constructor(readonly redisUrl: string) {
-    super(`Cannot connect to Redis at ${redisUrl}. Start Redis and try the command again.`);
+    super(
+      `Cannot connect to Redis at ${redisUrl}. Start Redis, or rerun with --no-cache to read directly from the broker.`
+    );
     this.name = "RedisUnavailableError";
   }
 }
@@ -75,6 +95,11 @@ export async function cacheFetch<T>(
   fetchFunction: () => Promise<T>,
   expirationInSeconds: number = CACHE_DURATION
 ): Promise<T> {
+  if (!cacheEnabled) {
+    logger.debug({ key }, "Cache disabled");
+    return fetchFunction();
+  }
+
   const cached = await cacheGet<T>(key);
   if (cached !== null) {
     logger.debug({ key, cached }, "Cache hit");
@@ -88,6 +113,7 @@ export async function cacheFetch<T>(
 }
 
 export async function cacheGet<T>(key: string): Promise<T | null> {
+  if (!cacheEnabled) return null;
   try {
     const client = getRedisClient();
     const cached = await client.get(key);
@@ -114,6 +140,7 @@ export async function cacheSet<T>(
   data: T,
   expirationInSeconds = CACHE_DURATION
 ): Promise<T> {
+  if (!cacheEnabled) return data;
   try {
     const client = getRedisClient();
     const entry: CacheEntry<T> = {
@@ -131,6 +158,7 @@ export async function cacheSet<T>(
 }
 
 export async function cacheRemove(key: string): Promise<void> {
+  if (!cacheEnabled) return;
   try {
     const client = getRedisClient();
     await client.del(key);
@@ -141,6 +169,7 @@ export async function cacheRemove(key: string): Promise<void> {
 }
 
 export async function clearCache(): Promise<void> {
+  if (!cacheEnabled) return;
   try {
     const client = getRedisClient();
     await client.flushdb();

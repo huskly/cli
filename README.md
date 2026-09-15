@@ -175,9 +175,12 @@ Under Schwab, `quote` also accepts 21-character OSI option symbols.
 Quote the symbol so the shell keeps the space padding as one argument.
 
 ```bash
-huskly-cli quote "AAPL  260116C00250000"   # AAPL 2026-01-16 250 call
-huskly-cli quote "SPY   251219P00600000"   # SPY 2025-12-19 600 put
+huskly-cli quote "AAPL  271217C00250000"   # AAPL 2027-12-17 250 call
+huskly-cli quote "SPY   271217P00600000"   # SPY 2027-12-17 600 put
 ```
+
+An expired or unlisted contract returns "No quote data available".
+Use `expiries` and `chain --json` to find a live contract symbol.
 
 Under `--broker ibkr`, `quote` accepts equity symbols only.
 Use `option chain` to quote IBKR option series.
@@ -187,7 +190,7 @@ Every market-data and account read command accepts `--json` for a stable DTO.
 ```bash
 huskly-cli quote --json AAPL
 huskly-cli history AAPL --days 30 --json
-huskly-cli chain AAPL 2026-01-16 --strikes 5 --json
+huskly-cli chain AAPL 2026-12-18 --strikes 5 --json
 huskly-cli expiries AAPL --json
 huskly-cli movers '$SPX' --json
 huskly-cli vix --json

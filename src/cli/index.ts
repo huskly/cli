@@ -17,7 +17,7 @@ import { handleRepl } from "./repl.js";
 import { handleUserPreference } from "./userPreference.js";
 import { handleSearch } from "./search.js";
 import { handleMovers } from "./movers.js";
-import { disconnectCache, RedisUnavailableError } from "#src/cache.js";
+import { disconnectCache, RedisUnavailableError, setCacheEnabled } from "#src/cache.js";
 import { chooseBroker, requireSchwab } from "./shared.js";
 import { packageVersion } from "./packageVersion.js";
 import type { BrokerName } from "#src/brokers/brokerClient.js";
@@ -29,7 +29,11 @@ program
   .name("huskly-cli")
   .description("Terminal-based trading tools for Schwab (huskly auth) and IBKR (gateway)")
   .version(packageVersion())
-  .option("--broker <name>", "Broker to use: schwab or ibkr (default: schwab)");
+  .option("--broker <name>", "Broker to use: schwab or ibkr (default: schwab)")
+  .option("--no-cache", "Bypass the Schwab Redis read-cache and query the broker directly")
+  .hook("preAction", () => {
+    setCacheEnabled(program.opts<{ cache: boolean }>().cache);
+  });
 
 /**
  * Resolve the broker for one command.
@@ -110,10 +114,12 @@ Examples:
   $ huskly-cli quote SPY QQQ NVDA
   $ huskly-cli quote --json AAPL
   $ huskly-cli --broker ibkr quote AAPL
-  $ huskly-cli quote "AAPL  260116C00250000"    # AAPL 2026-01-16 250 call
-  $ huskly-cli quote "SPY   251219P00600000"    # SPY 2025-12-19 600 put
+  $ huskly-cli quote "AAPL  271217C00250000"    # AAPL 2027-12-17 250 call
+  $ huskly-cli quote "SPY   271217P00600000"    # SPY 2027-12-17 600 put
 
 Quote the space-padded OSI symbol so the shell keeps it as one argument.
+An expired or unlisted contract returns "No quote data available"; use
+"expiries" and "chain" to find a live contract symbol.
 Under --broker ibkr, quote accepts equity symbols only; use "option chain"
 to quote IBKR option series.`
   )
@@ -371,6 +377,7 @@ program
     if (error instanceof RedisUnavailableError) {
       console.error(chalk.red("Error:"), error.message);
       console.error(chalk.dim("Example: brew services start redis  (or: redis-server)"));
+      console.error(chalk.dim("Or rerun the command with --no-cache."));
       process.exit(1);
     }
     const message = error instanceof Error ? error.message : String(error);
