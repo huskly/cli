@@ -13,6 +13,7 @@ import { handleTransactions } from "./transactions.js";
 import { handleOrders } from "./orders.js";
 import { handlePlaceOrder } from "./placeOrder.js";
 import { handlePlaceOptionOrder } from "./placeOptionOrder.js";
+import { handleCancelOrder } from "./cancelOrder.js";
 import { handleRepl } from "./repl.js";
 import { handleUserPreference } from "./userPreference.js";
 import { handleSearch } from "./search.js";
@@ -363,6 +364,32 @@ program
       await handlePlaceOptionOrder(symbol, expiry, strike, putCall, quantity, instruction, options);
     }
   );
+
+program
+  .command("cancel-order")
+  .description("Cancel a working equity or option order")
+  .argument("<orderId>", "Schwab order ID, as shown by the 'orders' command")
+  .option("--confirm", "Confirm this cancellation")
+  .option("--json", "Emit a stable JSON DTO")
+  .addHelpText(
+    "after",
+    `
+Schwab cancels asynchronously. The order can still fill before the cancel
+takes effect, so this command re-reads the order and reports the status it
+actually observed. Schwab has no replace operation; cancel, then place a
+new order.
+
+Examples:
+  $ huskly-cli orders --status WORKING
+  $ huskly-cli cancel-order 1003456789 --confirm
+  $ huskly-cli cancel-order 1003456789 --confirm --json
+
+Use "order cancel <operation-id>" for IBKR gateway orders.`
+  )
+  .action(async (orderId: string, options: { confirm?: boolean; json?: boolean }) => {
+    guardSchwab("cancel-order");
+    await handleCancelOrder(orderId, options);
+  });
 
 program
   .command("repl")

@@ -200,4 +200,20 @@ export class CachedSchwabClient {
   async placeOrder(accountHash: string, orderRequest: SchwabOrderRequest) {
     return this.client.placeOrder(accountHash, orderRequest);
   }
+
+  /**
+   * Cancel a working order.
+   * NOT CACHED - this is a write operation with side effects.
+   */
+  async cancelOrder(accountHash: string, orderId: string) {
+    return this.client.cancelOrder(accountHash, orderId);
+  }
+
+  /**
+   * Fetch one order by ID.
+   * NOT CACHED - callers read this to confirm a status that is changing.
+   */
+  async fetchAccountOrder(accountHash: string, orderId: string) {
+    return this.client.fetchAccountOrder(accountHash, orderId);
+  }
 }
