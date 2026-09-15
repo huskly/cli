@@ -1,6 +1,8 @@
 import chalk from "chalk";
-import { addDays, format } from "date-fns";
+import { addDays, format, parse } from "date-fns";
 import { apiClient } from "./shared.js";
+import { requireObservation, type BrokerName } from "#src/brokers/brokerClient.js";
+import { derivativeDiscoveryClient } from "#src/derivatives/derivativeClient.js";
 
 const DEFAULT_DAYS_AHEAD = 90;
 const DISPLAY_LIMIT = 20;
@@ -12,6 +14,7 @@ export interface ExpiryDto {
 }
 
 export interface ExpiriesDto {
+  readonly broker: BrokerName;
   readonly symbol: string;
   readonly contractType: "PUT" | "CALL";
   readonly from: string;
@@ -58,24 +61,66 @@ export function renderExpiries(dto: ExpiriesDto): string {
   return lines.join("\n");
 }
 
-export async function handleExpiries(symbol: string, options: ExpiriesOptions): Promise<void> {
+/** IBKR lists expiries per series, so the same date can repeat across classes. */
+async function ibkrExpiryDates(
+  symbol: string,
+  contractType: "PUT" | "CALL",
+  from: string,
+  to: string
+): Promise<string[]> {
+  const client = await derivativeDiscoveryClient("ibkr");
+  const expiries = requireObservation(
+    "queryDerivativeExpiries",
+    await client.getExpiries({
+      assetClass: "OPT",
+      underlying: symbol.toUpperCase(),
+      right: contractType,
+      from,
+      to,
+    })
+  ).value;
+  return [...new Set(expiries.map((expiry) => expiry.expiration))].sort((a, b) =>
+    a.localeCompare(b)
+  );
+}
+
+async function schwabExpiryDates(
+  symbol: string,
+  contractType: "PUT" | "CALL",
+  from: string,
+  to: string
+): Promise<string[]> {
+  const api = await apiClient();
+  const expiries = await api.getAvailableExpiries(symbol, contractType, from, to);
+  return expiries.map((expiry) => format(expiry, "yyyy-MM-dd"));
+}
+
+export async function handleExpiries(
+  broker: BrokerName,
+  symbol: string,
+  options: ExpiriesOptions
+): Promise<void> {
   const contractType: "PUT" | "CALL" = options.type.toUpperCase() === "CALL" ? "CALL" : "PUT";
   const today = new Date();
   const from = options.from ?? format(today, "yyyy-MM-dd");
   const to = options.to ?? format(addDays(today, DEFAULT_DAYS_AHEAD), "yyyy-MM-dd");
 
-  const api = await apiClient();
-  const expiries = await api.getAvailableExpiries(symbol, contractType, from, to);
+  const dates =
+    broker === "ibkr"
+      ? await ibkrExpiryDates(symbol, contractType, from, to)
+      : await schwabExpiryDates(symbol, contractType, from, to);
+
   const dto: ExpiriesDto = {
-    symbol,
+    broker,
+    symbol: symbol.toUpperCase(),
     contractType,
     from,
     to,
-    count: expiries.length,
-    expiries: expiries.map((expiry) => ({
-      date: format(expiry, "yyyy-MM-dd"),
-      dayOfWeek: format(expiry, "EEE"),
-      daysToExpiry: daysToExpiry(expiry, today),
+    count: dates.length,
+    expiries: dates.map((date) => ({
+      date,
+      dayOfWeek: format(parse(date, "yyyy-MM-dd", today), "EEE"),
+      daysToExpiry: daysToExpiry(parse(date, "yyyy-MM-dd", today), today),
     })),
   };
 

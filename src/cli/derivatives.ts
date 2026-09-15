@@ -351,7 +351,7 @@ export function renderOptionChain(result: OptionChainResearch): string {
   const reference = result.referenceQuote;
   const lines = [
     reference === null
-      ? "Reference: not requested"
+      ? `Reference: ${result.referenceQuoteError ?? "not requested"}`
       : `Reference ${reference.value.symbol}: ${formatPrice(reference.value.mark ?? reference.value.last)} (${reference.value.dataAvailability}) ${observationDetails(reference.observedAt, reference.completeness)}`,
     `Center: ${formatPrice(result.center)}  Contracts: ${String(result.quotes.value.length)} ${observationDetails(result.quotes.observedAt, result.quotes.completeness)}`,
     "STRIKE  RIGHT  BID  ASK  MARK  DELTA  CLASS  EXCHANGE  MULTIPLIER  DATA",

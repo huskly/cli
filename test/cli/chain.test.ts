@@ -68,3 +68,85 @@ test("option chain renderer prints one row per selected strike", () => {
   assert.match(output, /\$110\.00/);
   assert.doesNotMatch(output, /\$120\.00/);
 });
+
+import { toIbkrChainDto } from "#src/cli/chain.js";
+import type { OptionChainResearch } from "#src/derivatives/derivativeResearch.js";
+
+function ibkrQuote(strike: number, right: "CALL" | "PUT") {
+  return {
+    contract: {
+      identity: {
+        assetClass: "OPT",
+        underlying: "IBIT",
+        expiration: "2026-10-02",
+        strike,
+        right,
+        tradingClass: "IBIT",
+        exchange: "SMART",
+        multiplier: 100,
+      },
+      brokerReference: { broker: "ibkr", contractId: "1" },
+    },
+    dataAvailability: "live",
+    timestamp: null,
+    bid: 1,
+    ask: 2,
+    last: 1.4,
+    mark: 1.5,
+    delta: right === "CALL" ? 0.58 : -0.42,
+    impliedVolatility: null,
+    volume: 5,
+    openInterest: 7,
+  };
+}
+
+const ibkrResearch = {
+  referenceQuote: null,
+  center: 43,
+  referenceQuoteError: "Derivative contract is incomplete for a reference quote",
+  quotes: {
+    observedAt: "2026-09-15T18:00:00.000Z",
+    completeness: "partial",
+    value: [ibkrQuote(43, "CALL"), ibkrQuote(43, "PUT"), ibkrQuote(42, "CALL")],
+  },
+} as unknown as OptionChainResearch;
+
+void test("an IBKR chain renders through the same table as Schwab", () => {
+  const dto = toIbkrChainDto("IBIT", "2026-10-02", ibkrResearch);
+  assert.equal(dto.broker, "ibkr");
+  assert.equal(dto.expiry, "2026-10-02");
+  assert.deepEqual(
+    dto.strikes.map((row) => row.strike),
+    [42, 43]
+  );
+  const row = dto.strikes[1];
+  assert.ok(row !== undefined);
+  assert.ok(row.call !== null && row.put !== null);
+  assert.equal(row.call.delta, 0.58);
+  assert.equal(row.put.openInterest, 7);
+  assert.equal(row.call.mid, 1.5);
+});
+
+void test("an IBKR chain keeps the series routing facts Schwab does not expose", () => {
+  const dto = toIbkrChainDto("IBIT", "2026-10-02", ibkrResearch);
+  assert.deepEqual(dto.series, { tradingClass: "IBIT", exchange: "SMART", multiplier: 100 });
+});
+
+void test("a missing underlying price is reported, and never discards the chain", () => {
+  const dto = toIbkrChainDto("IBIT", "2026-10-02", ibkrResearch);
+  assert.equal(dto.underlyingPrice, null);
+  assert.match(String(dto.underlyingPriceError), /incomplete for a reference quote/);
+  assert.equal(dto.strikes.length, 2);
+
+  const output = stripAnsi(renderOptionChain(dto));
+  assert.match(output, /Underlying price unavailable/);
+  assert.match(output, /IBIT · SMART · multiplier 100/);
+  assert.match(output, /\$43\.00/);
+});
+
+void test("a strike with only one side renders the missing side as dashes", () => {
+  const output = stripAnsi(renderOptionChain(toIbkrChainDto("IBIT", "2026-10-02", ibkrResearch)));
+  const line = output.split("\n").find((row) => row.includes("$42.00"));
+  assert.ok(line !== undefined);
+  assert.match(line, /-\s+-\s+-/);
+});

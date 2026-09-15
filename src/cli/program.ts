@@ -3,8 +3,8 @@ import { handleQuote } from "./quote.js";
 import { handleHistory } from "./history.js";
 import { handleChart } from "./chart.js";
 import { handleVix } from "./vix.js";
-import { handleExpiries } from "./expiries.js";
-import { handleChain } from "./chain.js";
+import { handleExpiries, type ExpiriesOptions } from "./expiries.js";
+import { handleChain, type ChainOptions } from "./chain.js";
 import { handleAccount } from "./account.js";
 import { handlePositions } from "./positions.js";
 import { handleTransactions } from "./transactions.js";
@@ -237,15 +237,9 @@ export function createProgram(session: ProgramSession = {}): Command {
     .option("-f, --from <date>", "Start date (YYYY-MM-DD)")
     .option("-e, --to <date>", "End date (YYYY-MM-DD)")
     .option("--json", "Emit a stable JSON DTO")
-    .action(
-      async (
-        symbol: string,
-        options: { type: string; from?: string; to?: string; json?: boolean }
-      ) => {
-        guardSchwab("expiries");
-        await handleExpiries(symbol, options);
-      }
-    );
+    .action(async (symbol: string, options: ExpiriesOptions) => {
+      await handleExpiries(broker(), symbol, options);
+    });
 
   program
     .command("chain")
@@ -255,16 +249,28 @@ export function createProgram(session: ProgramSession = {}): Command {
     .option("-a, --around <strike>", "Filter strikes around this price, defaults to the last price")
     .option("-s, --strikes <count>", "Number of strikes to show above/below center", "10")
     .option("--json", "Emit a stable JSON DTO")
-    .action(
-      async (
-        symbol: string,
-        expiry: string | undefined,
-        options: { around?: string; strikes: string; json?: boolean }
-      ) => {
-        guardSchwab("chain");
-        await handleChain(symbol, expiry, options);
-      }
-    );
+    .option("--right <right>", "IBKR only: filter to CALL or PUT")
+    .option("--class <trading-class>", "IBKR only: exact broker trading class")
+    .option("--exchange <exchange>", "IBKR only: exact listing/routing exchange")
+    .addHelpText(
+      "after",
+      `
+Both brokers render the same table. Schwab resolves the series from the
+symbol. IBKR needs --class or --exchange only when the default series for
+the underlying is ambiguous.
+
+Examples:
+  $ huskly-cli chain AAPL
+  $ huskly-cli chain AAPL 2026-12-18 --strikes 5
+  $ huskly-cli chain AAPL 2026-12-18 --json
+  $ huskly-cli --broker ibkr chain IBIT 2026-10-02
+  $ huskly-cli --broker ibkr chain NDX 2026-08-20 --class NDXP --exchange SMART
+
+Omit the expiry to use the nearest listed expiry.`
+    )
+    .action(async (symbol: string, expiry: string | undefined, options: ChainOptions) => {
+      await handleChain(broker(), symbol, expiry, options);
+    });
 
   addDerivativeCommands(program, broker);
   addEquityCommands(program, broker);

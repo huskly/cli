@@ -37,8 +37,8 @@ huskly-cli --broker ibkr repl
 | `history`                                       | ✓      | ✗    |
 | `chart`                                         | ✓      | ✗    |
 | `vix`                                           | ✓      | ✗    |
-| `expiries`                                      | ✓      | ✗    |
-| `chain`                                         | ✓      | ✗    |
+| `expiries`                                      | ✓      | ✓    |
+| `chain`                                         | ✓      | ✓    |
 | `option resolve`                                | ✗      | ✓    |
 | `option chain`                                  | ✗      | ✓    |
 | `spread quote`                                  | ✗      | ✓    |
@@ -61,6 +61,24 @@ huskly-cli --broker ibkr repl
 Gateway commands (`option`, `spread`, `order`, `equity`) default to IBKR.
 A `--broker` flag on the command wins, then the global `--broker`, then that
 default.
+
+### Option chains
+
+`expiries` and `chain` work with both brokers and render the same table.
+
+```bash
+huskly-cli expiries AAPL
+huskly-cli chain AAPL 2026-12-18 --strikes 5
+
+huskly-cli --broker ibkr expiries IBIT
+huskly-cli --broker ibkr chain IBIT 2026-10-02
+huskly-cli --broker ibkr chain NDX 2026-08-20 --class NDXP --exchange SMART
+```
+
+Omit the expiry to use the nearest listed expiry. Under IBKR, give `--class`
+or `--exchange` only when the default series for the underlying is ambiguous.
+If the broker cannot price the underlying, the chain still prints and the
+missing price is reported above the table.
 
 ### Trading and diagnostics
 

@@ -2,19 +2,34 @@ import chalk from "chalk";
 import { addDays, format, parse } from "date-fns";
 import { apiClient } from "./shared.js";
 import type { OptionQuote } from "@huskly/schwab-client";
+import { requireObservation, type BrokerName } from "#src/brokers/brokerClient.js";
+import { derivativeDiscoveryClient } from "#src/derivatives/derivativeClient.js";
+import type { DerivativeDiscoveryClient } from "#src/derivatives/derivativeDiscovery.js";
+import {
+  DerivativeResearchService,
+  type OptionChainResearch,
+} from "#src/derivatives/derivativeResearch.js";
 
 const DEFAULT_DAYS_AHEAD = 30;
 const COL_WIDTH = 8;
 const STRIKE_WIDTH = 10;
 
 export interface ChainLegDto {
-  readonly symbol: string;
+  /** OSI symbol under Schwab; null when the broker gives no stable symbol. */
+  readonly symbol: string | null;
   readonly bid: number | null;
   readonly ask: number | null;
-  readonly mid: number;
-  readonly delta: number;
+  readonly mid: number | null;
+  readonly delta: number | null;
   readonly volume: number | null;
   readonly openInterest: number | null;
+}
+
+/** Series facts that IBKR needs to identify a contract and Schwab does not expose. */
+export interface ChainSeriesDto {
+  readonly tradingClass: string;
+  readonly exchange: string;
+  readonly multiplier: number;
 }
 
 export interface ChainStrikeDto {
@@ -24,11 +39,15 @@ export interface ChainStrikeDto {
 }
 
 export interface OptionChainDto {
+  readonly broker: BrokerName;
+  /** Set when the underlying could not be priced; the chain is still valid. */
+  readonly underlyingPriceError?: string | null;
   readonly symbol: string;
   readonly expiry: string;
   readonly underlyingPrice: number | null;
   readonly center: number | null;
   readonly delayed: boolean | null;
+  readonly series: ChainSeriesDto | null;
   readonly strikes: readonly ChainStrikeDto[];
 }
 
@@ -36,6 +55,10 @@ export interface ChainOptions {
   around?: string;
   strikes: string;
   json?: boolean;
+  /** IBKR-only filters; Schwab resolves the series from the symbol alone. */
+  right?: string;
+  class?: string;
+  exchange?: string;
 }
 
 function toLegDto(quote: OptionQuote | undefined): ChainLegDto | null {
@@ -76,11 +99,13 @@ export function toOptionChainDto(
   const puts = new Map(chain.filter((q) => !q.isCall).map((q) => [q.strike, q]));
 
   return {
+    broker: "schwab",
     symbol,
     expiry: format(expiry, "yyyy-MM-dd"),
     underlyingPrice,
     center,
     delayed: chain[0]?.delayed ?? null,
+    series: null,
     strikes: selected.map((strike) => ({
       strike,
       call: toLegDto(calls.get(strike)),
@@ -103,6 +128,16 @@ export function renderOptionChain(dto: OptionChainDto): string {
   const rule = chalk.gray("─".repeat(lineWidth));
   const lines = [
     header,
+    ...(dto.underlyingPriceError === null || dto.underlyingPriceError === undefined
+      ? []
+      : [chalk.yellow(`  Underlying price unavailable: ${dto.underlyingPriceError}`)]),
+    ...(dto.series === null
+      ? []
+      : [
+          chalk.gray(
+            `  ${dto.series.tradingClass} · ${dto.series.exchange} · multiplier ${String(dto.series.multiplier)}`
+          ),
+        ]),
     rule,
     chalk.green("CALLS".padStart(COL_WIDTH * 2)) +
       " ".repeat(STRIKE_WIDTH + COL_WIDTH * 2) +
@@ -126,8 +161,8 @@ export function renderOptionChain(dto: OptionChainDto): string {
     const putItm = underlying !== null && row.strike > underlying;
     const callColor = callItm ? chalk.greenBright : chalk.cyan;
     const putColor = putItm ? chalk.redBright : chalk.cyan;
-    const delta = (value: number | undefined): string =>
-      (value !== undefined ? value.toFixed(2) : "-").padStart(COL_WIDTH);
+    const delta = (value: number | null | undefined): string =>
+      (value !== null && value !== undefined ? value.toFixed(2) : "-").padStart(COL_WIDTH);
     const callMid = price(row.call?.mid ?? null).padStart(COL_WIDTH);
     const putMid = price(row.put?.mid ?? null).padStart(COL_WIDTH);
 
@@ -145,6 +180,64 @@ export function renderOptionChain(dto: OptionChainDto): string {
   }
   lines.push("");
   return lines.join("\n");
+}
+
+/**
+ * Project an IBKR derivative chain onto the shared chain DTO.
+ *
+ * @remarks
+ * Both brokers answer the same question, so both render through one table.
+ * IBKR contracts carry series routing facts that Schwab does not expose, and
+ * those go in `series` instead of being dropped.
+ */
+export function toIbkrChainDto(
+  symbol: string,
+  expiry: string,
+  research: OptionChainResearch
+): OptionChainDto {
+  const quotes = research.quotes.value;
+  const reference = research.referenceQuote?.value ?? null;
+  const first = quotes[0]?.contract.identity;
+  const byStrike = new Map<number, { call: ChainLegDto | null; put: ChainLegDto | null }>();
+
+  for (const quote of quotes) {
+    const identity = quote.contract.identity;
+    const row = byStrike.get(identity.strike) ?? { call: null, put: null };
+    const leg: ChainLegDto = {
+      symbol: null,
+      bid: quote.bid,
+      ask: quote.ask,
+      mid: quote.mark,
+      delta: quote.delta,
+      volume: quote.volume,
+      openInterest: quote.openInterest,
+    };
+    byStrike.set(
+      identity.strike,
+      identity.right === "CALL" ? { ...row, call: leg } : { ...row, put: leg }
+    );
+  }
+
+  return {
+    broker: "ibkr",
+    symbol,
+    expiry,
+    underlyingPrice: reference === null ? null : (reference.mark ?? reference.last),
+    underlyingPriceError: research.referenceQuoteError,
+    center: research.center,
+    delayed: quotes[0] === undefined ? null : quotes[0].dataAvailability.includes("delayed"),
+    series:
+      first === undefined
+        ? null
+        : {
+            tradingClass: first.tradingClass,
+            exchange: first.exchange,
+            multiplier: first.multiplier,
+          },
+    strikes: [...byStrike.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([strike, row]) => ({ strike, call: row.call, put: row.put })),
+  };
 }
 
 /** Resolve the requested expiry, or fall back to the nearest listed expiry. */
@@ -166,11 +259,54 @@ async function resolveExpiry(
   return nearest;
 }
 
-export async function handleChain(
+/** Resolve the nearest listed IBKR expiry when the user names none. */
+async function nearestIbkrExpiry(
+  client: DerivativeDiscoveryClient,
+  underlying: string
+): Promise<string> {
+  const today = new Date();
+  const expiries = requireObservation(
+    "queryDerivativeExpiries",
+    await client.getExpiries({
+      assetClass: "OPT",
+      underlying,
+      from: format(today, "yyyy-MM-dd"),
+      to: format(addDays(today, DEFAULT_DAYS_AHEAD), "yyyy-MM-dd"),
+    })
+  ).value;
+  const nearest = [...expiries].sort((a, b) => a.expiration.localeCompare(b.expiration))[0];
+  if (nearest === undefined) throw new Error(`No expiries available for ${underlying}.`);
+  return nearest.expiration;
+}
+
+async function ibkrChain(
   symbol: string,
   expiryArg: string | undefined,
   options: ChainOptions
-): Promise<void> {
+): Promise<OptionChainDto> {
+  const client = await derivativeDiscoveryClient("ibkr");
+  const underlying = symbol.toUpperCase();
+  const expiry = expiryArg ?? (await nearestIbkrExpiry(client, underlying));
+  const research = await new DerivativeResearchService(client).chain({
+    assetClass: "OPT",
+    underlying,
+    expiration: expiry,
+    ...(options.around !== undefined ? { around: parseFloat(options.around) } : {}),
+    ...(options.right !== undefined
+      ? { right: options.right.toUpperCase() as "CALL" | "PUT" }
+      : {}),
+    ...(options.class !== undefined ? { tradingClass: options.class.toUpperCase() } : {}),
+    ...(options.exchange !== undefined ? { exchange: options.exchange.toUpperCase() } : {}),
+    strikes: parseInt(options.strikes, 10),
+  });
+  return toIbkrChainDto(underlying, expiry, research);
+}
+
+async function schwabChain(
+  symbol: string,
+  expiryArg: string | undefined,
+  options: ChainOptions
+): Promise<OptionChainDto> {
   const api = await apiClient();
   const expiry = await resolveExpiry(api, symbol, expiryArg);
   const [chain, quotes] = await Promise.all([
@@ -181,7 +317,7 @@ export async function handleChain(
   const quote = quotes[symbol]?.quote;
   const underlyingPrice = quote?.mark ?? quote?.lastPrice ?? null;
   const center = options.around !== undefined ? parseFloat(options.around) : underlyingPrice;
-  const dto = toOptionChainDto(
+  return toOptionChainDto(
     symbol,
     expiry,
     chain,
@@ -189,6 +325,26 @@ export async function handleChain(
     center,
     parseInt(options.strikes, 10)
   );
+}
+
+/**
+ * Show an option chain for either broker.
+ *
+ * @remarks
+ * Schwab and IBKR answer the same question through different APIs, so the
+ * command resolves the broker and renders one shared table. IBKR needs a
+ * trading class and exchange only when the default series is ambiguous.
+ */
+export async function handleChain(
+  broker: BrokerName,
+  symbol: string,
+  expiryArg: string | undefined,
+  options: ChainOptions
+): Promise<void> {
+  const dto =
+    broker === "ibkr"
+      ? await ibkrChain(symbol, expiryArg, options)
+      : await schwabChain(symbol, expiryArg, options);
 
   console.log(options.json === true ? JSON.stringify(dto, null, 2) : renderOptionChain(dto));
 }

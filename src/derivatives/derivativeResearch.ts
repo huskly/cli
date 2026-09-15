@@ -32,6 +32,15 @@ export interface OptionChainResearch {
   referenceQuote: Observation<DerivativeReferenceQuote> | null;
   center: number | null;
   quotes: Observation<DerivativeQuote[]>;
+  /**
+   * Why the underlying reference quote is missing, when it is.
+   *
+   * @remarks
+   * The chain is the contract quotes. A broker that cannot price the
+   * underlying must not destroy quotes that were already observed, so the
+   * reason is reported instead of thrown.
+   */
+  referenceQuoteError: string | null;
 }
 
 export interface VerticalSpreadResearchRequest {
@@ -195,21 +204,32 @@ export class DerivativeResearchService {
       await this.client.getChain(contractRequest)
     );
     if (quotes.value.length === 0) {
-      return { referenceQuote: null, center: around ?? null, quotes };
+      return { referenceQuote: null, center: around ?? null, quotes, referenceQuoteError: null };
     }
     const first = quotes.value[0];
     if (first === undefined) throw new Error("Derivative chain unexpectedly has no first quote");
-    const referenceQuote = await this.client.getReferenceQuote(first.contract);
+
+    let referenceQuote: Observation<DerivativeReferenceQuote> | null = null;
+    let referenceQuoteError: string | null = null;
+    try {
+      referenceQuote = await this.client.getReferenceQuote(first.contract);
+    } catch (error: unknown) {
+      referenceQuoteError = error instanceof Error ? error.message : String(error);
+    }
+
     const center =
       around ??
-      quoteCenter(requireObservation("queryDerivativeReferenceQuote", referenceQuote).value);
+      (referenceQuote === null
+        ? null
+        : quoteCenter(requireObservation("queryDerivativeReferenceQuote", referenceQuote).value));
     return {
       referenceQuote,
       center,
       quotes: {
         ...quotes,
-        value: filterAround(quotes.value, center, strikes),
+        value: center === null ? quotes.value : filterAround(quotes.value, center, strikes),
       },
+      referenceQuoteError,
     };
   }
 
