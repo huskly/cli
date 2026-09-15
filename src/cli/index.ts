@@ -23,6 +23,7 @@ import { chooseBroker, requireSchwab } from "./shared.js";
 import { packageVersion } from "./packageVersion.js";
 import type { BrokerName } from "#src/brokers/brokerClient.js";
 import { addDerivativeCommands } from "./derivatives.js";
+import { addEquityCommands } from "./equityOrders.js";
 
 const program = new Command();
 
@@ -239,6 +240,7 @@ program
   );
 
 addDerivativeCommands(program, broker);
+addEquityCommands(program, broker);
 
 program
   .command("account")
