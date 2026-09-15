@@ -1,6 +1,11 @@
 import { Command } from "commander";
 import type { BrokerName } from "#src/brokers/brokerClient.js";
-import type { BrokerResolver } from "./shared.js";
+import { apiClient, type BrokerResolver } from "./shared.js";
+import {
+  collectSchwabDiagnostics,
+  renderSchwabDiagnostics,
+  type SchwabDiagnostics,
+} from "./schwabDiagnostics.js";
 import {
   derivativeDiscoveryClient,
   derivativeExecutionClient,
@@ -105,6 +110,7 @@ export interface DerivativeCommandDependencies {
   readonly createResearchService?: (broker: BrokerName) => Promise<ResearchServiceLike>;
   readonly createPreviewService?: (broker: BrokerName) => Promise<PreviewServiceLike>;
   readonly createExecutionService?: (broker: BrokerName) => Promise<ExecutionServiceLike>;
+  readonly createSchwabDiagnostics?: () => Promise<SchwabDiagnostics>;
   readonly log?: (line: string) => void;
 }
 
@@ -704,6 +710,16 @@ function output<T>(
   log(json === true ? JSON.stringify(value, null, 2) : render(value));
 }
 
+async function schwabDiagnostics(): Promise<SchwabDiagnostics> {
+  // Imported lazily so gateway-only commands never load the Schwab keychain.
+  const { HusklyDeviceAuth } = await import("#src/auth/husklyDeviceAuth.js");
+  const auth = new HusklyDeviceAuth();
+  return collectSchwabDiagnostics({
+    getAccessToken: () => auth.getAccessToken(),
+    fetchAccountNumbers: async () => (await apiClient()).fetchAccountNumbers(),
+  });
+}
+
 async function service(broker: BrokerName): Promise<DerivativeResearchService> {
   return new DerivativeResearchService(await derivativeDiscoveryClient(broker));
 }
@@ -756,6 +772,7 @@ export function addDerivativeCommands(
   const createResearchService = dependencies.createResearchService ?? service;
   const createPreviewService = dependencies.createPreviewService ?? previewService;
   const createExecutionService = dependencies.createExecutionService ?? executionService;
+  const createSchwabDiagnostics = dependencies.createSchwabDiagnostics ?? schwabDiagnostics;
   const log = dependencies.log ?? console.log;
 
   const option = new Command("option").description("Resolve and research exact derivative series");
@@ -983,13 +1000,19 @@ export function addDerivativeCommands(
   const brokerCommand = new Command("broker").description("Broker diagnostics");
   brokerCommand
     .command("doctor")
-    .description("Run gateway trading diagnostics")
+    .description("Run broker health diagnostics")
     .option(...GATEWAY_BROKER_FLAG)
     .option("--json", "Emit a stable JSON DTO")
     .action(async (options: { broker?: string; json?: boolean }) => {
-      const result = await (
-        await createPreviewService(broker(options.broker))
-      ).getTradingDiagnostics();
+      const selected = broker(options.broker);
+      // Each broker has its own health surface: Schwab has auth plus the Redis
+      // read-cache, the gateway has a session and a mutation queue.
+      if (selected === "schwab") {
+        const result = await createSchwabDiagnostics();
+        output(result, options.json, renderSchwabDiagnostics, log);
+        return;
+      }
+      const result = await (await createPreviewService(selected)).getTradingDiagnostics();
       output(toTradingDiagnosticsView(result), options.json, renderTradingDiagnostics, log);
     });
   program.addCommand(brokerCommand);

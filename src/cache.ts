@@ -41,8 +41,26 @@ export class RedisUnavailableError extends Error {
   }
 }
 
-function redisUrl(): string {
+/** The Redis endpoint this process will use. */
+export function redisUrl(): string {
   return process.env["REDIS_URL"] ?? "redis://localhost:6379";
+}
+
+/**
+ * Probe Redis without failing the caller.
+ *
+ * @remarks
+ * Diagnostics must report an unreachable cache as a finding, not raise the
+ * error that normal commands raise.
+ */
+export async function probeCache(): Promise<boolean> {
+  if (!cacheEnabled) return false;
+  try {
+    await getRedisClient().ping();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** True when the error means the server is unreachable, not a command failure. */
