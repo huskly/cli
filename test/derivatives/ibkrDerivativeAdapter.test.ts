@@ -26,7 +26,6 @@ function fakeApi(
         competingSession: false,
         lastTickleAt: null,
         nextRenewalAt: null,
-        lastBrokerRequestAt: null,
         readQueueDepth: 0,
         pendingWarnings: 0,
         reconciliationRequiredOperations: 0,

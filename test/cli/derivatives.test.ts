@@ -136,7 +136,6 @@ const diagnostics: TradingDiagnostics = {
   connected: true,
   lastTickleAt: "2026-09-04T00:00:00.000Z",
   nextRenewalAt: "2026-09-04T00:05:00.000Z",
-  lastBrokerRequestAt: "2026-09-04T00:00:01.000Z",
   readQueueDepth: 0,
   pendingWarnings: 1,
   reconciliationRequiredOperations: 2,

@@ -19,7 +19,6 @@ export interface TradingDiagnostics {
   connected: boolean | null;
   lastTickleAt: string | null;
   nextRenewalAt: string | null;
-  lastBrokerRequestAt: string | null;
   readQueueDepth: number;
   pendingWarnings: number;
   reconciliationRequiredOperations: number;

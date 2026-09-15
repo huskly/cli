@@ -215,7 +215,6 @@ interface SafeTradingDiagnosticsView {
   readonly timing: {
     readonly lastTickleAt: string | null;
     readonly nextRenewalAt: string | null;
-    readonly lastBrokerRequestAt: string | null;
   };
   readonly queueDepth: number;
   readonly pendingWarnings: number;
@@ -509,7 +508,6 @@ function toTradingDiagnosticsView(result: TradingDiagnostics): SafeTradingDiagno
     timing: {
       lastTickleAt: result.lastTickleAt,
       nextRenewalAt: result.nextRenewalAt,
-      lastBrokerRequestAt: result.lastBrokerRequestAt,
     },
     queueDepth: result.readQueueDepth,
     pendingWarnings: result.pendingWarnings,
@@ -590,7 +588,7 @@ function renderTradingDiagnostics(result: SafeTradingDiagnosticsView): string {
     `Authenticated: ${String(result.gateway.authenticated)}  Connected: ${String(result.gateway.connected)}  Competing session: ${String(result.gateway.competingSession)}`,
     `Read ready: ${String(result.gateway.readReady)}  New mutations ready: ${String(result.gateway.newMutationReady)}  Recovery ready: ${String(result.gateway.recoveryMutationReady)}  Lock owned: ${String(result.gateway.lockOwned)}`,
     `Market data: ${result.marketDataAvailable === null ? "unknown" : String(result.marketDataAvailable)}  Queue depth: ${String(result.queueDepth)}`,
-    `Last tickle: ${result.timing.lastTickleAt ?? "unknown"}  Next renewal: ${result.timing.nextRenewalAt ?? "unknown"}  Last broker request: ${result.timing.lastBrokerRequestAt ?? "unknown"}`,
+    `Last tickle: ${result.timing.lastTickleAt ?? "unknown"}  Next renewal: ${result.timing.nextRenewalAt ?? "unknown"}`,
     `Pending warnings: ${String(result.pendingWarnings)}  Reconciliation required: ${String(result.reconciliationRequiredOperations)}`,
   ].join("\n");
 }
