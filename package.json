@@ -1,6 +1,6 @@
 {
   "name": "@huskly/cli",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "Terminal-based trading tools for Schwab and IBKR through the IBKR gateway",
   "type": "module",
   "main": "dist/index.js",
@@ -52,7 +52,7 @@
     "typescript-eslint": "^8.69.0"
   },
   "dependencies": {
-    "@huskly/ibkr-gateway-client": "file:/home/felipecsl/prj/.artifacts/equity-stop-orders/huskly-ibkr-gateway-client-stop.tgz",
+    "@huskly/ibkr-gateway-client": "^0.15.0",
     "@huskly/schwab-client": "^1.3.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "asciichart": "^1.5.25",
