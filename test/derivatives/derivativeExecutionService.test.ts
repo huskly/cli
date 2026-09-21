@@ -157,6 +157,8 @@ function operation(
             warningCount: kind === "warning" ? 1 : 0,
           }
         : { kind, orders: [], warningCount: 0, reasonCategories: ["unknown"] },
+    blockedCause: null,
+    outcome: null,
     createdAt: "2026-09-04T00:00:00.000Z",
     latestTransitionAt: "2026-09-04T00:00:01.000Z",
   };
@@ -582,6 +584,69 @@ void test("watch uses injected time at the exact deadline", async () => {
   );
   assert.deepEqual(delays, [600, 400]);
   assert.equal(network.getCalls, 3);
+});
+
+void test("file store reloads and updates the gateway v0.14 operation shape", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "execution-v14-"));
+  try {
+    const store = new FileExecutionStateStore(directory);
+    const warningOperation = {
+      ...operation({
+        state: "warning_pending",
+        kind: "warning",
+        warning: { sequence: 1, replyId: "reply-1" },
+      }),
+      pendingWarning: {
+        sequence: 1,
+        replyId: "reply-1",
+        messageIds: ["o163"],
+        known: true,
+      },
+      blockedCause: null,
+      outcome: null,
+    } as unknown as OrderOperationView;
+    const record: SubmissionRecord = {
+      schemaVersion: 1,
+      previewId: preview.previewId,
+      operationKind: "combo",
+      idempotencyKey: "submit-key",
+      canonicalIntent: intent,
+      account: preview.account,
+      state: "operation_known",
+      operationId: "op-1",
+      operation: warningOperation,
+      createdAt: preview.createdAt,
+      updatedAt: preview.createdAt,
+    };
+    await store.saveSubmission(record);
+
+    const network = new FakeNetwork();
+    network.acknowledgeHandler = () =>
+      Promise.resolve({
+        ...operation(),
+        blockedCause: null,
+        outcome: {
+          status: "working",
+          members: [{ memberId: "root", status: "working", filledQuantity: 0 }],
+          fills: [],
+          completeness: { status: "incomplete", cause: "order_status_unavailable" },
+          observedAt: "2026-09-04T00:00:02.000Z",
+          version: 1,
+        },
+      } as unknown as OrderOperationView);
+
+    const result = await service(store, network).acknowledgeWarning({
+      operationId: "op-1",
+      replyId: "reply-1",
+      confirm: true,
+    });
+
+    assert.equal(result.state, "accepted");
+    assert.equal(result.operation.outcome?.status, "working");
+    assert.equal(network.acknowledgeCalls, 1);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 void test("file store rejects a submission kind that does not match its intent", async () => {

@@ -28,7 +28,7 @@ export interface SafeOperationView {
   } | null;
   readonly childActions: readonly {
     readonly operationId: string;
-    readonly action: "warning_acknowledgement" | "cancellation";
+    readonly action: OrderOperationView["children"][number]["action"];
     readonly state: string;
     readonly createdAt: string;
     readonly latestTransitionAt: string;

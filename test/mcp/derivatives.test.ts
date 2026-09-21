@@ -57,6 +57,8 @@ function reconciliationOperation(operationId: string): OrderReconciliationView {
       warningCount: 0,
       reasonCategories: ["unknown"],
     },
+    blockedCause: null,
+    outcome: null,
     createdAt: "2026-09-04T00:00:00.000Z",
     latestTransitionAt: "2026-09-04T00:03:00.000Z",
   };

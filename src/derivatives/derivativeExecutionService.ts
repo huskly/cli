@@ -188,6 +188,56 @@ const reasonCategories = z.array(
     "unknown",
   ])
 );
+const normalizedOrderStatusSchema = z.enum([
+  "working",
+  "partially_filled",
+  "filled",
+  "cancelled",
+  "rejected",
+  "expired",
+  "unknown",
+]);
+const orderOutcomeSchema = z.strictObject({
+  status: normalizedOrderStatusSchema,
+  members: z.array(
+    z.strictObject({
+      memberId: z.string(),
+      status: normalizedOrderStatusSchema,
+      filledQuantity: z.number().nullable(),
+    })
+  ),
+  fills: z.array(
+    z.strictObject({
+      fillId: z.string(),
+      memberId: z.string(),
+      contractId: z.string(),
+      side: z.enum(["BUY", "SELL"]),
+      quantity: z.number(),
+      price: z.number(),
+      occurredAt: z.iso.datetime().nullable(),
+      tradeDate: z.iso.date(),
+      source: z.enum(["execution", "contract_transaction"]),
+      commission: z.number().nullable(),
+      enrichedFrom: z.string().nullable(),
+    })
+  ),
+  completeness: z.discriminatedUnion("status", [
+    z.strictObject({ status: z.literal("complete") }),
+    z.strictObject({
+      status: z.literal("incomplete"),
+      cause: z.enum([
+        "order_status_unavailable",
+        "fills_below_filled_quantity",
+        "fills_above_filled_quantity",
+        "sources_conflict",
+        "ledger_unavailable",
+        "member_identity_missing",
+      ]),
+    }),
+  ]),
+  observedAt: z.iso.datetime(),
+  version: z.number(),
+});
 const operationSchema = z.strictObject({
   operationId: z.string(),
   kind: z.enum(["single", "combo", "graph"]),
@@ -201,6 +251,7 @@ const operationSchema = z.strictObject({
     "broker_attempt_started",
     "accepted",
     "warning_pending",
+    "warning_declined",
     "cancelled",
     "broker_refused",
     "unknown_outcome",
@@ -217,13 +268,14 @@ const operationSchema = z.strictObject({
   children: z.array(
     z.strictObject({
       operationId: z.string(),
-      action: z.enum(["warning_acknowledgement", "cancellation"]),
+      action: z.enum(["warning_acknowledgement", "warning_decline", "cancellation"]),
       state: z.enum([
         "received",
         "rejected_before_submission",
         "broker_attempt_started",
         "accepted",
         "warning_pending",
+        "warning_declined",
         "cancelled",
         "broker_refused",
         "unknown_outcome",
@@ -234,7 +286,14 @@ const operationSchema = z.strictObject({
       latestTransitionAt: z.iso.datetime(),
     })
   ),
-  pendingWarning: z.strictObject({ sequence: z.number(), replyId: z.string() }).nullable(),
+  pendingWarning: z
+    .strictObject({
+      sequence: z.number(),
+      replyId: z.string(),
+      messageIds: z.array(z.string()).optional(),
+      known: z.boolean().optional(),
+    })
+    .nullable(),
   reconciliation: z
     .strictObject({
       observedAt: z.iso.datetime(),
@@ -250,9 +309,11 @@ const operationSchema = z.strictObject({
       z.strictObject({ kind: z.literal("recovery_required"), ...outcomeBase, reasonCategories }),
     ])
     .nullable(),
+  blockedCause: z.string().nullable().default(null),
+  outcome: orderOutcomeSchema.nullable().default(null),
   createdAt: z.iso.datetime(),
   latestTransitionAt: z.iso.datetime(),
-}) satisfies z.ZodType<OrderOperationView>;
+}) as unknown as z.ZodType<OrderOperationView>;
 const executionEquityIntentSchema = z.strictObject({
   contract: z.strictObject({
     conid: z.number().int().positive(),
