@@ -96,11 +96,14 @@ huskly-cli orders --status WORKING
 huskly-cli cancel-order 1003456789 --confirm
 
 huskly-cli equity preview AAPL BUY 10 --limit 250.00
+huskly-cli equity preview AAPL BUY 10 --order-type LIMIT --limit 250.00
+huskly-cli equity preview AAPL SELL 10 --order-type STOP --stop-price 240.00
 huskly-cli equity submit <preview-id> --operator alice --confirm
 ```
 
 `equity preview` and `equity submit` drive the same guarded service as the
 `preview_equity_order` and `submit_equity_order` MCP tools.
+STOP is a native stop-market order, not stop-limit.
 
 ### Single-leg option orders
 
@@ -356,11 +359,12 @@ Live execution stays fail-closed behind the existing live-execution controls.
 ### Guarded equity MCP workflow
 
 Equity preview resolves exactly one USD US-listed stock or ETF contract.
-It accepts positive whole-share quantities and limit BUY or SELL orders only.
-It uses `DAY` and `REGULAR` by default.
+It accepts positive whole-share quantities and LIMIT or STOP BUY/SELL orders.
+STOP is a native stop-market order, not stop-limit.
+It uses `DAY`, `REGULAR`, and `LIMIT` by default.
 Preview never submits an order.
 
-Call `preview_equity_order` first:
+Call `preview_equity_order` first. A limit order:
 
 ```json
 {
@@ -368,6 +372,18 @@ Call `preview_equity_order` first:
   "side": "BUY",
   "quantity": 2,
   "limit": 52.25
+}
+```
+
+A stop-market order:
+
+```json
+{
+  "symbol": "AAPL",
+  "side": "SELL",
+  "quantity": 10,
+  "orderType": "STOP",
+  "stopPrice": 240.00
 }
 ```
 

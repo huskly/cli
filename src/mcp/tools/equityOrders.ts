@@ -5,6 +5,7 @@ import {
   EquityOrderService,
   FileEquityPreviewStore,
   FileEquitySubmissionStore,
+  normalizeEquityOrderTerms,
   type EquityPreviewStore,
   type EquitySubmissionStore,
 } from "#src/equities/equityOrderService.js";
@@ -75,10 +76,11 @@ interface PreviewToolInput {
   readonly symbol: string;
   readonly side: "BUY" | "SELL";
   readonly quantity: number;
-  readonly limit: number;
+  readonly orderType?: "LIMIT" | "STOP";
+  readonly limit?: number;
+  readonly stopPrice?: number;
   readonly tif: "DAY" | "GTC";
   readonly session: "REGULAR" | "OVERNIGHT";
-  readonly orderType: "LIMIT";
 }
 
 interface SubmitToolInput {
@@ -94,27 +96,51 @@ export function registerEquityOrderTools(
   server.registerTool(
     "preview_equity_order",
     {
-      title: "Preview an IBKR equity limit order",
+      title: "Preview an IBKR equity order",
       description:
-        "Resolve one exact US-listed stock or ETF and run an IBKR What-If preview. This never submits an order. The returned preview ID expires after a short time.",
+        "Resolve one exact US-listed stock or ETF and run an IBKR What-If preview. " +
+        "This never submits an order. The returned preview ID expires after a short time. " +
+        "STOP is a native stop-market order, not stop-limit.",
       inputSchema: {
         symbol: z.string().min(1).max(32).describe("US stock or ETF symbol"),
         side: z.enum(["BUY", "SELL"]),
         quantity: z.number().int().positive().describe("Whole shares only"),
-        orderType: z.literal("LIMIT").default("LIMIT"),
-        limit: z.number().positive(),
+        orderType: z
+          .enum(["LIMIT", "STOP"])
+          .default("LIMIT")
+          .describe("LIMIT or STOP (default LIMIT)"),
+        limit: z.number().positive().optional().describe("Limit price (required for LIMIT)"),
+        stopPrice: z
+          .number()
+          .positive()
+          .optional()
+          .describe("Stop price (required for STOP, native stop-market)"),
         tif: z.enum(["DAY", "GTC"]).default("DAY"),
         session: z.enum(["REGULAR", "OVERNIGHT"]).default("REGULAR"),
       },
     },
     async (input: PreviewToolInput): Promise<CallToolResult> =>
-      runTool(async () => jsonResult(await (await equityTools(dependencies)).orders.preview(input)))
+      runTool(async () => {
+        const terms = normalizeEquityOrderTerms(input);
+        return jsonResult(
+          await (
+            await equityTools(dependencies)
+          ).orders.preview({
+            symbol: input.symbol,
+            side: input.side,
+            quantity: input.quantity,
+            ...terms,
+            tif: input.tif,
+            session: input.session,
+          })
+        );
+      })
   );
 
   server.registerTool(
     "submit_equity_order",
     {
-      title: "Submit a previewed IBKR equity limit order",
+      title: "Submit a previewed IBKR equity order",
       description:
         "Submit only the immutable terms in a valid preview. This places a real order in the preview-bound IBKR environment. Use operation tools for warnings, status, reconciliation, and cancellation.",
       inputSchema: {

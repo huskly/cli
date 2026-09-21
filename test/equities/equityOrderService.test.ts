@@ -434,9 +434,7 @@ test("STOP submit loads every term from the preview and accepts no overrides", a
   assert.equal(submitted.operation.operationId, "operation-1");
   assert.deepEqual(submitted.order, result.order);
   assert.equal(submitted.order.orderType, "STP");
-  if (submitted.order.orderType === "STP") {
-    assert.equal(submitted.order.stopPrice, 48);
-  }
+  assert.equal((submitted.order as { stopPrice: number }).stopPrice, 48);
   assert.equal("limit" in submitted.order, false);
 });
 
@@ -473,12 +471,8 @@ test("file store round-trips old LMT previews and new STP previews", async () =>
     assert.ok(storedStp);
     assert.equal(storedLmt.canonicalIntent.orderType, "LMT");
     assert.equal(storedStp.canonicalIntent.orderType, "STP");
-    if (storedLmt.canonicalIntent.orderType === "LMT") {
-      assert.equal(storedLmt.canonicalIntent.limit, 52.25);
-    }
-    if (storedStp.canonicalIntent.orderType === "STP") {
-      assert.equal(storedStp.canonicalIntent.stopPrice, 48);
-    }
+    assert.equal((storedLmt.canonicalIntent as { limit: number }).limit, 52.25);
+    assert.equal((storedStp.canonicalIntent as { stopPrice: number }).stopPrice, 48);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

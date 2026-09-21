@@ -124,6 +124,7 @@ test("equity tools register only the approved account-free inputs", () => {
     "quantity",
     "orderType",
     "limit",
+    "stopPrice",
     "tif",
     "session",
   ]);
@@ -255,4 +256,147 @@ test("gateway errors stay bounded and redact provider text", async () => {
   assert.equal(result.isError, true);
   assert.equal(source.includes("RAW-PROVIDER-SECRET"), false);
   assert.match(source, /Broker data is unavailable/u);
+});
+
+test("preview with STOP order type passes normalized STOP terms to service", async () => {
+  const fake = tools();
+  const server = new FakeServer();
+  registerEquityOrderTools(server, { createEquityTools: fake.create });
+  const result = await requiredTool(server, "preview_equity_order").handler({
+    symbol: "AAPL",
+    side: "SELL",
+    quantity: 5,
+    orderType: "STOP",
+    stopPrice: 230.5,
+    tif: "DAY",
+    session: "REGULAR",
+  });
+  const parsed = body(result);
+  assert.equal(result.isError, undefined);
+  assert.equal(parsed["submitted"], false);
+  const order = (parsed as { order: { orderType: string; stopPrice: number } }).order;
+  assert.equal(order.orderType, "STP");
+  assert.equal(order.stopPrice, 230.5);
+  assert.equal("limit" in order, false);
+  assert.equal(fake.calls.preview, 1);
+});
+
+test("preview defaults to LIMIT when orderType is omitted", async () => {
+  const fake = tools();
+  const server = new FakeServer();
+  registerEquityOrderTools(server, { createEquityTools: fake.create });
+  const result = await requiredTool(server, "preview_equity_order").handler({
+    symbol: "IBIT",
+    side: "BUY",
+    quantity: 2,
+    limit: 52.25,
+  });
+  const parsed = body(result);
+  assert.equal(result.isError, undefined);
+  const order = (parsed as { order: { orderType: string; limit: number } }).order;
+  assert.equal(order.orderType, "LMT");
+  assert.equal(order.limit, 52.25);
+});
+
+test("preview with explicit LIMIT orderType and limit works", async () => {
+  const fake = tools();
+  const server = new FakeServer();
+  registerEquityOrderTools(server, { createEquityTools: fake.create });
+  const result = await requiredTool(server, "preview_equity_order").handler({
+    symbol: "IBIT",
+    side: "BUY",
+    quantity: 2,
+    orderType: "LIMIT",
+    limit: 52.25,
+    tif: "DAY",
+    session: "REGULAR",
+  });
+  assert.equal(result.isError, undefined);
+  const order = (body(result) as { order: { orderType: string } }).order;
+  assert.equal(order.orderType, "LMT");
+});
+
+test("preview rejects LIMIT with stopPrice before service initialization", async () => {
+  const fake = tools();
+  const server = new FakeServer();
+  registerEquityOrderTools(server, { createEquityTools: fake.create });
+  const result = await requiredTool(server, "preview_equity_order").handler({
+    symbol: "IBIT",
+    side: "BUY",
+    quantity: 2,
+    orderType: "LIMIT",
+    stopPrice: 50,
+    tif: "DAY",
+    session: "REGULAR",
+  });
+  assert.equal(result.isError, true);
+  assert.match((result.content[0] as { text: string }).text, /not valid for LIMIT/);
+  assert.equal(fake.calls.initialize, 0);
+});
+
+test("preview rejects STOP with limit before service initialization", async () => {
+  const fake = tools();
+  const server = new FakeServer();
+  registerEquityOrderTools(server, { createEquityTools: fake.create });
+  const result = await requiredTool(server, "preview_equity_order").handler({
+    symbol: "IBIT",
+    side: "BUY",
+    quantity: 2,
+    orderType: "STOP",
+    limit: 50,
+    tif: "DAY",
+    session: "REGULAR",
+  });
+  assert.equal(result.isError, true);
+  assert.match((result.content[0] as { text: string }).text, /not valid for STOP/);
+  assert.equal(fake.calls.initialize, 0);
+});
+
+test("preview rejects STOP without stopPrice before service initialization", async () => {
+  const fake = tools();
+  const server = new FakeServer();
+  registerEquityOrderTools(server, { createEquityTools: fake.create });
+  const result = await requiredTool(server, "preview_equity_order").handler({
+    symbol: "IBIT",
+    side: "BUY",
+    quantity: 2,
+    orderType: "STOP",
+    tif: "DAY",
+    session: "REGULAR",
+  });
+  assert.equal(result.isError, true);
+  assert.match((result.content[0] as { text: string }).text, /require --stop-price/);
+  assert.equal(fake.calls.initialize, 0);
+});
+
+test("preview rejects LIMIT without limit before service initialization", async () => {
+  const fake = tools();
+  const server = new FakeServer();
+  registerEquityOrderTools(server, { createEquityTools: fake.create });
+  const result = await requiredTool(server, "preview_equity_order").handler({
+    symbol: "IBIT",
+    side: "BUY",
+    quantity: 2,
+    orderType: "LIMIT",
+    tif: "DAY",
+    session: "REGULAR",
+  });
+  assert.equal(result.isError, true);
+  assert.match((result.content[0] as { text: string }).text, /require --limit/);
+  assert.equal(fake.calls.initialize, 0);
+});
+
+test("preview tool description identifies STOP as stop-market", () => {
+  const server = new FakeServer();
+  registerEquityOrderTools(server);
+  const preview = requiredTool(server, "preview_equity_order");
+  assert.match(preview.definition.description ?? "", /stop-market/);
+  assert.match(preview.definition.description ?? "", /not stop-limit/);
+});
+
+test("submit tool title does not claim limit-only", () => {
+  const server = new FakeServer();
+  registerEquityOrderTools(server);
+  const submit = requiredTool(server, "submit_equity_order");
+  assert.equal((submit.definition.title ?? "").includes("limit"), false);
 });

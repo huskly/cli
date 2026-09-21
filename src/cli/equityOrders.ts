@@ -1,7 +1,11 @@
 import { Command } from "commander";
 import type { BrokerName } from "#src/brokers/brokerClient.js";
 import { createEquityTools, type EquityTools } from "#src/mcp/tools/equityOrders.js";
-import type { EquityPreviewDto, EquitySubmissionDto } from "#src/equities/equityOrderService.js";
+import {
+  normalizeEquityOrderTerms,
+  type EquityPreviewDto,
+  type EquitySubmissionDto,
+} from "#src/equities/equityOrderService.js";
 import { cliGatewayTransport } from "#src/gateway/gatewayTransport.js";
 import { renderSafeOperation, safeOperation, type SafeOperationView } from "./operationView.js";
 import { requireOperator, type BrokerResolver } from "./shared.js";
@@ -19,7 +23,9 @@ export interface EquityCommandDependencies {
 
 interface PreviewOptions {
   broker?: string;
-  limit: string;
+  orderType?: string;
+  limit?: string;
+  stopPrice?: string;
   tif: string;
   session: string;
   json?: boolean;
@@ -93,12 +99,8 @@ function shares(value: string): number {
   return parsed;
 }
 
-function limitPrice(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error(`Invalid limit price '${value}'.`);
-  }
-  return parsed;
+function parsePrice(value: string): number {
+  return Number(value);
 }
 
 function confirmed(value: boolean | undefined): true {
@@ -219,11 +221,13 @@ export function addEquityCommands(
 
   equity
     .command("preview")
-    .description("Run a non-submitting What-If for one US stock or ETF limit order")
+    .description("Run a non-submitting What-If for one US stock or ETF order")
     .argument("<symbol>", "US stock or ETF symbol")
     .argument("<side>", "BUY or SELL")
     .argument("<quantity>", "Whole shares")
-    .requiredOption("--limit <price>", "Limit price per share")
+    .option("--order-type <type>", "LIMIT or STOP (default: LIMIT)")
+    .option("--limit <price>", "Limit price per share (LIMIT orders)")
+    .option("--stop-price <price>", "Stop price per share (STOP orders, native stop-market)")
     .option("--tif <value>", "DAY or GTC", "DAY")
     .option("--session <value>", "REGULAR or OVERNIGHT", "REGULAR")
     .option(...GATEWAY_BROKER_FLAG)
@@ -232,21 +236,28 @@ export function addEquityCommands(
       "after",
       `
 This never submits an order. The preview ID expires after a short time.
+STOP is a native stop-market order, not stop-limit.
 
 Examples:
   $ huskly-cli equity preview AAPL BUY 10 --limit 250.00
+  $ huskly-cli equity preview AAPL BUY 10 --order-type LIMIT --limit 250.00
+  $ huskly-cli equity preview AAPL SELL 10 --order-type STOP --stop-price 240.00
   $ huskly-cli equity preview AAPL SELL 10 --limit 260.00 --tif GTC --json`
     )
     .action(
       async (symbolValue: string, sideValue: string, quantity: string, options: PreviewOptions) => {
+        const raw: Record<string, string | number> = {};
+        if (options.orderType !== undefined) raw["orderType"] = options.orderType;
+        if (options.limit !== undefined) raw["limit"] = parsePrice(options.limit);
+        if (options.stopPrice !== undefined) raw["stopPrice"] = parsePrice(options.stopPrice);
+        const terms = normalizeEquityOrderTerms(raw);
         const result = await (
           await createEquityOrders(broker(options.broker))
         ).preview({
           symbol: symbolValue.toUpperCase(),
           side: side(sideValue),
           quantity: shares(quantity),
-          orderType: "LIMIT",
-          limit: limitPrice(options.limit),
+          ...terms,
           tif: tif(options.tif),
           session: session(options.session),
         });

@@ -216,3 +216,280 @@ void test("equity commands refuse a broker that cannot serve them", async () => 
     /not implemented for broker 'schwab'/
   );
 });
+
+void test("equity preview with --limit alone defaults to LIMIT order type", async () => {
+  let received: unknown;
+  await program({
+    createEquityOrders: () =>
+      Promise.resolve(
+        orders({
+          preview: (input: unknown) => {
+            received = input;
+            return Promise.resolve(preview);
+          },
+        })
+      ),
+    log: () => undefined,
+  }).parseAsync(["node", "t", "equity", "preview", "AAPL", "BUY", "10", "--limit", "250"]);
+
+  assert.deepEqual(received, {
+    symbol: "AAPL",
+    side: "BUY",
+    quantity: 10,
+    orderType: "LIMIT",
+    limit: 250,
+    tif: "DAY",
+    session: "REGULAR",
+  });
+});
+
+void test("equity preview with explicit --order-type LIMIT --limit passes LIMIT terms", async () => {
+  let received: unknown;
+  await program({
+    createEquityOrders: () =>
+      Promise.resolve(
+        orders({
+          preview: (input: unknown) => {
+            received = input;
+            return Promise.resolve(preview);
+          },
+        })
+      ),
+    log: () => undefined,
+  }).parseAsync([
+    "node",
+    "t",
+    "equity",
+    "preview",
+    "AAPL",
+    "BUY",
+    "10",
+    "--order-type",
+    "LIMIT",
+    "--limit",
+    "250",
+  ]);
+
+  assert.deepEqual(received, {
+    symbol: "AAPL",
+    side: "BUY",
+    quantity: 10,
+    orderType: "LIMIT",
+    limit: 250,
+    tif: "DAY",
+    session: "REGULAR",
+  });
+});
+
+void test("equity preview with --order-type STOP --stop-price passes STOP terms", async () => {
+  const stopIntent = {
+    contract: intent.contract,
+    side: "BUY",
+    quantity: 10,
+    stopPrice: 240,
+    tif: "DAY",
+    session: "REGULAR",
+    orderType: "STP",
+  } as unknown as EquityPreviewDto["order"];
+  const stopPreview = { ...preview, order: stopIntent };
+  let received: unknown;
+  await program({
+    createEquityOrders: () =>
+      Promise.resolve(
+        orders({
+          preview: (input: unknown) => {
+            received = input;
+            return Promise.resolve(stopPreview);
+          },
+        })
+      ),
+    log: () => undefined,
+  }).parseAsync([
+    "node",
+    "t",
+    "equity",
+    "preview",
+    "AAPL",
+    "BUY",
+    "10",
+    "--order-type",
+    "STOP",
+    "--stop-price",
+    "240",
+  ]);
+
+  assert.deepEqual(received, {
+    symbol: "AAPL",
+    side: "BUY",
+    quantity: 10,
+    orderType: "STOP",
+    stopPrice: 240,
+    tif: "DAY",
+    session: "REGULAR",
+  });
+});
+
+void test("equity preview STOP renders stop price in human output", async () => {
+  const stopIntent = {
+    contract: intent.contract,
+    side: "SELL",
+    quantity: 5,
+    stopPrice: 230.5,
+    tif: "DAY",
+    session: "REGULAR",
+    orderType: "STP",
+  } as unknown as EquityPreviewDto["order"];
+  const stopPreview = { ...preview, order: stopIntent };
+  const lines: string[] = [];
+  await program({
+    createEquityOrders: () =>
+      Promise.resolve(orders({ preview: () => Promise.resolve(stopPreview) })),
+    log: (line) => lines.push(line),
+  }).parseAsync([
+    "node",
+    "t",
+    "equity",
+    "preview",
+    "AAPL",
+    "SELL",
+    "5",
+    "--order-type",
+    "STOP",
+    "--stop-price",
+    "230.50",
+  ]);
+
+  const output = lines.join("\n");
+  assert.match(output, /SELL 5 AAPL stop 230\.5/);
+  assert.match(output, /NO ORDER WAS SUBMITTED\./);
+});
+
+void test("equity preview STOP JSON includes stopPrice, not limit", async () => {
+  const stopIntent = {
+    contract: intent.contract,
+    side: "BUY",
+    quantity: 3,
+    stopPrice: 245,
+    tif: "DAY",
+    session: "REGULAR",
+    orderType: "STP",
+  } as unknown as EquityPreviewDto["order"];
+  const stopPreview = { ...preview, order: stopIntent };
+  const lines: string[] = [];
+  await program({
+    createEquityOrders: () =>
+      Promise.resolve(orders({ preview: () => Promise.resolve(stopPreview) })),
+    log: (line) => lines.push(line),
+  }).parseAsync([
+    "node",
+    "t",
+    "equity",
+    "preview",
+    "AAPL",
+    "BUY",
+    "3",
+    "--order-type",
+    "STOP",
+    "--stop-price",
+    "245",
+    "--json",
+  ]);
+
+  const raw = lines.join("\n");
+  const json = JSON.parse(raw) as { order: { orderType: string; stopPrice: number } };
+  assert.equal(json.order.orderType, "STP");
+  assert.equal(json.order.stopPrice, 245);
+  assert.equal("limit" in json.order, false);
+});
+
+void test("equity preview rejects unknown order type before service initialization", async () => {
+  let serviceInitialized = false;
+  const run = (...args: string[]): Promise<unknown> =>
+    program({
+      createEquityOrders: () => {
+        serviceInitialized = true;
+        return Promise.resolve(orders());
+      },
+      log: () => undefined,
+    }).parseAsync(["node", "t", "equity", "preview", ...args]);
+
+  await assert.rejects(
+    run("AAPL", "BUY", "1", "--order-type", "TRAILING", "--limit", "250"),
+    /Unknown order type/
+  );
+  assert.equal(serviceInitialized, false);
+});
+
+void test("equity preview rejects missing price for each order type before service initialization", async () => {
+  let serviceInitialized = false;
+  const run = (...args: string[]): Promise<unknown> =>
+    program({
+      createEquityOrders: () => {
+        serviceInitialized = true;
+        return Promise.resolve(orders());
+      },
+      log: () => undefined,
+    }).parseAsync(["node", "t", "equity", "preview", ...args]);
+
+  // LIMIT without --limit
+  await assert.rejects(run("AAPL", "BUY", "1", "--order-type", "LIMIT"), /require --limit/);
+  // STOP without --stop-price
+  await assert.rejects(run("AAPL", "BUY", "1", "--order-type", "STOP"), /require --stop-price/);
+  // Bare call with no price at all
+  await assert.rejects(run("AAPL", "BUY", "1"), /require --limit/);
+  assert.equal(serviceInitialized, false);
+});
+
+void test("equity preview rejects mismatched price options before service initialization", async () => {
+  let serviceInitialized = false;
+  const run = (...args: string[]): Promise<unknown> =>
+    program({
+      createEquityOrders: () => {
+        serviceInitialized = true;
+        return Promise.resolve(orders());
+      },
+      log: () => undefined,
+    }).parseAsync(["node", "t", "equity", "preview", ...args]);
+
+  // LIMIT with --stop-price
+  await assert.rejects(
+    run("AAPL", "BUY", "1", "--order-type", "LIMIT", "--stop-price", "250"),
+    /not valid for LIMIT/
+  );
+  // STOP with --limit
+  await assert.rejects(
+    run("AAPL", "BUY", "1", "--order-type", "STOP", "--limit", "250"),
+    /not valid for STOP/
+  );
+  assert.equal(serviceInitialized, false);
+});
+
+void test("equity preview rejects zero, negative, and non-finite prices before service initialization", async () => {
+  let serviceInitialized = false;
+  const run = (...args: string[]): Promise<unknown> =>
+    program({
+      createEquityOrders: () => {
+        serviceInitialized = true;
+        return Promise.resolve(orders());
+      },
+      log: () => undefined,
+    }).parseAsync(["node", "t", "equity", "preview", ...args]);
+
+  await assert.rejects(run("AAPL", "BUY", "1", "--limit", "0"), /Invalid limit price/);
+  await assert.rejects(run("AAPL", "BUY", "1", "--limit", "-5"), /Invalid limit price/);
+  await assert.rejects(run("AAPL", "BUY", "1", "--limit", "Infinity"), /Invalid limit price/);
+  await assert.rejects(run("AAPL", "BUY", "1", "--limit", "NaN"), /Invalid limit price/);
+  await assert.rejects(
+    run("AAPL", "BUY", "1", "--order-type", "STOP", "--stop-price", "0"),
+    /Invalid stop price/
+  );
+  await assert.rejects(
+    run("AAPL", "BUY", "1", "--order-type", "STOP", "--stop-price", "-10"),
+    /Invalid stop price/
+  );
+  await assert.rejects(
+    run("AAPL", "BUY", "1", "--order-type", "STOP", "--stop-price", "Infinity"),
+    /Invalid stop price/
+  );
+  assert.equal(serviceInitialized, false);
+});

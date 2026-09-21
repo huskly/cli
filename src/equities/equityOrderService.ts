@@ -21,6 +21,57 @@ export type NormalizedEquityTerms =
   | { readonly orderType: "LIMIT"; readonly limit: number }
   | { readonly orderType: "STOP"; readonly stopPrice: number };
 
+/**
+ * Raw order-type input before normalization.
+ *
+ * @remarks
+ * CLI passes strings from Commander options; MCP passes typed values from Zod.
+ * Both paths converge here for a single validation and discrimination pass.
+ */
+export interface RawEquityOrderTerms {
+  readonly orderType?: string;
+  readonly limit?: number;
+  readonly stopPrice?: number;
+}
+
+/**
+ * Validate and discriminate raw order-type inputs into service-ready terms.
+ *
+ * @remarks
+ * Applies the exclusive-price rule: LIMIT requires `limit` and forbids
+ * `stopPrice`; STOP requires `stopPrice` and forbids `limit`. Zero, negative,
+ * and non-finite prices fail. Defaults to LIMIT when `orderType` is omitted.
+ */
+export function normalizeEquityOrderTerms(raw: RawEquityOrderTerms): NormalizedEquityTerms {
+  const orderType = (raw.orderType ?? "LIMIT").toUpperCase();
+  if (orderType !== "LIMIT" && orderType !== "STOP") {
+    throw new Error(`Unknown order type '${raw.orderType ?? ""}'. Expected LIMIT or STOP.`);
+  }
+  if (orderType === "LIMIT") {
+    if (raw.stopPrice !== undefined) {
+      throw new Error("--stop-price is not valid for LIMIT orders. Use --limit instead.");
+    }
+    if (raw.limit === undefined) {
+      throw new Error("LIMIT orders require --limit <price>.");
+    }
+    if (!Number.isFinite(raw.limit) || raw.limit <= 0) {
+      throw new Error(`Invalid limit price '${String(raw.limit)}'.`);
+    }
+    return { orderType: "LIMIT", limit: raw.limit };
+  }
+  // STOP
+  if (raw.limit !== undefined) {
+    throw new Error("--limit is not valid for STOP orders. Use --stop-price instead.");
+  }
+  if (raw.stopPrice === undefined) {
+    throw new Error("STOP orders require --stop-price <price>.");
+  }
+  if (!Number.isFinite(raw.stopPrice) || raw.stopPrice <= 0) {
+    throw new Error(`Invalid stop price '${String(raw.stopPrice)}'.`);
+  }
+  return { orderType: "STOP", stopPrice: raw.stopPrice };
+}
+
 export type PreviewEquityOrderInput = {
   readonly symbol: string;
   readonly side: "BUY" | "SELL";
