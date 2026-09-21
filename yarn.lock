@@ -318,7 +318,7 @@ __metadata:
   resolution: "@huskly/cli@workspace:."
   dependencies:
     "@eslint/js": "npm:^10.0.1"
-    "@huskly/ibkr-gateway-client": "npm:^0.14.0"
+    "@huskly/ibkr-gateway-client": "file:/home/felipecsl/prj/.artifacts/equity-stop-orders/huskly-ibkr-gateway-client-stop.tgz"
     "@huskly/schwab-client": "npm:^1.3.0"
     "@modelcontextprotocol/sdk": "npm:^1.29.0"
     "@types/asciichart": "npm:^1.5.8"
@@ -350,10 +350,10 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@huskly/ibkr-gateway-client@npm:^0.14.0":
+"@huskly/ibkr-gateway-client@file:/home/felipecsl/prj/.artifacts/equity-stop-orders/huskly-ibkr-gateway-client-stop.tgz::locator=%40huskly%2Fcli%40workspace%3A.":
   version: 0.14.0
-  resolution: "@huskly/ibkr-gateway-client@npm:0.14.0"
-  checksum: 10c0/35de403dc7aa77c5cde8c32cd90c64f04275a9163a945afdc18d7ac5270e32e7e91f70ba67c9b6f5c6c1731b7b6849c620641b9a6f0e0f6b0d83e63cd7bd977c
+  resolution: "@huskly/ibkr-gateway-client@file:/home/felipecsl/prj/.artifacts/equity-stop-orders/huskly-ibkr-gateway-client-stop.tgz#/home/felipecsl/prj/.artifacts/equity-stop-orders/huskly-ibkr-gateway-client-stop.tgz::hash=ad4287&locator=%40huskly%2Fcli%40workspace%3A."
+  checksum: 10c0/e9a71e9fbfbce3b33cdc8075121739e1a27b6b174d90074245d0a15354e75c62a23c0d019c2b75c6d06a44b796dc6dff21b5c31a1a903c0d3f4bc02bf8bafe57
   languageName: node
   linkType: hard
 

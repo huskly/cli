@@ -10,15 +10,17 @@ export interface EquityContract {
   readonly currency: "USD";
 }
 
-export interface CanonicalEquityIntent {
+export type EquityPriceTerms =
+  | { readonly orderType: "LMT"; readonly limit: number }
+  | { readonly orderType: "STP"; readonly stopPrice: number };
+
+export type CanonicalEquityIntent = {
   readonly contract: EquityContract;
   readonly side: "BUY" | "SELL";
   readonly quantity: number;
   readonly tif: "DAY" | "GTC";
   readonly session: "REGULAR" | "OVERNIGHT";
-  readonly orderType: "LMT";
-  readonly limit: number;
-}
+} & EquityPriceTerms;
 
 export interface EquityPreviewResult {
   readonly environment: BrokerEnvironment;

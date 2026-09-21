@@ -36,20 +36,21 @@ interface EquityContractResponse {
     readonly currency: "USD";
   };
 }
-interface EquityPreviewRequest {
+type EquityPriceTermsWire =
+  | { readonly orderType: "LMT"; readonly limit: number }
+  | { readonly orderType: "STP"; readonly stopPrice: number };
+type EquityPreviewRequest = {
   readonly contract: EquityContractResponse["contract"];
   readonly side: "BUY" | "SELL";
   readonly quantity: number;
   readonly tif: "DAY" | "GTC";
   readonly session: "REGULAR" | "OVERNIGHT";
-  readonly orderType: "LMT";
-  readonly limit: number;
-}
-interface EquitySubmissionRequest extends EquityPreviewRequest {
+} & EquityPriceTermsWire;
+type EquitySubmissionRequest = EquityPreviewRequest & {
   readonly kind: "single";
   readonly extOperator: string;
   readonly manualIndicator: boolean;
-}
+};
 type GatewayPreviewRequest = PreviewOrdersRequest | EquityPreviewRequest;
 type GatewayCreateRequest = CreateOrderOperationRequest | EquitySubmissionRequest;
 interface EquityGatewayWireClient {

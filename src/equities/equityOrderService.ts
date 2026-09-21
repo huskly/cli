@@ -17,14 +17,17 @@ import type {
   EquityPreviewResult,
 } from "./equityOrder.js";
 
-export interface PreviewEquityOrderInput {
+export type NormalizedEquityTerms =
+  | { readonly orderType: "LIMIT"; readonly limit: number }
+  | { readonly orderType: "STOP"; readonly stopPrice: number };
+
+export type PreviewEquityOrderInput = {
   readonly symbol: string;
   readonly side: "BUY" | "SELL";
   readonly quantity: number;
-  readonly limit: number;
   readonly tif?: "DAY" | "GTC";
   readonly session?: "REGULAR" | "OVERNIGHT";
-}
+} & NormalizedEquityTerms;
 
 export interface EquityPreviewRecord {
   readonly schemaVersion: 1;
@@ -94,15 +97,25 @@ const contractSchema = z.strictObject({
   primaryExchange: z.string().min(1).max(32),
   currency: z.literal("USD"),
 });
-export const canonicalEquityIntentSchema = z.strictObject({
+const sharedIntentFields = {
   contract: contractSchema,
   side: z.enum(["BUY", "SELL"]),
   quantity: z.number().int().positive(),
   tif: z.enum(["DAY", "GTC"]),
   session: z.enum(["REGULAR", "OVERNIGHT"]),
-  orderType: z.literal("LMT"),
-  limit: z.number().positive(),
-});
+};
+export const canonicalEquityIntentSchema = z.discriminatedUnion("orderType", [
+  z.strictObject({
+    ...sharedIntentFields,
+    orderType: z.literal("LMT"),
+    limit: z.number().positive(),
+  }),
+  z.strictObject({
+    ...sharedIntentFields,
+    orderType: z.literal("STP"),
+    stopPrice: z.number().positive(),
+  }),
+]);
 const marginSchema = z
   .strictObject({ current: z.number(), change: z.number(), after: z.number() })
   .nullable();
@@ -284,8 +297,7 @@ export class EquityOrderService {
       quantity: input.quantity,
       tif: input.tif ?? "DAY",
       session: input.session ?? "REGULAR",
-      orderType: "LMT",
-      limit: input.limit,
+      ...normalizedTermsToCanonical(input),
     });
     const previewResult = await this.gateway.preview(canonicalIntent);
     if (previewResult.environment !== diagnostics.environment)
@@ -509,6 +521,13 @@ function requireRecoveryReady(diagnostics: {
 
 function isNodeErrorWithCode(error: unknown, code: string): boolean {
   return error instanceof Error && "code" in error && error.code === code;
+}
+
+function normalizedTermsToCanonical(
+  input: NormalizedEquityTerms
+): { orderType: "LMT"; limit: number } | { orderType: "STP"; stopPrice: number } {
+  if (input.orderType === "STOP") return { orderType: "STP", stopPrice: input.stopPrice };
+  return { orderType: "LMT", limit: input.limit };
 }
 
 function hash(value: unknown): string {

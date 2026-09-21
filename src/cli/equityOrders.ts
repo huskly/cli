@@ -42,10 +42,12 @@ interface SafeEquityPreviewView {
     readonly symbol: string;
     readonly side: "BUY" | "SELL";
     readonly quantity: number;
-    readonly limit: number;
     readonly tif: "DAY" | "GTC";
     readonly session: "REGULAR" | "OVERNIGHT";
-  };
+  } & (
+    | { readonly orderType: "LMT"; readonly limit: number }
+    | { readonly orderType: "STP"; readonly stopPrice: number }
+  );
   readonly whatIf: EquityPreviewDto["whatIf"];
   readonly submitted: false;
 }
@@ -105,14 +107,15 @@ function confirmed(value: boolean | undefined): true {
 }
 
 function orderView(intent: EquityPreviewDto["order"]): SafeEquityPreviewView["order"] {
-  return {
+  const base = {
     symbol: intent.contract.symbol,
     side: intent.side,
     quantity: intent.quantity,
-    limit: intent.limit,
     tif: intent.tif,
     session: intent.session,
   };
+  if (intent.orderType === "STP") return { ...base, orderType: "STP", stopPrice: intent.stopPrice };
+  return { ...base, orderType: "LMT", limit: intent.limit };
 }
 
 function toPreviewView(result: EquityPreviewDto): SafeEquityPreviewView {
@@ -149,7 +152,7 @@ export function renderEquityPreview(result: SafeEquityPreviewView): string {
     `Account: ${result.account.maskedId ?? "unknown"}  Environment: ${result.environment}`,
     `Created: ${result.createdAt}`,
     `Expires: ${result.expiresAt}`,
-    `${result.order.side} ${String(result.order.quantity)} ${result.order.symbol} limit ${String(result.order.limit)}  ${result.order.tif} ${result.order.session}`,
+    `${result.order.side} ${String(result.order.quantity)} ${result.order.symbol} ${result.order.orderType === "STP" ? `stop ${String(result.order.stopPrice)}` : `limit ${String(result.order.limit)}`}  ${result.order.tif} ${result.order.session}`,
     `Accepted: ${String(result.whatIf.accepted)}`,
     `Initial margin change: ${formatPrice(result.whatIf.initialMargin?.change ?? null)}`,
     `Maintenance margin change: ${formatPrice(result.whatIf.maintenanceMargin?.change ?? null)}`,
@@ -165,7 +168,7 @@ export function renderEquitySubmission(result: SafeEquitySubmissionView): string
     `Submission: ${result.recovered ? "recovered" : "new"}`,
     `Preview: ${result.previewId}`,
     `Account: ${result.account.maskedId ?? "unknown"}  Environment: ${result.environment}`,
-    `${result.order.side} ${String(result.order.quantity)} ${result.order.symbol} limit ${String(result.order.limit)}`,
+    `${result.order.side} ${String(result.order.quantity)} ${result.order.symbol} ${result.order.orderType === "STP" ? `stop ${String(result.order.stopPrice)}` : `limit ${String(result.order.limit)}`}`,
     ...renderSafeOperation(result.operation),
   ].join("\n");
 }
@@ -242,6 +245,7 @@ Examples:
           symbol: symbolValue.toUpperCase(),
           side: side(sideValue),
           quantity: shares(quantity),
+          orderType: "LIMIT",
           limit: limitPrice(options.limit),
           tif: tif(options.tif),
           session: session(options.session),

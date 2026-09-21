@@ -56,8 +56,9 @@ function tools() {
             quantity: input.quantity,
             tif: input.tif ?? "DAY",
             session: input.session ?? "REGULAR",
-            orderType: "LMT",
-            limit: input.limit,
+            ...(input.orderType === "STOP"
+              ? { orderType: "STP" as const, stopPrice: input.stopPrice }
+              : { orderType: "LMT" as const, limit: input.limit }),
           },
           whatIf: {
             accepted: true,
@@ -121,6 +122,7 @@ test("equity tools register only the approved account-free inputs", () => {
     "symbol",
     "side",
     "quantity",
+    "orderType",
     "limit",
     "tif",
     "session",

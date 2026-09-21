@@ -118,8 +118,22 @@ function service(
   };
 }
 
-async function preview(value: EquityOrderService) {
-  return value.preview({ symbol: " ibit ", side: "BUY", quantity: 2, limit: 52.25 });
+async function preview(value: EquityOrderService, orderType: "LIMIT" | "STOP" = "LIMIT") {
+  if (orderType === "STOP")
+    return value.preview({
+      symbol: " ibit ",
+      side: "BUY",
+      quantity: 2,
+      orderType: "STOP",
+      stopPrice: 48.0,
+    });
+  return value.preview({
+    symbol: " ibit ",
+    side: "BUY",
+    quantity: 2,
+    orderType: "LIMIT",
+    limit: 52.25,
+  });
 }
 
 test("preview resolves one exact contract and stores canonical defaults without submitting", async () => {
@@ -138,7 +152,7 @@ test("preview resolves one exact contract and stores canonical defaults without 
     session: "REGULAR",
     orderType: "LMT",
     limit: 52.25,
-  });
+  } satisfies CanonicalEquityIntent);
   assert.match(result.previewId, /^[a-f0-9]{64}$/);
   assert.equal((await fx.previews.load(result.previewId))?.schemaVersion, 1);
 });
@@ -386,4 +400,116 @@ test("file stores use private modes atomic create and strict schemas", async () 
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("STOP preview resolves contract and stores canonical STP intent without limit", async () => {
+  const fx = service();
+  const result = await preview(fx.value, "STOP");
+  assert.deepEqual(fx.gateway.resolveCalls, ["IBIT"]);
+  assert.equal(fx.gateway.createCalls.length, 0);
+  assert.equal(result.submitted, false);
+  assert.deepEqual(result.order, {
+    contract,
+    side: "BUY",
+    quantity: 2,
+    tif: "DAY",
+    session: "REGULAR",
+    orderType: "STP",
+    stopPrice: 48,
+  } satisfies CanonicalEquityIntent);
+  assert.equal("limit" in result.order, false);
+  assert.match(result.previewId, /^[a-f0-9]{64}$/);
+  assert.equal((await fx.previews.load(result.previewId))?.schemaVersion, 1);
+});
+
+test("STOP submit loads every term from the preview and accepts no overrides", async () => {
+  const fx = service();
+  const result = await preview(fx.value, "STOP");
+  const submitted = await fx.value.submit({
+    previewId: result.previewId,
+    operator: "operator-7",
+    confirm: true,
+  });
+  assert.equal(submitted.recovered, false);
+  assert.equal(submitted.operation.operationId, "operation-1");
+  assert.deepEqual(submitted.order, result.order);
+  assert.equal(submitted.order.orderType, "STP");
+  if (submitted.order.orderType === "STP") {
+    assert.equal(submitted.order.stopPrice, 48);
+  }
+  assert.equal("limit" in submitted.order, false);
+});
+
+test("STOP DTO output contains stopPrice and no limit field", async () => {
+  const fx = service();
+  const result = await preview(fx.value, "STOP");
+  const keys = Object.keys(result.order);
+  assert.ok(keys.includes("stopPrice"), "DTO must include stopPrice");
+  assert.ok(!keys.includes("limit"), "DTO must not include limit for STP");
+  assert.equal(result.order.orderType, "STP");
+});
+
+test("LMT DTO output contains limit and no stopPrice field", async () => {
+  const fx = service();
+  const result = await preview(fx.value, "LIMIT");
+  const keys = Object.keys(result.order);
+  assert.ok(keys.includes("limit"), "DTO must include limit");
+  assert.ok(!keys.includes("stopPrice"), "DTO must not include stopPrice for LMT");
+  assert.equal(result.order.orderType, "LMT");
+});
+
+test("file store round-trips old LMT previews and new STP previews", async () => {
+  const root = await mkdtemp(join(tmpdir(), "huskly-equity-stp-"));
+  try {
+    const gateway = new Gateway();
+    const previews = new FileEquityPreviewStore(root);
+    const fxLimit = service(gateway, previews).value;
+    const fxStop = service(gateway, previews).value;
+    const limitResult = await preview(fxLimit, "LIMIT");
+    const stopResult = await preview(fxStop, "STOP");
+    const storedLmt = await previews.load(limitResult.previewId);
+    const storedStp = await previews.load(stopResult.previewId);
+    assert.ok(storedLmt);
+    assert.ok(storedStp);
+    assert.equal(storedLmt.canonicalIntent.orderType, "LMT");
+    assert.equal(storedStp.canonicalIntent.orderType, "STP");
+    if (storedLmt.canonicalIntent.orderType === "LMT") {
+      assert.equal(storedLmt.canonicalIntent.limit, 52.25);
+    }
+    if (storedStp.canonicalIntent.orderType === "STP") {
+      assert.equal(storedStp.canonicalIntent.stopPrice, 48);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("rejected STOP preview cannot be submitted", async () => {
+  const fx = service();
+  fx.gateway.accepted = false;
+  const result = await preview(fx.value, "STOP");
+  assert.equal(result.whatIf.accepted, false);
+  await assert.rejects(
+    fx.value.submit({ previewId: result.previewId, operator: "operator-7", confirm: true }),
+    /rejected/u
+  );
+  assert.equal(fx.gateway.createCalls.length, 0);
+});
+
+test("STOP preview expiry and environment binding fail before a write", async () => {
+  let current = new Date("2026-09-14T12:00:00.000Z");
+  const fx = service(undefined, undefined, undefined, () => current);
+  const result = await preview(fx.value, "STOP");
+  fx.gateway.diagnostics = { ...fx.gateway.diagnostics, environment: "live" };
+  await assert.rejects(
+    fx.value.submit({ previewId: result.previewId, operator: "operator-7", confirm: true }),
+    /environment/u
+  );
+  fx.gateway.diagnostics = { ...fx.gateway.diagnostics, environment: "paper" };
+  current = new Date("2026-09-14T12:01:00.000Z");
+  await assert.rejects(
+    fx.value.submit({ previewId: result.previewId, operator: "operator-7", confirm: true }),
+    /expired/u
+  );
+  assert.equal(fx.gateway.createCalls.length, 0);
 });

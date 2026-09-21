@@ -78,6 +78,7 @@ interface PreviewToolInput {
   readonly limit: number;
   readonly tif: "DAY" | "GTC";
   readonly session: "REGULAR" | "OVERNIGHT";
+  readonly orderType: "LIMIT";
 }
 
 interface SubmitToolInput {
@@ -100,6 +101,7 @@ export function registerEquityOrderTools(
         symbol: z.string().min(1).max(32).describe("US stock or ETF symbol"),
         side: z.enum(["BUY", "SELL"]),
         quantity: z.number().int().positive().describe("Whole shares only"),
+        orderType: z.literal("LIMIT").default("LIMIT"),
         limit: z.number().positive(),
         tif: z.enum(["DAY", "GTC"]).default("DAY"),
         session: z.enum(["REGULAR", "OVERNIGHT"]).default("REGULAR"),

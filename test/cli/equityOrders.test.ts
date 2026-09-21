@@ -127,6 +127,7 @@ void test("equity preview passes validated terms through to the service", async 
     symbol: "AAPL",
     side: "SELL",
     quantity: 10,
+    orderType: "LIMIT",
     limit: 260.5,
     tif: "GTC",
     session: "OVERNIGHT",
