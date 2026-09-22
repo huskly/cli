@@ -66,6 +66,24 @@ const submission: EquitySubmissionDto = {
   recovered: false,
 };
 
+function warnedSubmission(
+  pendingWarning: EquitySubmissionDto["operation"]["pendingWarning"] = {
+    sequence: 1,
+    replyId: "reply-1",
+    known: true,
+  }
+): EquitySubmissionDto {
+  return {
+    ...submission,
+    operation: {
+      ...submission.operation,
+      state: "warning_pending",
+      pendingWarning,
+      result: { kind: "warning", warningCount: 1, orders: [] },
+    },
+  };
+}
+
 function program(dependencies: EquityCommandDependencies = {}): Command {
   const command = new Command();
   command.exitOverride();
@@ -189,6 +207,126 @@ void test("equity submit JSON keeps gateway order payloads out of the output", a
   assert.equal(raw.includes("DU1234567-99"), false);
   const json = JSON.parse(raw) as { operation: { result: { orderCount: number } } };
   assert.equal(json.operation.result.orderCount, 1);
+});
+
+void test("equity submit acknowledges every broker warning and renders the final operation", async () => {
+  const lines: string[] = [];
+  const warningSubmission = warnedSubmission();
+  const acknowledgements: unknown[] = [];
+
+  await program({
+    createEquityOrders: () =>
+      Promise.resolve(orders({ submit: () => Promise.resolve(warningSubmission) })),
+    createExecutionService: () =>
+      Promise.resolve({
+        acknowledgeWarning: (input: unknown) => {
+          acknowledgements.push(input);
+          const sequence = acknowledgements.length + 1;
+          return Promise.resolve({
+            operation:
+              acknowledgements.length === 1
+                ? {
+                    ...warningSubmission.operation,
+                    pendingWarning: { sequence, replyId: `reply-${String(sequence)}`, known: true },
+                  }
+                : {
+                    ...submission.operation,
+                    state: "accepted",
+                    action: "submission",
+                  },
+          });
+        },
+      }),
+    log: (line) => lines.push(line),
+  }).parseAsync([
+    "node",
+    "t",
+    "equity",
+    "submit",
+    "a".repeat(64),
+    "--operator",
+    "alice",
+    "--confirm",
+  ]);
+
+  assert.deepEqual(acknowledgements, [
+    { operationId: "op-1", replyId: "reply-1", confirm: true },
+    { operationId: "op-1", replyId: "reply-2", confirm: true },
+  ]);
+  const output = lines.join("\n");
+  assert.match(output, /State: accepted/u);
+  assert.match(output, /Broker warnings acknowledged automatically: 2/u);
+  assert.doesNotMatch(output, /Pending warning/u);
+});
+
+void test("equity submit rejects a repeated broker warning reply", async () => {
+  const warningSubmission = warnedSubmission();
+
+  await assert.rejects(
+    program({
+      createEquityOrders: () =>
+        Promise.resolve(orders({ submit: () => Promise.resolve(warningSubmission) })),
+      createExecutionService: () =>
+        Promise.resolve({
+          acknowledgeWarning: () => Promise.resolve({ operation: warningSubmission.operation }),
+        }),
+      log: () => undefined,
+    }).parseAsync([
+      "node",
+      "t",
+      "equity",
+      "submit",
+      "a".repeat(64),
+      "--operator",
+      "alice",
+      "--confirm",
+    ]),
+    /repeated warning reply/u
+  );
+});
+
+void test("equity submit rejects warning state without a reply", async () => {
+  await assert.rejects(
+    program({
+      createEquityOrders: () =>
+        Promise.resolve(orders({ submit: () => Promise.resolve(warnedSubmission(null)) })),
+      log: () => undefined,
+    }).parseAsync([
+      "node",
+      "t",
+      "equity",
+      "submit",
+      "a".repeat(64),
+      "--operator",
+      "alice",
+      "--confirm",
+    ]),
+    /without a warning reply/u
+  );
+});
+
+void test("equity submit surfaces warning acknowledgement failures", async () => {
+  await assert.rejects(
+    program({
+      createEquityOrders: () =>
+        Promise.resolve(orders({ submit: () => Promise.resolve(warnedSubmission()) })),
+      createExecutionService: () =>
+        Promise.resolve({
+          acknowledgeWarning: () => Promise.reject(new Error("acknowledgement failed")),
+        }),
+      log: () => undefined,
+    }).parseAsync([
+      "node",
+      "t",
+      "equity",
+      "submit",
+      "a".repeat(64),
+      "--operator",
+      "alice",
+      "--confirm",
+    ]),
+    /acknowledgement failed/u
+  );
 });
 
 void test("equity commands refuse a broker that cannot serve them", async () => {

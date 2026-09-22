@@ -9,7 +9,6 @@ import {
 } from "./schwabDiagnostics.js";
 import {
   derivativeDiscoveryClient,
-  derivativeExecutionClient,
   derivativePreviewClient,
 } from "#src/derivatives/derivativeClient.js";
 import type {
@@ -34,12 +33,14 @@ import {
   maskAccountId,
   type SpreadPreviewDto,
 } from "#src/derivatives/derivativePreviewService.js";
-import {
-  DerivativeExecutionService,
-  FileExecutionStateStore,
-  type OrderLifecycleDto,
-  type SubmissionDto,
+import type {
+  OrderLifecycleDto,
+  SubmissionDto,
 } from "#src/derivatives/derivativeExecutionService.js";
+import {
+  createGatewayExecutionService,
+  type GatewayExecutionService,
+} from "./gatewayExecutionService.js";
 
 interface SeriesOptions {
   asset: string;
@@ -96,10 +97,7 @@ type PreviewServiceLike = Pick<
   DerivativePreviewService,
   "previewVertical" | "getTradingDiagnostics"
 >;
-type ExecutionServiceLike = Pick<
-  DerivativeExecutionService,
-  "submit" | "recover" | "getStatus" | "watch" | "acknowledgeWarning" | "reconcile" | "cancel"
->;
+type ExecutionServiceLike = GatewayExecutionService;
 
 /** Every gateway-backed command declares the same broker flag and fallback. */
 const GATEWAY_BROKER_FLAG: readonly [string, string] = [
@@ -637,28 +635,6 @@ async function previewService(broker: BrokerName): Promise<DerivativePreviewServ
   );
 }
 
-async function executionService(broker: BrokerName): Promise<DerivativeExecutionService> {
-  const [discovery, preview, execution] = await Promise.all([
-    derivativeDiscoveryClient(broker),
-    derivativePreviewClient(broker),
-    derivativeExecutionClient(broker),
-  ]);
-  const previews = new DerivativePreviewService(
-    discovery,
-    preview,
-    () => new Date(),
-    5 * 60 * 1000,
-    new FilePreviewStore()
-  );
-  return new DerivativeExecutionService(
-    discovery,
-    preview,
-    execution,
-    previews,
-    new FileExecutionStateStore()
-  );
-}
-
 /** Register broker-neutral derivative research commands without changing legacy chain commands. */
 export function addDerivativeCommands(
   program: Command,
@@ -670,7 +646,8 @@ export function addDerivativeCommands(
 
   const createResearchService = dependencies.createResearchService ?? service;
   const createPreviewService = dependencies.createPreviewService ?? previewService;
-  const createExecutionService = dependencies.createExecutionService ?? executionService;
+  const createExecutionService =
+    dependencies.createExecutionService ?? createGatewayExecutionService;
   const createSchwabDiagnostics = dependencies.createSchwabDiagnostics ?? schwabDiagnostics;
   const log = dependencies.log ?? console.log;
 

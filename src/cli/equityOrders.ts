@@ -9,6 +9,7 @@ import {
 import { cliGatewayTransport } from "#src/gateway/gatewayTransport.js";
 import { renderSafeOperation, safeOperation, type SafeOperationView } from "./operationView.js";
 import { requireOperator, type BrokerResolver } from "./shared.js";
+import { createGatewayExecutionService } from "./gatewayExecutionService.js";
 
 /** Every gateway-backed command declares the same broker flag and fallback. */
 const GATEWAY_BROKER_FLAG: readonly [string, string] = [
@@ -16,8 +17,17 @@ const GATEWAY_BROKER_FLAG: readonly [string, string] = [
   "Broker to use: schwab or ibkr (default: ibkr)",
 ];
 
+interface WarningExecutionService {
+  acknowledgeWarning(input: {
+    readonly operationId: string;
+    readonly replyId: string;
+    readonly confirm: true;
+  }): Promise<{ readonly operation: EquitySubmissionDto["operation"] }>;
+}
+
 export interface EquityCommandDependencies {
   readonly createEquityOrders?: (broker: BrokerName) => Promise<EquityTools["orders"]>;
+  readonly createExecutionService?: (broker: BrokerName) => Promise<WarningExecutionService>;
   readonly log?: (line: string) => void;
 }
 
@@ -65,6 +75,7 @@ interface SafeEquitySubmissionView {
   readonly order: SafeEquityPreviewView["order"];
   readonly operation: SafeOperationView;
   readonly recovered: boolean;
+  readonly acknowledgedWarnings: number;
 }
 
 function side(value: string): "BUY" | "SELL" {
@@ -133,7 +144,10 @@ function toPreviewView(result: EquityPreviewDto): SafeEquityPreviewView {
   };
 }
 
-function toSubmissionView(result: EquitySubmissionDto): SafeEquitySubmissionView {
+function toSubmissionView(
+  result: EquitySubmissionDto,
+  acknowledgedWarnings = 0
+): SafeEquitySubmissionView {
   return {
     previewId: result.previewId,
     environment: result.environment,
@@ -141,6 +155,7 @@ function toSubmissionView(result: EquitySubmissionDto): SafeEquitySubmissionView
     order: orderView(result.order),
     operation: safeOperation(result.operation),
     recovered: result.recovered,
+    acknowledgedWarnings,
   };
 }
 
@@ -172,7 +187,45 @@ export function renderEquitySubmission(result: SafeEquitySubmissionView): string
     `Account: ${result.account.maskedId ?? "unknown"}  Environment: ${result.environment}`,
     `${result.order.side} ${String(result.order.quantity)} ${result.order.symbol} ${result.order.orderType === "STP" ? `stop ${String(result.order.stopPrice)}` : `limit ${String(result.order.limit)}`}`,
     ...renderSafeOperation(result.operation),
+    ...(result.acknowledgedWarnings > 0
+      ? [`Broker warnings acknowledged automatically: ${String(result.acknowledgedWarnings)}`]
+      : []),
   ].join("\n");
+}
+
+async function acknowledgeWarnings(
+  result: EquitySubmissionDto,
+  createExecutionService: () => Promise<WarningExecutionService>
+): Promise<{ readonly result: EquitySubmissionDto; readonly count: number }> {
+  let operation = result.operation;
+  let count = 0;
+  const handled = new Set<string>();
+  let execution: WarningExecutionService | undefined;
+
+  while (operation.state === "warning_pending") {
+    const warning = operation.pendingWarning;
+    if (warning === null) {
+      throw new Error("Broker operation is warning_pending without a warning reply");
+    }
+    const identity = `${String(warning.sequence)}:${warning.replyId}`;
+    if (handled.has(identity)) {
+      throw new Error("Broker returned a repeated warning reply");
+    }
+    if (handled.size >= 32) {
+      throw new Error("Broker returned too many sequential warnings");
+    }
+    handled.add(identity);
+    execution ??= await createExecutionService();
+    const acknowledged = await execution.acknowledgeWarning({
+      operationId: operation.operationId,
+      replyId: warning.replyId,
+      confirm: true,
+    });
+    operation = acknowledged.operation;
+    count += 1;
+  }
+
+  return { result: { ...result, operation }, count };
 }
 
 function output<T>(
@@ -214,6 +267,8 @@ export function addEquityCommands(
   dependencies: EquityCommandDependencies = {}
 ): void {
   const createEquityOrders = dependencies.createEquityOrders ?? equityOrders;
+  const createExecutionService =
+    dependencies.createExecutionService ?? createGatewayExecutionService;
   const log = dependencies.log ?? console.log;
   const broker = (override: string | undefined): BrokerName => resolveBrokerFor(override, "ibkr");
 
@@ -276,8 +331,9 @@ Examples:
     .addHelpText(
       "after",
       `
-This places a real order in the preview-bound IBKR environment. Use the
-"order" commands for warnings, status, reconciliation, and cancellation.
+This places a real order in the preview-bound IBKR environment. --confirm
+also acknowledges broker warnings for this submission. Use the "order"
+commands for status, recovery, reconciliation, and cancellation.
 
 Examples:
   $ huskly-cli equity submit <preview-id> --confirm
@@ -286,10 +342,14 @@ Examples:
     .action(async (previewId: string, options: SubmitOptions) => {
       const confirm = confirmed(options.confirm);
       const extOperator = requireOperator(options.operator);
-      const result = await (
-        await createEquityOrders(broker(options.broker))
+      const selectedBroker = broker(options.broker);
+      const submitted = await (
+        await createEquityOrders(selectedBroker)
       ).submit({ previewId, operator: extOperator, confirm });
-      output(toSubmissionView(result), options.json, renderEquitySubmission, log);
+      const { result, count } = await acknowledgeWarnings(submitted, () =>
+        createExecutionService(selectedBroker)
+      );
+      output(toSubmissionView(result, count), options.json, renderEquitySubmission, log);
     });
 
   program.addCommand(equity);
