@@ -77,7 +77,11 @@ export class SchwabBrokerAdapter implements BrokerClient {
     return observe(
       orders.map((account) => ({
         accountNumber: account.accountNumber,
-        orders: account.orders,
+        orders: account.orders.map(({ duration, ...order }) => ({
+          ...order,
+          tif: duration ?? null,
+          session: order.session ?? null,
+        })),
       })),
       "unspecified",
       null

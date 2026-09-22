@@ -51,3 +51,32 @@ test("SchwabBrokerAdapter wraps bare Schwab values as unspecified observations",
     assert.equal(observation.completeness, "unspecified");
   }
 });
+
+test("SchwabBrokerAdapter maps duration and session to shared order timing fields", async () => {
+  const client = {
+    fetchOrders: () =>
+      Promise.resolve([
+        {
+          accountNumber: "acct",
+          orders: [
+            {
+              orderId: 1,
+              duration: "GOOD_TILL_CANCEL",
+              session: "SEAMLESS",
+            },
+          ],
+        },
+      ]),
+  } as unknown as CachedSchwabClient;
+  const adapter = new SchwabBrokerAdapter(client);
+
+  const observation = await adapter.fetchOrders({
+    fromEnteredTime: new Date("2026-01-01T00:00:00Z"),
+    toEnteredTime: new Date("2026-01-02T00:00:00Z"),
+  });
+
+  const order = observation.value[0]?.orders[0];
+  assert.ok(order);
+  assert.equal(order.tif, "GOOD_TILL_CANCEL");
+  assert.equal(order.session, "SEAMLESS");
+});

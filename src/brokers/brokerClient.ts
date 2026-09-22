@@ -204,6 +204,8 @@ export interface BrokerOrder {
   status?: string | null;
   orderType?: string | null;
   complexOrderStrategyType?: string | null;
+  tif?: string | null;
+  session?: string | null;
   quantity?: number | null;
   filledQuantity?: number | null;
   remainingQuantity?: number | null;

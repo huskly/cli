@@ -25,6 +25,8 @@ const COLUMN_WIDTHS = {
   date: 18,
   status: 20,
   type: 12,
+  tif: 10,
+  session: 12,
   symbol: 25,
   instruction: 14,
   quantity: 8,
@@ -117,6 +119,10 @@ function getOrderPrice(order: BrokerOrder): string {
   return "-";
 }
 
+function getOrderTimingValue(value: string | null | undefined): string {
+  return value && value !== "UNKNOWN" ? value : "-";
+}
+
 export function renderOrdersObservation(
   observation: Observation<BrokerAccountOrders[]>,
   broker: BrokerName,
@@ -159,7 +165,7 @@ export function renderOrdersObservation(
 
     lines.push(chalk.gray("─".repeat(SEPARATOR_LENGTH)));
     lines.push(
-      `${chalk.gray(formatColumn("Date", COLUMN_WIDTHS.date))} ${chalk.gray(formatColumn("Status", COLUMN_WIDTHS.status))} ${chalk.gray(formatColumn("Type", COLUMN_WIDTHS.type))} ${chalk.gray(formatColumn("Symbol", COLUMN_WIDTHS.symbol))} ${chalk.gray(formatColumn("Instruction", COLUMN_WIDTHS.instruction))} ${chalk.gray(formatColumn("Qty", COLUMN_WIDTHS.quantity, "right"))} ${chalk.gray(formatColumn("Price", COLUMN_WIDTHS.price, "right"))} ${chalk.gray(formatColumn("Filled", COLUMN_WIDTHS.filled, "right"))}`
+      `${chalk.gray(formatColumn("Date", COLUMN_WIDTHS.date))} ${chalk.gray(formatColumn("Status", COLUMN_WIDTHS.status))} ${chalk.gray(formatColumn("Type", COLUMN_WIDTHS.type))} ${chalk.gray(formatColumn("TIF", COLUMN_WIDTHS.tif))} ${chalk.gray(formatColumn("Session", COLUMN_WIDTHS.session))} ${chalk.gray(formatColumn("Symbol", COLUMN_WIDTHS.symbol))} ${chalk.gray(formatColumn("Instruction", COLUMN_WIDTHS.instruction))} ${chalk.gray(formatColumn("Qty", COLUMN_WIDTHS.quantity, "right"))} ${chalk.gray(formatColumn("Price", COLUMN_WIDTHS.price, "right"))} ${chalk.gray(formatColumn("Filled", COLUMN_WIDTHS.filled, "right"))}`
     );
     lines.push(chalk.gray("─".repeat(SEPARATOR_LENGTH)));
 
@@ -169,6 +175,8 @@ export function renderOrdersObservation(
       const status = order.status ?? "UNKNOWN";
       const statusColor = getStatusColor(order.status);
       const orderType = order.orderType ?? "-";
+      const tif = getOrderTimingValue(order.tif);
+      const session = getOrderTimingValue(order.session);
       const symbol = getOrderSymbol(order);
       const instruction = getOrderInstruction(order);
       const quantity = order.quantity?.toString() ?? (order.quantity === null ? "-" : "-");
@@ -177,7 +185,7 @@ export function renderOrdersObservation(
         order.filledQuantity?.toString() ?? (order.filledQuantity === null ? "-" : "0");
 
       lines.push(
-        `${chalk.gray(formatColumn(dateLabel, COLUMN_WIDTHS.date))} ${statusColor(formatColumn(status, COLUMN_WIDTHS.status))} ${chalk.white(formatColumn(orderType, COLUMN_WIDTHS.type))} ${chalk.cyan(formatColumn(symbol, COLUMN_WIDTHS.symbol))} ${chalk.white(formatColumn(instruction, COLUMN_WIDTHS.instruction))} ${chalk.white(formatColumn(quantity, COLUMN_WIDTHS.quantity, "right"))} ${chalk.yellow(formatColumn(price, COLUMN_WIDTHS.price, "right"))} ${chalk.green(formatColumn(filled, COLUMN_WIDTHS.filled, "right"))}`
+        `${chalk.gray(formatColumn(dateLabel, COLUMN_WIDTHS.date))} ${statusColor(formatColumn(status, COLUMN_WIDTHS.status))} ${chalk.white(formatColumn(orderType, COLUMN_WIDTHS.type))} ${chalk.white(formatColumn(tif, COLUMN_WIDTHS.tif))} ${chalk.white(formatColumn(session, COLUMN_WIDTHS.session))} ${chalk.cyan(formatColumn(symbol, COLUMN_WIDTHS.symbol))} ${chalk.white(formatColumn(instruction, COLUMN_WIDTHS.instruction))} ${chalk.white(formatColumn(quantity, COLUMN_WIDTHS.quantity, "right"))} ${chalk.yellow(formatColumn(price, COLUMN_WIDTHS.price, "right"))} ${chalk.green(formatColumn(filled, COLUMN_WIDTHS.filled, "right"))}`
       );
     }
 
