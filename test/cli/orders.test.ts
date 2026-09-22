@@ -55,3 +55,37 @@ test("orders renderer warns on partial data and shows missing numeric evidence",
   assert.match(output, /AAPL/);
   assert.match(output, /\s-\s+\s-\s+\s-/);
 });
+
+test("orders renderer shows the stop price when the regular price is null", () => {
+  const output = stripAnsi(
+    renderOrdersObservation(
+      {
+        observedAt: "2026-09-04T00:00:00.000Z",
+        completeness: "available",
+        value: [
+          {
+            accountNumber: "acct",
+            orders: [
+              {
+                enteredTime: "2026-01-02T12:00:00Z",
+                status: "PRE_SUBMITTED",
+                orderType: "STOP",
+                quantity: 100,
+                filledQuantity: 0,
+                price: null,
+                stopPrice: 42.5,
+                orderLegCollection: [{ instrument: { symbol: "AAPL" }, instruction: "SELL" }],
+              },
+            ],
+          },
+        ],
+      },
+      "ibkr",
+      fromDate,
+      toDate,
+      {}
+    )
+  );
+
+  assert.match(output, /Stop: \$42\.50/);
+});

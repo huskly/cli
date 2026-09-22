@@ -108,10 +108,10 @@ function getOrderInstruction(order: BrokerOrder): string {
 }
 
 function getOrderPrice(order: BrokerOrder): string {
-  if (order.price !== undefined) {
+  if (order.price !== undefined && order.price !== null) {
     return currencyFormatUsd(order.price);
   }
-  if (order.stopPrice !== undefined) {
+  if (order.stopPrice !== undefined && order.stopPrice !== null) {
     return `Stop: ${currencyFormatUsd(order.stopPrice)}`;
   }
   return "-";

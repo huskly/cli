@@ -442,6 +442,122 @@ describe("IbkrBrokerAdapter", () => {
     );
   });
 
+  it("enriches a missing STOP price from its exact lifecycle", async () => {
+    const { api, calls } = createApi();
+    api.queryOrderHistory = (body) => {
+      calls.push({ method: "queryOrderHistory", body });
+      if (body.by === "window") {
+        return Promise.resolve({
+          observedAt: "2026-09-04T00:00:05.000Z",
+          status: "available",
+          outcome: "listed",
+          lifecycle: null,
+          orders: [
+            {
+              orderId: "stop-1",
+              enteredTime: "2026-01-02T12:00:00.000Z",
+              status: "WORKING",
+              orderType: "STOP",
+              complexOrderStrategyType: null,
+              quantity: 100,
+              filledQuantity: 0,
+              remainingQuantity: 100,
+              price: null,
+              stopPrice: null,
+              legs: [{ symbol: "AAPL", instruction: "SELL" }],
+            },
+            {
+              orderId: "limit-1",
+              enteredTime: "2026-01-02T11:00:00.000Z",
+              status: "FILLED",
+              orderType: "LIMIT",
+              complexOrderStrategyType: null,
+              quantity: 1,
+              filledQuantity: 1,
+              remainingQuantity: 0,
+              price: 190,
+              stopPrice: null,
+              legs: [{ symbol: "AAPL", instruction: "SELL" }],
+            },
+            {
+              orderId: "stop-2",
+              enteredTime: "2026-01-02T10:00:00.000Z",
+              status: "CANCELLED",
+              orderType: "STOP",
+              complexOrderStrategyType: null,
+              quantity: 50,
+              filledQuantity: 0,
+              remainingQuantity: 50,
+              price: null,
+              stopPrice: null,
+              legs: [{ symbol: "MSFT", instruction: "SELL" }],
+            },
+          ],
+          truncated: false,
+          uncertainty: [],
+        } satisfies QueryOrderHistoryResponse);
+      }
+
+      if (body.by !== "orderId") assert.fail("Expected an orderId lookup");
+      if (body.orderId === "stop-2") {
+        return Promise.resolve({
+          observedAt: "2026-09-04T00:00:06.000Z",
+          status: "unavailable",
+          outcome: "not_found",
+          lifecycle: null,
+          orders: [],
+          truncated: false,
+          uncertainty: ["UNKNOWN_STATUS"],
+        } satisfies QueryOrderHistoryResponse);
+      }
+
+      return Promise.resolve({
+        observedAt: "2026-09-04T00:00:06.000Z",
+        status: "available",
+        outcome: "resolved",
+        lifecycle: {
+          orderId: "stop-1",
+          clientOrderId: null,
+          status: "WORKING",
+          quantity: 100,
+          filledQuantity: 0,
+          remainingQuantity: 100,
+          averagePrice: null,
+          orderType: "STOP",
+          limitPrice: 0,
+          stopPrice: 185.5,
+          commissionAndFees: null,
+          legs: [{ brokerId: 123, ratio: -1 }],
+          updatedAt: "2026-01-02T12:00:00.000Z",
+        },
+        orders: [],
+        truncated: false,
+        uncertainty: [],
+      } satisfies QueryOrderHistoryResponse);
+    };
+    const adapter = new IbkrBrokerAdapter(api);
+
+    const result = await adapter.fetchOrders({
+      fromEnteredTime: new Date("2026-01-01T00:00:00.000Z"),
+      toEnteredTime: new Date("2026-01-31T00:00:00.000Z"),
+    });
+
+    assert.equal(result.value[0]?.orders[0]?.stopPrice, 185.5);
+    assert.equal(result.value[0].orders[2]?.stopPrice, null);
+    assert.deepEqual(calls, [
+      {
+        method: "queryOrderHistory",
+        body: {
+          by: "window",
+          fromEnteredTime: "2026-01-01T00:00:00.000Z",
+          toEnteredTime: "2026-01-31T00:00:00.000Z",
+        },
+      },
+      { method: "queryOrderHistory", body: { by: "orderId", orderId: "stop-1" } },
+      { method: "queryOrderHistory", body: { by: "orderId", orderId: "stop-2" } },
+    ]);
+  });
+
   it("throws a fixed redacted transport failure for malformed success JSON", async () => {
     const adapter = new IbkrBrokerAdapter(
       createApi({

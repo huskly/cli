@@ -331,6 +331,27 @@ function groupOrders(orders: BrokerAccountOrders["orders"]): BrokerAccountOrders
   return orders.length === 0 ? [] : [{ orders }];
 }
 
+async function enrichMissingStopPrices(
+  api: IbkrGatewayReadApi,
+  orders: QueryOrderHistoryResponse["orders"]
+): Promise<QueryOrderHistoryResponse["orders"]> {
+  return Promise.all(
+    orders.map(async (order) => {
+      if (order.orderType !== "STOP" || order.stopPrice !== null || order.orderId === null) {
+        return order;
+      }
+
+      const response = parseGatewayResponse(
+        "queryOrderHistory",
+        orderHistoryResponseSchema,
+        await api.queryOrderHistory({ by: "orderId", orderId: order.orderId })
+      );
+      const stopPrice = response.lifecycle?.stopPrice;
+      return stopPrice === null || stopPrice === undefined ? order : { ...order, stopPrice };
+    })
+  );
+}
+
 export interface IbkrGatewayReadApi {
   queryAccountBalances(body: QueryAccountBalancesRequest): Promise<QueryAccountBalancesResponse>;
   queryPositions(body: QueryPositionsRequest): Promise<QueryPositionsResponse>;
@@ -484,7 +505,8 @@ export class IbkrBrokerAdapter implements BrokerClient {
       orderHistoryResponseSchema,
       await this.api.queryOrderHistory(request)
     );
-    const orders = response.orders.map((order) => ({
+    const enrichedOrders = await enrichMissingStopPrices(this.api, response.orders);
+    const orders = enrichedOrders.map((order) => ({
       orderId: order.orderId,
       enteredTime: order.enteredTime,
       status: order.status,
