@@ -358,11 +358,11 @@ __metadata:
   linkType: hard
 
 "@huskly/schwab-client@npm:^1.3.0":
-  version: 1.3.0
-  resolution: "@huskly/schwab-client@npm:1.3.0"
+  version: 1.4.0
+  resolution: "@huskly/schwab-client@npm:1.4.0"
   dependencies:
-    date-fns: "npm:^4.1.0"
-  checksum: 10c0/6487b0908e1653eeb9075f260c1497fd17c05ccfbcf1b3b6204b542ce1b62bf9ce9c48a2e7e0da1424a6bccafe753e1605538b87a27b84c27f2722798e5e7797
+    date-fns: "npm:^4.4.0"
+  checksum: 10c0/aba5af38dcf9c02467e81f42346304dc8777df406a396c4be3c0d666a596caaec293f3ef94e3243046958db45e052b4e35bfb1209f367bfb15b4631bc9d4d18d
   languageName: node
   linkType: hard
 
@@ -1116,10 +1116,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"date-fns@npm:^4.1.0":
-  version: 4.1.0
-  resolution: "date-fns@npm:4.1.0"
-  checksum: 10c0/b79ff32830e6b7faa009590af6ae0fb8c3fd9ffad46d930548fbb5acf473773b4712ae887e156ba91a7b3dc30591ce0f517d69fd83bd9c38650fdc03b4e0bac8
+"date-fns@npm:^4.4.0":
+  version: 4.4.0
+  resolution: "date-fns@npm:4.4.0"
+  checksum: 10c0/988f0a13db183f5dfc85c36bbb6847a9c135a9225888bbea4005876ec15539a8613c21a07370a4e7ea543918d5a1cafb423c528b42cdbbde5fdfddb178126b21
   languageName: node
   linkType: hard
 
