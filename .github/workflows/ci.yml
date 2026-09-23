@@ -35,3 +35,6 @@ jobs:
 
       - name: Build
         run: yarn run build
+
+      - name: Check package contents
+        run: yarn check:package
