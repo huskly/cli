@@ -146,6 +146,7 @@ test("orders renderer shows separate time-in-force and session columns", () => {
 
   assert.match(output, /Type\s+TIF\s+Session\s+Symbol/);
   assert.match(output, /LIMIT\s+GTC\s+OVERNIGHT\s+AAPL/);
+  assert.match(output, /AAPL\s+BUY\s+10\s+\$42\.50\s+0/);
   assert.match(output, /LIMIT\s+DAY\s+REGULAR\s+MSFT/);
   assert.match(output, /LIMIT\s+IOC\s+-\s+NVDA/);
 });

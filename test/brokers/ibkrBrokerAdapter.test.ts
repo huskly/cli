@@ -446,7 +446,7 @@ describe("IbkrBrokerAdapter", () => {
     );
   });
 
-  it("enriches a missing STOP price from its exact lifecycle", async () => {
+  it("enriches missing STOP and LIMIT prices from exact lifecycles", async () => {
     const { api, calls } = createApi();
     api.queryOrderHistory = (body) => {
       calls.push({ method: "queryOrderHistory", body });
@@ -488,6 +488,21 @@ describe("IbkrBrokerAdapter", () => {
               legs: [{ symbol: "AAPL", instruction: "SELL" }],
             },
             {
+              orderId: "limit-2",
+              enteredTime: "2026-01-02T10:30:00.000Z",
+              status: "SUBMITTED",
+              orderType: "LIMIT",
+              complexOrderStrategyType: null,
+              tif: null,
+              session: null,
+              quantity: 1,
+              filledQuantity: 0,
+              remainingQuantity: 1,
+              price: null,
+              stopPrice: null,
+              legs: [{ symbol: "SPX", instruction: "BUY" }],
+            },
+            {
               orderId: "stop-2",
               enteredTime: "2026-01-02T10:00:00.000Z",
               status: "CANCELLED",
@@ -509,6 +524,31 @@ describe("IbkrBrokerAdapter", () => {
       }
 
       if (body.by !== "orderId") assert.fail("Expected an orderId lookup");
+      if (body.orderId === "limit-2") {
+        return Promise.resolve({
+          observedAt: "2026-09-04T00:00:06.000Z",
+          status: "available",
+          outcome: "resolved",
+          lifecycle: {
+            orderId: "limit-2",
+            clientOrderId: null,
+            status: "WORKING",
+            quantity: 1,
+            filledQuantity: 0,
+            remainingQuantity: 1,
+            averagePrice: null,
+            orderType: "LIMIT",
+            limitPrice: 21.4,
+            stopPrice: null,
+            commissionAndFees: null,
+            legs: [{ brokerId: 123, ratio: 1 }],
+            updatedAt: "2026-01-02T10:30:00.000Z",
+          },
+          orders: [],
+          truncated: false,
+          uncertainty: [],
+        } satisfies QueryOrderHistoryResponse);
+      }
       if (body.orderId === "stop-2") {
         return Promise.resolve({
           observedAt: "2026-09-04T00:00:06.000Z",
@@ -553,7 +593,9 @@ describe("IbkrBrokerAdapter", () => {
     });
 
     assert.equal(result.value[0]?.orders[0]?.stopPrice, 185.5);
-    assert.equal(result.value[0].orders[2]?.stopPrice, null);
+    assert.equal(result.value[0].orders[1]?.price, 190);
+    assert.equal(result.value[0].orders[2]?.price, 21.4);
+    assert.equal(result.value[0].orders[3]?.stopPrice, null);
     assert.deepEqual(calls, [
       {
         method: "queryOrderHistory",
@@ -564,6 +606,7 @@ describe("IbkrBrokerAdapter", () => {
         },
       },
       { method: "queryOrderHistory", body: { by: "orderId", orderId: "stop-1" } },
+      { method: "queryOrderHistory", body: { by: "orderId", orderId: "limit-2" } },
       { method: "queryOrderHistory", body: { by: "orderId", orderId: "stop-2" } },
     ]);
   });
