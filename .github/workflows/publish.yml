@@ -56,5 +56,7 @@ jobs:
         run: yarn check
       - name: Build
         run: yarn build
+      - name: Check package contents
+        run: yarn check:package
       - name: Publish package
         run: yarn npm publish --access public --provenance
