@@ -313,6 +313,16 @@ huskly-cli --broker ibkr transactions
 huskly-cli --broker ibkr orders
 ```
 
+IBKR `orders` shows exact option contract symbols for historical orders when the
+gateway confirms each contract ID. A multi-leg order shows each contract on a
+separate detail line. The Current column shows a contract mark for resting
+single-leg orders. For a complete spread, it shows an indicative signed net
+mark. Delayed or frozen quotes have a label. An unresolved contract stays in
+the table with `(unresolved)` and `-` for Current. Filled and canceled orders
+have no current quote. `orders --json` keeps its old fields and adds optional
+contract details to IBKR order legs. Schwab does not change. This feature needs
+gateway API 0.17.0 or newer.
+
 ### Exact derivative research
 
 ```bash

@@ -5,6 +5,8 @@ import type {
   QueryInstrumentSearchResponse,
   QueryOrderHistoryRequest,
   QueryOrderHistoryResponse,
+  QueryOrderContractQuotesRequest,
+  QueryOrderContractQuotesResponse,
   QueryPositionsRequest,
   QueryPositionsResponse,
   QueryQuotesRequest,
@@ -23,6 +25,7 @@ import {
   type BrokerInstrument,
   type BrokerInstrumentSearchProjection,
   type BrokerOrdersOptions,
+  type BrokerOrderContractQuote,
   type BrokerPosition,
   type BrokerQuote,
   type BrokerTransactionHistory,
@@ -251,6 +254,25 @@ const transactionResponseSchema = z
   })
   .strict() satisfies z.ZodType<QueryTransactionsResponse>;
 
+const orderContractQuoteResponseSchema = z
+  .object({
+    observedAt: z.string(),
+    status: evidenceStatusSchema,
+    quotes: z.array(
+      z
+        .object({
+          brokerId: z.number().int().positive(),
+          bid: z.number().nullable(),
+          ask: z.number().nullable(),
+          mark: z.number().nullable(),
+          availability: z.enum(["live", "delayed", "frozen", "frozen-delayed", "unavailable"]),
+          timestamp: z.string().nullable(),
+        })
+        .strict()
+    ),
+  })
+  .strict() satisfies z.ZodType<QueryOrderContractQuotesResponse>;
+
 const orderHistoryResponseSchema = z
   .object({
     observedAt: z.string(),
@@ -277,6 +299,24 @@ const orderHistoryResponseSchema = z
               .object({
                 symbol: z.string().nullable(),
                 instruction: z.string().nullable(),
+                brokerId: z.number().int().positive().nullable().optional(),
+                assetClass: z.enum(["STK", "OPT", "FOP"]).nullable().optional(),
+                ratio: z.number().int().nullable().optional(),
+                option: z
+                  .object({
+                    symbol: z.string(),
+                    underlying: z.string(),
+                    expiration: z.string(),
+                    strike: z.number(),
+                    right: z.enum(["C", "P"]),
+                    tradingClass: z.string().nullable(),
+                    exchange: z.string().nullable(),
+                    multiplier: z.number().nullable(),
+                  })
+                  .strict()
+                  .nullable()
+                  .optional(),
+                uncertainty: z.array(orderUncertaintySchema).optional(),
               })
               .strict()
           ),
@@ -286,7 +326,7 @@ const orderHistoryResponseSchema = z
     truncated: z.boolean(),
     uncertainty: z.array(orderUncertaintySchema),
   })
-  .strict() satisfies z.ZodType<QueryOrderHistoryResponse>;
+  .strict();
 
 function mapReadStatus(status: z.infer<typeof readStatusSchema>): ObservationCompleteness {
   return status;
@@ -335,8 +375,8 @@ function groupOrders(orders: BrokerAccountOrders["orders"]): BrokerAccountOrders
 
 async function enrichMissingOrderPrices(
   api: IbkrGatewayReadApi,
-  orders: QueryOrderHistoryResponse["orders"]
-): Promise<QueryOrderHistoryResponse["orders"]> {
+  orders: z.infer<typeof orderHistoryResponseSchema>["orders"]
+): Promise<z.infer<typeof orderHistoryResponseSchema>["orders"]> {
   return Promise.all(
     orders.map(async (order) => {
       const needsStopPrice = order.orderType === "STOP" && order.stopPrice === null;
@@ -367,6 +407,9 @@ export interface IbkrGatewayReadApi {
   searchInstruments(body: SearchInstrumentsRequest): Promise<SearchInstrumentsResponse>;
   queryTransactions(body: QueryTransactionsRequest): Promise<QueryTransactionsResponse>;
   queryOrderHistory(body: QueryOrderHistoryRequest): Promise<QueryOrderHistoryResponse>;
+  queryOrderContractQuotes(
+    body: QueryOrderContractQuotesRequest
+  ): Promise<QueryOrderContractQuotesResponse>;
 }
 
 export function createIbkrGatewayReadApi(transport: GatewayTransport): IbkrGatewayReadApi {
@@ -382,6 +425,8 @@ export function createIbkrGatewayReadApi(transport: GatewayTransport): IbkrGatew
       transport.call("queryTransactions", (client) => client.queryTransactions(body)),
     queryOrderHistory: (body) =>
       transport.call("queryOrderHistory", (client) => client.queryOrderHistory(body)),
+    queryOrderContractQuotes: (body) =>
+      transport.call("queryOrderContractQuotes", (client) => client.queryOrderContractQuotes(body)),
   };
 }
 
@@ -494,6 +539,19 @@ export class IbkrBrokerAdapter implements BrokerClient {
     );
   }
 
+  async getOrderContractQuotes(brokerIds: number[]) {
+    const response = parseGatewayResponse(
+      "queryOrderContractQuotes",
+      orderContractQuoteResponseSchema,
+      await this.api.queryOrderContractQuotes({ brokerIds })
+    );
+    return observe(
+      response.quotes satisfies BrokerOrderContractQuote[],
+      mapEvidenceStatus(response.status),
+      response.observedAt
+    );
+  }
+
   async fetchOrders(options: BrokerOrdersOptions) {
     const request: QueryOrderHistoryWindowRequest = {
       by: "window",
@@ -530,6 +588,11 @@ export class IbkrBrokerAdapter implements BrokerClient {
       orderLegCollection: order.legs.map((leg) => ({
         instrument: { symbol: leg.symbol },
         instruction: leg.instruction,
+        ...(leg.brokerId === undefined ? {} : { brokerId: leg.brokerId }),
+        ...(leg.assetClass === undefined ? {} : { assetClass: leg.assetClass }),
+        ...(leg.ratio === undefined ? {} : { ratio: leg.ratio }),
+        ...(leg.option === undefined ? {} : { option: leg.option }),
+        ...(leg.uncertainty === undefined ? {} : { uncertainty: leg.uncertainty }),
       })),
     }));
     return observe(groupOrders(orders), mapReadStatus(response.status), response.observedAt);
