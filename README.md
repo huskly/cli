@@ -319,9 +319,11 @@ separate detail line. The Current column shows a contract mark for resting
 single-leg orders. For a complete spread, it shows an indicative signed net
 mark. Delayed or frozen quotes have a label. An unresolved contract stays in
 the table with `(unresolved)` and `-` for Current. Filled and canceled orders
-have no current quote. `orders --json` keeps its old fields and adds optional
-contract details to IBKR order legs. Schwab does not change. This feature needs
-gateway API 0.17.0 or newer.
+have no current quote. The Avg Fill column shows the average execution price
+for IBKR orders with fills. It can differ from the requested Price. A missing
+execution price shows `-`. `orders --json` includes `averageFillPrice` and
+optional contract details for IBKR orders. Schwab does not change. Contract
+quotes need gateway API 0.17.0 or newer.
 
 ### Exact derivative research
 

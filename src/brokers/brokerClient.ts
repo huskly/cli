@@ -227,6 +227,7 @@ export interface BrokerOrder {
   remainingQuantity?: number | null;
   price?: number | null;
   stopPrice?: number | null;
+  averageFillPrice?: number | null;
   orderLegCollection?: BrokerOrderLeg[];
 }
 

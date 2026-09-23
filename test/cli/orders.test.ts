@@ -92,6 +92,51 @@ test("orders renderer shows the stop price when the regular price is null", () =
   assert.match(output, /Stop: \$42\.50/);
 });
 
+test("IBKR orders show requested and average fill prices separately", () => {
+  const orders: Observation<BrokerAccountOrders[]> = {
+    observedAt: null,
+    completeness: "available",
+    value: [
+      {
+        orders: [
+          {
+            status: "FILLED",
+            orderType: "LIMIT",
+            price: 42.5,
+            averageFillPrice: 42.35,
+            filledQuantity: 2,
+          },
+          {
+            status: "PARTIALLY_FILLED",
+            orderType: "STOP",
+            stopPrice: 40,
+            averageFillPrice: 39.8,
+            filledQuantity: 1,
+          },
+          {
+            status: "FILLED",
+            orderType: "LIMIT",
+            price: 10,
+            averageFillPrice: null,
+            filledQuantity: 1,
+          },
+        ],
+      },
+    ],
+  };
+  const output = stripAnsi(renderOrdersObservation(orders, "ibkr", fromDate, toDate, {}));
+  assert.match(output, /Price\s+Avg Fill\s+Current\s+Filled/);
+  assert.match(output, /\$42\.50\s+\$42\.35\s+-\s+2/);
+  assert.match(output, /Stop: \$40\.00\s+\$39\.80\s+-\s+1/);
+  assert.match(output, /\$10\.00\s+-\s+-\s+1/);
+  const json = JSON.parse(
+    renderOrdersObservation(orders, "ibkr", fromDate, toDate, { json: true })
+  ) as Observation<BrokerAccountOrders[]>;
+  assert.equal(json.value[0]?.orders[0]?.averageFillPrice, 42.35);
+  const schwab = stripAnsi(renderOrdersObservation(orders, "schwab", fromDate, toDate, {}));
+  assert.doesNotMatch(schwab, /Avg Fill|\$42\.35/);
+});
+
 test("orders renderer shows separate time-in-force and session columns", () => {
   const output = stripAnsi(
     renderOrdersObservation(
@@ -148,7 +193,7 @@ test("orders renderer shows separate time-in-force and session columns", () => {
 
   assert.match(output, /Type\s+TIF\s+Session\s+Symbol/);
   assert.match(output, /LIMIT\s+GTC\s+OVERNIGHT\s+AAPL/);
-  assert.match(output, /AAPL \(unresolved\)\s+BUY\s+10\s+\$42\.50\s+-\s+0/);
+  assert.match(output, /AAPL \(unresolved\)\s+BUY\s+10\s+\$42\.50\s+-\s+-\s+0/);
   assert.match(output, /LIMIT\s+DAY\s+REGULAR\s+MSFT/);
   assert.match(output, /LIMIT\s+IOC\s+-\s+NVDA/);
 });
@@ -333,8 +378,8 @@ test("IBKR option orders show exact contract and net option marks, not underlyin
   const output = stripAnsi(
     renderOrdersObservation(optionOrders, "ibkr", fromDate, toDate, {}, snapshot)
   );
-  assert.match(output, /IBIT {2}260925C00047000.*\$0\.96\s+\$1\.10/);
-  assert.match(output, /SPXW {2}260925C06000000.*-\$8\.55\s+Indicative -\$8\.50 \(delayed\)/);
+  assert.match(output, /IBIT {2}260925C00047000.*\$0\.96\s+-\s+\$1\.10/);
+  assert.match(output, /SPXW {2}260925C06000000.*-\$8\.55\s+-\s+Indicative -\$8\.50 \(delayed\)/);
   assert.match(output, /SPXW {2}260925C06010000/);
   assert.match(output, /IBIT {2}260925C00047000.*\$0\.53\s+-/);
   assert.match(output, /SPX \(unresolved\)/);
@@ -400,7 +445,7 @@ test("an incomplete spread does not produce a plausible net price", () => {
 test("Schwab columns stay unchanged and IBKR JSON preserves contract fields", () => {
   const schwab = stripAnsi(renderOrdersObservation(optionOrders, "schwab", fromDate, toDate, {}));
   assert.match(schwab, /Price\s+Filled/);
-  assert.doesNotMatch(schwab, /Current/);
+  assert.doesNotMatch(schwab, /Current|Avg Fill/);
   const json = JSON.parse(
     renderOrdersObservation(optionOrders, "ibkr", fromDate, toDate, { json: true })
   ) as Observation<BrokerAccountOrders[]>;

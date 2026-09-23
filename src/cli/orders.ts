@@ -38,6 +38,7 @@ const COLUMN_WIDTHS = {
   instruction: 14,
   quantity: 8,
   price: 12,
+  averageFill: 12,
   filled: 8,
   current: 34,
 } as const;
@@ -161,7 +162,7 @@ export function renderOrdersObservation(
   const showCurrent = broker === "ibkr";
   const separatorLength = showCurrent
     ? SEPARATOR_LENGTH
-    : SEPARATOR_LENGTH - COLUMN_WIDTHS.current - 1;
+    : SEPARATOR_LENGTH - COLUMN_WIDTHS.current - COLUMN_WIDTHS.averageFill - 2;
   const lines = [
     chalk.bold(
       `\n📋 Orders (${format(fromDate, DATE_FORMAT)} to ${format(toDate, DATE_FORMAT)})\n`
@@ -194,7 +195,7 @@ export function renderOrdersObservation(
 
     lines.push(chalk.gray("─".repeat(separatorLength)));
     lines.push(
-      `${chalk.gray(formatColumn("Date", COLUMN_WIDTHS.date))} ${chalk.gray(formatColumn("Status", COLUMN_WIDTHS.status))} ${chalk.gray(formatColumn("Type", COLUMN_WIDTHS.type))} ${chalk.gray(formatColumn("TIF", COLUMN_WIDTHS.tif))} ${chalk.gray(formatColumn("Session", COLUMN_WIDTHS.session))} ${chalk.gray(formatColumn("Symbol", COLUMN_WIDTHS.symbol))} ${chalk.gray(formatColumn("Instruction", COLUMN_WIDTHS.instruction))} ${chalk.gray(formatColumn("Qty", COLUMN_WIDTHS.quantity, "right"))} ${chalk.gray(formatColumn("Price", COLUMN_WIDTHS.price, "right"))}${showCurrent ? ` ${chalk.gray(formatColumn("Current", COLUMN_WIDTHS.current, "right"))}` : ""} ${chalk.gray(formatColumn("Filled", COLUMN_WIDTHS.filled, "right"))}`
+      `${chalk.gray(formatColumn("Date", COLUMN_WIDTHS.date))} ${chalk.gray(formatColumn("Status", COLUMN_WIDTHS.status))} ${chalk.gray(formatColumn("Type", COLUMN_WIDTHS.type))} ${chalk.gray(formatColumn("TIF", COLUMN_WIDTHS.tif))} ${chalk.gray(formatColumn("Session", COLUMN_WIDTHS.session))} ${chalk.gray(formatColumn("Symbol", COLUMN_WIDTHS.symbol))} ${chalk.gray(formatColumn("Instruction", COLUMN_WIDTHS.instruction))} ${chalk.gray(formatColumn("Qty", COLUMN_WIDTHS.quantity, "right"))} ${chalk.gray(formatColumn("Price", COLUMN_WIDTHS.price, "right"))}${showCurrent ? ` ${chalk.gray(formatColumn("Avg Fill", COLUMN_WIDTHS.averageFill, "right"))} ${chalk.gray(formatColumn("Current", COLUMN_WIDTHS.current, "right"))}` : ""} ${chalk.gray(formatColumn("Filled", COLUMN_WIDTHS.filled, "right"))}`
     );
     lines.push(chalk.gray("─".repeat(separatorLength)));
 
@@ -214,7 +215,7 @@ export function renderOrdersObservation(
         order.filledQuantity?.toString() ?? (order.filledQuantity === null ? "-" : "0");
 
       lines.push(
-        `${chalk.gray(formatColumn(dateLabel, COLUMN_WIDTHS.date))} ${statusColor(formatColumn(status, COLUMN_WIDTHS.status))} ${chalk.white(formatColumn(orderType, COLUMN_WIDTHS.type))} ${chalk.white(formatColumn(tif, COLUMN_WIDTHS.tif))} ${chalk.white(formatColumn(session, COLUMN_WIDTHS.session))} ${chalk.cyan(formatColumn(symbol, COLUMN_WIDTHS.symbol))} ${chalk.white(formatColumn(instruction, COLUMN_WIDTHS.instruction))} ${chalk.white(formatColumn(quantity, COLUMN_WIDTHS.quantity, "right"))} ${chalk.yellow(formatColumn(price, COLUMN_WIDTHS.price, "right"))}${showCurrent ? ` ${chalk.white(formatColumn(formatOrderCurrentPrice(order, currentQuotes), COLUMN_WIDTHS.current, "right"))}` : ""} ${chalk.green(formatColumn(filled, COLUMN_WIDTHS.filled, "right"))}`
+        `${chalk.gray(formatColumn(dateLabel, COLUMN_WIDTHS.date))} ${statusColor(formatColumn(status, COLUMN_WIDTHS.status))} ${chalk.white(formatColumn(orderType, COLUMN_WIDTHS.type))} ${chalk.white(formatColumn(tif, COLUMN_WIDTHS.tif))} ${chalk.white(formatColumn(session, COLUMN_WIDTHS.session))} ${chalk.cyan(formatColumn(symbol, COLUMN_WIDTHS.symbol))} ${chalk.white(formatColumn(instruction, COLUMN_WIDTHS.instruction))} ${chalk.white(formatColumn(quantity, COLUMN_WIDTHS.quantity, "right"))} ${chalk.yellow(formatColumn(price, COLUMN_WIDTHS.price, "right"))}${showCurrent ? ` ${chalk.green(formatColumn(order.averageFillPrice == null ? "-" : currencyFormatUsd(order.averageFillPrice), COLUMN_WIDTHS.averageFill, "right"))} ${chalk.white(formatColumn(formatOrderCurrentPrice(order, currentQuotes), COLUMN_WIDTHS.current, "right"))}` : ""} ${chalk.green(formatColumn(filled, COLUMN_WIDTHS.filled, "right"))}`
       );
       if (
         showCurrent &&

@@ -373,16 +373,20 @@ function groupOrders(orders: BrokerAccountOrders["orders"]): BrokerAccountOrders
   return orders.length === 0 ? [] : [{ orders }];
 }
 
-async function enrichMissingOrderPrices(
+async function enrichOrderDetails(
   api: IbkrGatewayReadApi,
   orders: z.infer<typeof orderHistoryResponseSchema>["orders"]
-): Promise<z.infer<typeof orderHistoryResponseSchema>["orders"]> {
+) {
   return Promise.all(
     orders.map(async (order) => {
       const needsStopPrice = order.orderType === "STOP" && order.stopPrice === null;
       const needsLimitPrice = order.orderType === "LIMIT" && order.price === null;
-      if ((!needsStopPrice && !needsLimitPrice) || order.orderId === null) {
-        return order;
+      const hasFill =
+        (order.filledQuantity !== null && order.filledQuantity > 0) ||
+        order.status === "FILLED" ||
+        order.status === "PARTIALLY_FILLED";
+      if ((!needsStopPrice && !needsLimitPrice && !hasFill) || order.orderId === null) {
+        return { ...order, averageFillPrice: null };
       }
 
       const response = parseGatewayResponse(
@@ -390,12 +394,13 @@ async function enrichMissingOrderPrices(
         orderHistoryResponseSchema,
         await api.queryOrderHistory({ by: "orderId", orderId: order.orderId })
       );
-      if (needsLimitPrice) {
-        const price = response.lifecycle?.limitPrice;
-        return price === null || price === undefined ? order : { ...order, price };
-      }
-      const stopPrice = response.lifecycle?.stopPrice;
-      return stopPrice === null || stopPrice === undefined ? order : { ...order, stopPrice };
+      const lifecycle = response.lifecycle;
+      return {
+        ...order,
+        price: needsLimitPrice ? (lifecycle?.limitPrice ?? order.price) : order.price,
+        stopPrice: needsStopPrice ? (lifecycle?.stopPrice ?? order.stopPrice) : order.stopPrice,
+        averageFillPrice: hasFill ? (lifecycle?.averagePrice ?? null) : null,
+      };
     })
   );
 }
@@ -571,7 +576,7 @@ export class IbkrBrokerAdapter implements BrokerClient {
       orderHistoryResponseSchema,
       await this.api.queryOrderHistory(request)
     );
-    const enrichedOrders = await enrichMissingOrderPrices(this.api, response.orders);
+    const enrichedOrders = await enrichOrderDetails(this.api, response.orders);
     const orders = enrichedOrders.map((order) => ({
       orderId: order.orderId,
       enteredTime: order.enteredTime,
@@ -585,6 +590,7 @@ export class IbkrBrokerAdapter implements BrokerClient {
       remainingQuantity: order.remainingQuantity,
       price: order.price,
       stopPrice: order.stopPrice,
+      averageFillPrice: order.averageFillPrice,
       orderLegCollection: order.legs.map((leg) => ({
         instrument: { symbol: leg.symbol },
         instruction: leg.instruction,
