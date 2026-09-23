@@ -177,6 +177,14 @@ function createApi(overrides: Partial<IbkrGatewayReadApi> = {}): {
         truncated: false,
       } satisfies QueryTransactionsResponse);
     },
+    queryOrderContractQuotes: (body) => {
+      calls.push({ method: "queryOrderContractQuotes", body });
+      return Promise.resolve({
+        observedAt: "2026-09-04T00:00:05.000Z",
+        status: "available",
+        quotes: [],
+      });
+    },
     queryOrderHistory: (body) => {
       calls.push({ method: "queryOrderHistory", body });
       return Promise.resolve({
@@ -659,4 +667,57 @@ describe("IbkrBrokerAdapter", () => {
       }
     );
   });
+});
+
+it("keeps exact option contract identity and reads quotes by contract ID", async () => {
+  const { api } = createApi();
+  const adapter = new IbkrBrokerAdapter({
+    ...api,
+    queryOrderHistory: async (body) => {
+      const result = await api.queryOrderHistory(body);
+      return {
+        ...result,
+        orders: result.orders.map((order) => ({
+          ...order,
+          legs: order.legs.map((leg) => ({
+            ...leg,
+            brokerId: 123,
+            ratio: -1,
+            assetClass: "OPT" as const,
+            uncertainty: [],
+            option: {
+              symbol: "IBIT  260925C00047000",
+              underlying: "IBIT",
+              expiration: "2026-09-25",
+              strike: 47,
+              right: "C" as const,
+              tradingClass: "IBIT",
+              exchange: "SMART",
+              multiplier: 100,
+            },
+          })),
+        })),
+      };
+    },
+    queryOrderContractQuotes: () =>
+      Promise.resolve({
+        observedAt: "2026-09-04T00:00:05.000Z",
+        status: "available",
+        quotes: [
+          { brokerId: 123, bid: 1, ask: 1.2, mark: 1.1, availability: "delayed", timestamp: null },
+        ],
+      }),
+  });
+  const orders = await adapter.fetchOrders({
+    fromEnteredTime: new Date("2026-09-01T00:00:00Z"),
+    toEnteredTime: new Date("2026-09-05T00:00:00Z"),
+  });
+  const firstLeg = orders.value.at(0)?.orders.at(0)?.orderLegCollection?.at(0);
+  assert.ok(firstLeg);
+  assert.equal(firstLeg.option?.symbol, "IBIT  260925C00047000");
+  assert.equal(firstLeg.ratio, -1);
+  assert.deepEqual(firstLeg.uncertainty, []);
+  const quotes = await adapter.getOrderContractQuotes([123]);
+  assert.equal(quotes.value.at(0)?.mark, 1.1);
+  assert.equal(quotes.value.at(0)?.availability, "delayed");
 });

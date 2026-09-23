@@ -191,11 +191,27 @@ export interface BrokerTransactionHistory {
   transactions: BrokerTransaction[];
 }
 
+export interface BrokerOrderOption {
+  symbol: string;
+  underlying: string;
+  expiration: string;
+  strike: number;
+  right: "C" | "P";
+  tradingClass: string | null;
+  exchange: string | null;
+  multiplier: number | null;
+}
+
 export interface BrokerOrderLeg {
   instrument?: {
     symbol?: string | null;
   } | null;
   instruction?: string | null;
+  brokerId?: number | null;
+  assetClass?: "STK" | "OPT" | "FOP" | null;
+  ratio?: number | null;
+  option?: BrokerOrderOption | null;
+  uncertainty?: readonly string[];
 }
 
 export interface BrokerOrder {
@@ -226,6 +242,15 @@ export interface BrokerAccountOrders {
   orders: BrokerOrder[];
 }
 
+export interface BrokerOrderContractQuote {
+  brokerId: number;
+  bid: number | null;
+  ask: number | null;
+  mark: number | null;
+  availability: "live" | "delayed" | "frozen" | "frozen-delayed" | "unavailable";
+  timestamp: string | null;
+}
+
 /**
  * The contract every broker client satisfies for the shared commands. Kept
  * intentionally small; broker-specific commands continue to use the full Schwab
@@ -244,4 +269,6 @@ export interface BrokerClient {
     endDate: Date
   ): Promise<Observation<BrokerTransactionHistory[]>>;
   fetchOrders(options: BrokerOrdersOptions): Promise<Observation<BrokerAccountOrders[]>>;
+  /** IBKR-only exact order-leg market data. */
+  getOrderContractQuotes?(brokerIds: number[]): Promise<Observation<BrokerOrderContractQuote[]>>;
 }

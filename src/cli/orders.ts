@@ -7,10 +7,17 @@ import {
   type BrokerAccountOrders,
   type BrokerName,
   type BrokerOrder,
+  type BrokerOrderLeg,
   type BrokerOrdersOptions,
   type Observation,
 } from "#src/brokers/brokerClient.js";
 import { currencyFormatUsd } from "#src/format.js";
+import {
+  fetchOrderContractQuotes,
+  formatOrderCurrentPrice,
+  isVerifiedOptionLeg,
+  type OrderContractQuotes,
+} from "./orderContractQuotes.js";
 
 interface OrdersOptions {
   from?: string;
@@ -32,6 +39,7 @@ const COLUMN_WIDTHS = {
   quantity: 8,
   price: 12,
   filled: 8,
+  current: 34,
 } as const;
 const SEPARATOR_LENGTH =
   Object.values(COLUMN_WIDTHS).reduce((total, width) => total + width, 0) +
@@ -86,8 +94,21 @@ function getStatusColor(status: string | null | undefined): (text: string) => st
   }
 }
 
-function getOrderSymbol(order: BrokerOrder): string {
+function getIbkrLegSymbol(leg: BrokerOrderLeg): string {
+  if (isVerifiedOptionLeg(leg)) return leg.option?.symbol ?? "-";
+  const raw = leg.instrument?.symbol ?? "-";
+  return leg.assetClass === "STK" && Number.isSafeInteger(leg.brokerId) && (leg.brokerId ?? 0) > 0
+    ? raw
+    : `${raw} (unresolved)`;
+}
+
+function getOrderSymbol(order: BrokerOrder, broker: BrokerName): string {
   const legs = order.orderLegCollection;
+  const firstLeg = legs?.[0];
+  if (broker === "ibkr" && firstLeg) {
+    const first = getIbkrLegSymbol(firstLeg);
+    return legs.length === 1 ? first : `${first} +${String(legs.length - 1)}`;
+  }
   if (!legs || legs.length === 0) return "-";
   if (legs.length === 1) {
     return legs[0]?.instrument?.symbol ?? "-";
@@ -128,7 +149,8 @@ export function renderOrdersObservation(
   broker: BrokerName,
   fromDate: Date,
   toDate: Date,
-  options: OrdersOptions
+  options: OrdersOptions,
+  currentQuotes?: OrderContractQuotes
 ): string {
   const safeObservation = requireObservation("fetchOrders", observation);
   if (options.json) {
@@ -136,6 +158,10 @@ export function renderOrdersObservation(
   }
 
   const accountOrders = safeObservation.value;
+  const showCurrent = broker === "ibkr";
+  const separatorLength = showCurrent
+    ? SEPARATOR_LENGTH
+    : SEPARATOR_LENGTH - COLUMN_WIDTHS.current - 1;
   const lines = [
     chalk.bold(
       `\n📋 Orders (${format(fromDate, DATE_FORMAT)} to ${format(toDate, DATE_FORMAT)})\n`
@@ -143,6 +169,9 @@ export function renderOrdersObservation(
   ];
   if (isPartialObservation(safeObservation)) {
     lines.push(chalk.yellow("Warning: Broker data is partial."));
+  }
+  if (showCurrent && currentQuotes?.warning) {
+    lines.push(chalk.yellow(`Warning: ${currentQuotes.warning}`));
   }
 
   if (accountOrders.length === 0) {
@@ -163,11 +192,11 @@ export function renderOrdersObservation(
       continue;
     }
 
-    lines.push(chalk.gray("─".repeat(SEPARATOR_LENGTH)));
+    lines.push(chalk.gray("─".repeat(separatorLength)));
     lines.push(
-      `${chalk.gray(formatColumn("Date", COLUMN_WIDTHS.date))} ${chalk.gray(formatColumn("Status", COLUMN_WIDTHS.status))} ${chalk.gray(formatColumn("Type", COLUMN_WIDTHS.type))} ${chalk.gray(formatColumn("TIF", COLUMN_WIDTHS.tif))} ${chalk.gray(formatColumn("Session", COLUMN_WIDTHS.session))} ${chalk.gray(formatColumn("Symbol", COLUMN_WIDTHS.symbol))} ${chalk.gray(formatColumn("Instruction", COLUMN_WIDTHS.instruction))} ${chalk.gray(formatColumn("Qty", COLUMN_WIDTHS.quantity, "right"))} ${chalk.gray(formatColumn("Price", COLUMN_WIDTHS.price, "right"))} ${chalk.gray(formatColumn("Filled", COLUMN_WIDTHS.filled, "right"))}`
+      `${chalk.gray(formatColumn("Date", COLUMN_WIDTHS.date))} ${chalk.gray(formatColumn("Status", COLUMN_WIDTHS.status))} ${chalk.gray(formatColumn("Type", COLUMN_WIDTHS.type))} ${chalk.gray(formatColumn("TIF", COLUMN_WIDTHS.tif))} ${chalk.gray(formatColumn("Session", COLUMN_WIDTHS.session))} ${chalk.gray(formatColumn("Symbol", COLUMN_WIDTHS.symbol))} ${chalk.gray(formatColumn("Instruction", COLUMN_WIDTHS.instruction))} ${chalk.gray(formatColumn("Qty", COLUMN_WIDTHS.quantity, "right"))} ${chalk.gray(formatColumn("Price", COLUMN_WIDTHS.price, "right"))}${showCurrent ? ` ${chalk.gray(formatColumn("Current", COLUMN_WIDTHS.current, "right"))}` : ""} ${chalk.gray(formatColumn("Filled", COLUMN_WIDTHS.filled, "right"))}`
     );
-    lines.push(chalk.gray("─".repeat(SEPARATOR_LENGTH)));
+    lines.push(chalk.gray("─".repeat(separatorLength)));
 
     for (const order of orders) {
       const date = parseOrderDate(order);
@@ -177,7 +206,7 @@ export function renderOrdersObservation(
       const orderType = order.orderType ?? "-";
       const tif = getOrderTimingValue(order.tif);
       const session = getOrderTimingValue(order.session);
-      const symbol = getOrderSymbol(order);
+      const symbol = getOrderSymbol(order, broker);
       const instruction = getOrderInstruction(order);
       const quantity = order.quantity?.toString() ?? (order.quantity === null ? "-" : "-");
       const price = getOrderPrice(order);
@@ -185,11 +214,20 @@ export function renderOrdersObservation(
         order.filledQuantity?.toString() ?? (order.filledQuantity === null ? "-" : "0");
 
       lines.push(
-        `${chalk.gray(formatColumn(dateLabel, COLUMN_WIDTHS.date))} ${statusColor(formatColumn(status, COLUMN_WIDTHS.status))} ${chalk.white(formatColumn(orderType, COLUMN_WIDTHS.type))} ${chalk.white(formatColumn(tif, COLUMN_WIDTHS.tif))} ${chalk.white(formatColumn(session, COLUMN_WIDTHS.session))} ${chalk.cyan(formatColumn(symbol, COLUMN_WIDTHS.symbol))} ${chalk.white(formatColumn(instruction, COLUMN_WIDTHS.instruction))} ${chalk.white(formatColumn(quantity, COLUMN_WIDTHS.quantity, "right"))} ${chalk.yellow(formatColumn(price, COLUMN_WIDTHS.price, "right"))} ${chalk.green(formatColumn(filled, COLUMN_WIDTHS.filled, "right"))}`
+        `${chalk.gray(formatColumn(dateLabel, COLUMN_WIDTHS.date))} ${statusColor(formatColumn(status, COLUMN_WIDTHS.status))} ${chalk.white(formatColumn(orderType, COLUMN_WIDTHS.type))} ${chalk.white(formatColumn(tif, COLUMN_WIDTHS.tif))} ${chalk.white(formatColumn(session, COLUMN_WIDTHS.session))} ${chalk.cyan(formatColumn(symbol, COLUMN_WIDTHS.symbol))} ${chalk.white(formatColumn(instruction, COLUMN_WIDTHS.instruction))} ${chalk.white(formatColumn(quantity, COLUMN_WIDTHS.quantity, "right"))} ${chalk.yellow(formatColumn(price, COLUMN_WIDTHS.price, "right"))}${showCurrent ? ` ${chalk.white(formatColumn(formatOrderCurrentPrice(order, currentQuotes), COLUMN_WIDTHS.current, "right"))}` : ""} ${chalk.green(formatColumn(filled, COLUMN_WIDTHS.filled, "right"))}`
       );
+      if (showCurrent && (order.orderLegCollection?.length ?? 0) > 1) {
+        for (const leg of order.orderLegCollection ?? []) {
+          const direction =
+            leg.ratio === null || leg.ratio === undefined
+              ? "?"
+              : `${leg.ratio > 0 ? "BUY" : "SELL"} x${String(Math.abs(leg.ratio))}`;
+          lines.push(chalk.gray(`  ↳ ${getIbkrLegSymbol(leg)} · ${direction}`));
+        }
+      }
     }
 
-    lines.push(chalk.gray("─".repeat(SEPARATOR_LENGTH)));
+    lines.push(chalk.gray("─".repeat(separatorLength)));
     lines.push("");
   }
 
@@ -217,7 +255,10 @@ export async function handleOrders(broker: BrokerName, options: OrdersOptions): 
   }
 
   const api = await brokerClient(broker);
-  console.log(
-    renderOrdersObservation(await api.fetchOrders(fetchOptions), broker, fromDate, toDate, options)
-  );
+  const orders = await api.fetchOrders(fetchOptions);
+  const quotes =
+    broker === "ibkr" && !options.json && orders.completeness !== "unavailable"
+      ? await fetchOrderContractQuotes(api, orders)
+      : undefined;
+  console.log(renderOrdersObservation(orders, broker, fromDate, toDate, options, quotes));
 }
