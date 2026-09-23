@@ -216,6 +216,13 @@ export function renderOrdersObservation(
       lines.push(
         `${chalk.gray(formatColumn(dateLabel, COLUMN_WIDTHS.date))} ${statusColor(formatColumn(status, COLUMN_WIDTHS.status))} ${chalk.white(formatColumn(orderType, COLUMN_WIDTHS.type))} ${chalk.white(formatColumn(tif, COLUMN_WIDTHS.tif))} ${chalk.white(formatColumn(session, COLUMN_WIDTHS.session))} ${chalk.cyan(formatColumn(symbol, COLUMN_WIDTHS.symbol))} ${chalk.white(formatColumn(instruction, COLUMN_WIDTHS.instruction))} ${chalk.white(formatColumn(quantity, COLUMN_WIDTHS.quantity, "right"))} ${chalk.yellow(formatColumn(price, COLUMN_WIDTHS.price, "right"))}${showCurrent ? ` ${chalk.white(formatColumn(formatOrderCurrentPrice(order, currentQuotes), COLUMN_WIDTHS.current, "right"))}` : ""} ${chalk.green(formatColumn(filled, COLUMN_WIDTHS.filled, "right"))}`
       );
+      if (
+        showCurrent &&
+        order.orderLegCollection?.length === 1 &&
+        symbol.length > COLUMN_WIDTHS.symbol
+      ) {
+        lines.push(chalk.gray(`  ↳ ${symbol}`));
+      }
       if (showCurrent && (order.orderLegCollection?.length ?? 0) > 1) {
         for (const leg of order.orderLegCollection ?? []) {
           const direction =

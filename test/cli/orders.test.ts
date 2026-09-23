@@ -446,3 +446,33 @@ test("a claimed option symbol without a verified contract ID stays unresolved", 
   assert.match(output, /IBIT \(unresolved\)/);
   assert.doesNotMatch(output, /260925C00047000|\$1\.50/);
 });
+
+test("a long unresolved contract name remains fully visible", () => {
+  const order = optionOrders.value[0]?.orders[0];
+  assert.ok(order);
+  const raw = "IBIT  260925C00047000";
+  const observation: Observation<BrokerAccountOrders[]> = {
+    observedAt: null,
+    completeness: "partial",
+    value: [
+      {
+        orders: [
+          {
+            ...order,
+            orderLegCollection: [
+              {
+                instrument: { symbol: raw },
+                assetClass: null,
+                brokerId: null,
+                ratio: null,
+                option: null,
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const output = stripAnsi(renderOrdersObservation(observation, "ibkr", fromDate, toDate, {}));
+  assert.match(output, /↳ IBIT {2}260925C00047000 \(unresolved\)/);
+});
