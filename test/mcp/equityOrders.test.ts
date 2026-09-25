@@ -69,6 +69,7 @@ function tools() {
             warnings: [],
             rejectionReasons: [],
             advisoryAssetPermissions: [],
+            currency: "USD",
           },
           submitted: false,
         };

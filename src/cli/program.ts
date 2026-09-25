@@ -22,6 +22,7 @@ import { packageVersion } from "./packageVersion.js";
 import type { BrokerName } from "#src/brokers/brokerClient.js";
 import { addDerivativeCommands } from "./derivatives.js";
 import { addEquityCommands } from "./equityOrders.js";
+import { addForexCommands } from "./forexOrders.js";
 
 /** Session-wide settings that a REPL fixes once and every command inherits. */
 export interface ProgramSession {
@@ -274,6 +275,7 @@ Omit the expiry to use the nearest listed expiry.`
 
   addDerivativeCommands(program, broker);
   addEquityCommands(program, broker);
+  addForexCommands(program, broker);
 
   program
     .command("account")

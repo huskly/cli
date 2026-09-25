@@ -102,6 +102,7 @@ const preview: SpreadPreviewDto = {
     warnings: [],
     rejectionReasons: [],
     advisoryAssetPermissions: [],
+    currency: "USD",
   },
   submitted: false,
 };

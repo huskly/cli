@@ -10,20 +10,15 @@ import { cliGatewayTransport } from "#src/gateway/gatewayTransport.js";
 import { renderSafeOperation, safeOperation, type SafeOperationView } from "./operationView.js";
 import { requireOperator, type BrokerResolver } from "./shared.js";
 import { createGatewayExecutionService } from "./gatewayExecutionService.js";
-
-/** Every gateway-backed command declares the same broker flag and fallback. */
-const GATEWAY_BROKER_FLAG: readonly [string, string] = [
-  "--broker <name>",
-  "Broker to use: schwab or ibkr (default: ibkr)",
-];
-
-interface WarningExecutionService {
-  acknowledgeWarning(input: {
-    readonly operationId: string;
-    readonly replyId: string;
-    readonly confirm: true;
-  }): Promise<{ readonly operation: EquitySubmissionDto["operation"] }>;
-}
+import {
+  acknowledgeWarnings,
+  confirmed,
+  GATEWAY_BROKER_FLAG,
+  output,
+  parseSide,
+  parseTif,
+  type WarningExecutionService,
+} from "./guardedOrderCommands.js";
 
 export interface EquityCommandDependencies {
   readonly createEquityOrders?: (broker: BrokerName) => Promise<EquityTools["orders"]>;
@@ -78,22 +73,6 @@ interface SafeEquitySubmissionView {
   readonly acknowledgedWarnings: number;
 }
 
-function side(value: string): "BUY" | "SELL" {
-  const normalized = value.toUpperCase();
-  if (normalized !== "BUY" && normalized !== "SELL") {
-    throw new Error(`Invalid side '${value}'. Expected BUY or SELL.`);
-  }
-  return normalized;
-}
-
-function tif(value: string): "DAY" | "GTC" {
-  const normalized = value.toUpperCase();
-  if (normalized !== "DAY" && normalized !== "GTC") {
-    throw new Error(`Invalid TIF '${value}'. Expected DAY or GTC.`);
-  }
-  return normalized;
-}
-
 function session(value: string): "REGULAR" | "OVERNIGHT" {
   const normalized = value.toUpperCase();
   if (normalized !== "REGULAR" && normalized !== "OVERNIGHT") {
@@ -112,11 +91,6 @@ function shares(value: string): number {
 
 function parsePrice(value: string): number {
   return Number(value);
-}
-
-function confirmed(value: boolean | undefined): true {
-  if (value !== true) throw new Error("This operation requires --confirm.");
-  return true;
 }
 
 function orderView(intent: EquityPreviewDto["order"]): SafeEquityPreviewView["order"] {
@@ -193,50 +167,6 @@ export function renderEquitySubmission(result: SafeEquitySubmissionView): string
   ].join("\n");
 }
 
-async function acknowledgeWarnings(
-  result: EquitySubmissionDto,
-  createExecutionService: () => Promise<WarningExecutionService>
-): Promise<{ readonly result: EquitySubmissionDto; readonly count: number }> {
-  let operation = result.operation;
-  let count = 0;
-  const handled = new Set<string>();
-  let execution: WarningExecutionService | undefined;
-
-  while (operation.state === "warning_pending") {
-    const warning = operation.pendingWarning;
-    if (warning === null) {
-      throw new Error("Broker operation is warning_pending without a warning reply");
-    }
-    const identity = `${String(warning.sequence)}:${warning.replyId}`;
-    if (handled.has(identity)) {
-      throw new Error("Broker returned a repeated warning reply");
-    }
-    if (handled.size >= 32) {
-      throw new Error("Broker returned too many sequential warnings");
-    }
-    handled.add(identity);
-    execution ??= await createExecutionService();
-    const acknowledged = await execution.acknowledgeWarning({
-      operationId: operation.operationId,
-      replyId: warning.replyId,
-      confirm: true,
-    });
-    operation = acknowledged.operation;
-    count += 1;
-  }
-
-  return { result: { ...result, operation }, count };
-}
-
-function output<T>(
-  value: T,
-  json: boolean | undefined,
-  render: (result: T) => string,
-  log: (line: string) => void
-): void {
-  log(json === true ? JSON.stringify(value, null, 2) : render(value));
-}
-
 let ordersPromise: Promise<EquityTools["orders"]> | undefined;
 
 async function equityOrders(broker: BrokerName): Promise<EquityTools["orders"]> {
@@ -310,10 +240,10 @@ Examples:
           await createEquityOrders(broker(options.broker))
         ).preview({
           symbol: symbolValue.toUpperCase(),
-          side: side(sideValue),
+          side: parseSide(sideValue),
           quantity: shares(quantity),
           ...terms,
-          tif: tif(options.tif),
+          tif: parseTif(options.tif),
           session: session(options.session),
         });
         output(toPreviewView(result), options.json, renderEquityPreview, log);
