@@ -38,6 +38,7 @@ const preview: EquityPreviewDto = {
     warnings: [],
     rejectionReasons: [],
     advisoryAssetPermissions: [],
+    currency: "USD",
   } as unknown as EquityPreviewDto["whatIf"],
   submitted: false,
 };

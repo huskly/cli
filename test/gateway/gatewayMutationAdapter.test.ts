@@ -93,6 +93,7 @@ void test("adapter uses exact generated requests and preserves normalized recove
                   warnings: [],
                   rejectionReasons: [],
                   advisoryAssetPermissions: [],
+                  currency: "USD",
                 }
               : name === "reconcileOrderOperation"
                 ? { operation, observation: operation.reconciliation }
@@ -160,6 +161,7 @@ void test("transport API makes one direct generated client call per operation", 
                   warnings: [],
                   rejectionReasons: [],
                   advisoryAssetPermissions: [],
+                  currency: "USD",
                 }
               : name === "reconcileOrderOperation"
                 ? { operation, observation: operation.reconciliation }

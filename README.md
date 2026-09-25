@@ -11,8 +11,8 @@ The CLI and MCP server do not talk to IBKR directly.
 - Market data for quotes, search, price history, movers, charts, and VIX
 - Shared account reads for balances, positions, transactions, and orders
 - Exact derivative research for IBKR
-- Guarded derivative and equity preview and order lifecycle tools for IBKR
-- MCP server for read, derivative, and equity tools
+- Guarded derivative, equity, and spot FX preview and order lifecycle tools for IBKR
+- MCP server for read, derivative, equity, and spot FX tools
 - Schwab-only Redis caching
 
 ## Broker support
@@ -48,6 +48,8 @@ huskly-cli --broker ibkr repl
 | `order show/watch/acknowledge/reconcile/cancel` | ✗      | ✓    |
 | `equity preview`                                | ✗      | ✓    |
 | `equity submit`                                 | ✗      | ✓    |
+| `fx preview`                                    | ✗      | ✓    |
+| `fx submit`                                     | ✗      | ✓    |
 | `broker doctor`                                 | ✓      | ✓    |
 | `account`                                       | ✓      | ✓    |
 | `user-preference`                               | ✓      | ✗    |
@@ -104,6 +106,29 @@ huskly-cli equity submit <preview-id> --operator alice --confirm
 `equity preview` and `equity submit` drive the same guarded service as the
 `preview_equity_order` and `submit_equity_order` MCP tools.
 STOP is a native stop-market order, not stop-limit.
+
+### Spot FX orders (IBKR only)
+
+```bash
+huskly-cli fx preview USD.JPY BUY 25000 --limit 147.25
+huskly-cli fx preview EUR/USD SELL 30000 --limit 1.0850 --tif GTC --json
+huskly-cli fx submit <preview-id> --operator alice --confirm
+```
+
+`fx preview` resolves one exact IDEALPRO currency pair and runs a What-If for
+one LIMIT order. The pair can be `USD.JPY`, `USD/JPY`, or `USDJPY`. The side
+buys or sells the base currency. The quantity is whole base-currency units,
+for example `25000` for 25,000 USD. The limit is the quote-currency price of
+one base unit. FX trades 24/5, so there is no `--session` option.
+
+IBKR checks the price increment and the minimum size. An order below the
+IDEALPRO minimum can route as an odd lot at a worse price; the preview then
+shows the IBKR warning. Commission and margin are in the account base
+currency. The output shows limit prices in the quote currency.
+
+`fx preview` and `fx submit` drive the same guarded service as the
+`fx_order_preview` and `fx_order_submit` MCP tools. Use the `order` commands
+for status, recovery, reconciliation, and cancellation.
 
 ### Single-leg option orders
 
@@ -413,9 +438,26 @@ Then call `submit_equity_order` with only the preview ID, operator, and exact co
 Submission uses only the immutable terms in the unexpired preview.
 Use `get_order_status`, `acknowledge_order_warning`, `reconcile_order_operation`, and `cancel_order` for the returned operation ID.
 
+### Guarded spot FX MCP workflow
+
+Call `fx_order_preview` first:
+
+```json
+{
+  "pair": "USD.JPY",
+  "side": "BUY",
+  "quantity": 25000,
+  "limit": 147.25
+}
+```
+
+Review the returned contract, What-If result, warnings, environment, and
+expiry time. Then call `fx_order_submit` with only the preview ID, operator,
+and exact confirmation, as for `submit_equity_order`.
+
 ## MCP server
 
-`huskly-cli-mcp` exposes read, derivative, and guarded equity tools over stdio.
+`huskly-cli-mcp` exposes read, derivative, and guarded equity and spot FX tools over stdio.
 `place_option_order` stays Schwab-only.
 The IBKR tools use the same gateway transport and safety rules as the CLI.
 There is no direct broker fallback.
@@ -438,8 +480,11 @@ src/
 ├── brokers/
 ├── cli/
 ├── derivatives/
+├── equities/
+├── forex/
 ├── gateway/
 ├── mcp/
+├── orders/
 ├── cache.ts
 ├── cachedSchwabClient.ts
 ├── helpers.ts
@@ -465,6 +510,7 @@ test/
 - `HUSKLY_LIVE_ACCOUNT_ALLOWLIST` - Comma-separated live accounts allowed for derivative execution
 - `HUSKLY_PREVIEW_DIR` - Private derivative preview state directory override
 - `HUSKLY_EQUITY_PREVIEW_DIR` - Private equity preview state directory override
+- `HUSKLY_FOREX_PREVIEW_DIR` - Private spot FX preview state directory override
 - `HUSKLY_EXECUTION_DIR` - Private execution state directory override
 - `HUSKLY_IBKR_GATEWAY_CLI_CONFIG` - CLI gateway config path override
 - `HUSKLY_IBKR_GATEWAY_MCP_CONFIG` - MCP gateway config path override

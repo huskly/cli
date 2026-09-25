@@ -228,6 +228,7 @@ function fakeTools() {
           warnings: [],
           rejectionReasons: [],
           advisoryAssetPermissions: [],
+          currency: "USD",
         },
         submitted: false,
       });

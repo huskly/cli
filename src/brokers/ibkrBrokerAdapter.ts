@@ -300,7 +300,7 @@ const orderHistoryResponseSchema = z
                 symbol: z.string().nullable(),
                 instruction: z.string().nullable(),
                 brokerId: z.number().int().positive().nullable().optional(),
-                assetClass: z.enum(["STK", "OPT", "FOP"]).nullable().optional(),
+                assetClass: z.enum(["STK", "OPT", "FOP", "CASH"]).nullable().optional(),
                 ratio: z.number().int().nullable().optional(),
                 option: z
                   .object({

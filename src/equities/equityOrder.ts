@@ -1,5 +1,8 @@
-import type { OrderOperation } from "@huskly/ibkr-gateway-client";
-import type { BrokerEnvironment, MarginImpact } from "#src/derivatives/derivativePreview.js";
+import type {
+  SingleOrderGateway,
+  SingleOrderPreviewResult,
+  SingleOrderTradingDiagnostics,
+} from "#src/orders/singleOrderWorkflow.js";
 
 export interface EquityContract {
   readonly conid: number;
@@ -22,34 +25,9 @@ export type CanonicalEquityIntent = {
   readonly session: "REGULAR" | "OVERNIGHT";
 } & EquityPriceTerms;
 
-export interface EquityPreviewResult {
-  readonly environment: BrokerEnvironment;
-  readonly accepted: boolean;
-  readonly submitted: false;
-  readonly commission: number | null;
-  readonly initialMargin: MarginImpact | null;
-  readonly maintenanceMargin: MarginImpact | null;
-  readonly warnings: readonly string[];
-  readonly rejectionReasons: readonly string[];
-  readonly advisoryAssetPermissions: readonly string[];
-}
+export type EquityPreviewResult = SingleOrderPreviewResult;
+export type EquityTradingDiagnostics = SingleOrderTradingDiagnostics;
 
-export interface EquityTradingDiagnostics {
-  readonly environment: BrokerEnvironment;
-  readonly accountVerified: boolean;
-  readonly newMutationReady: boolean;
-  readonly recoveryMutationReady: boolean;
-  readonly maskedAccountDisplay: string;
-}
-
-export interface EquityGatewayClient {
-  getTradingDiagnostics(): Promise<EquityTradingDiagnostics>;
+export interface EquityGatewayClient extends SingleOrderGateway<CanonicalEquityIntent> {
   resolveContract(symbol: string): Promise<EquityContract>;
-  preview(intent: CanonicalEquityIntent): Promise<EquityPreviewResult>;
-  create(
-    intent: CanonicalEquityIntent,
-    idempotencyKey: string,
-    operator: string
-  ): Promise<OrderOperation>;
-  lookup(idempotencyKey: string): Promise<OrderOperation>;
 }
