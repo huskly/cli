@@ -5,7 +5,10 @@ import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
-import type { CanonicalEquityIntent } from "#src/equities/equityOrder.js";
+import {
+  canonicalEquityIntentSchema,
+  type CanonicalEquityIntent,
+} from "#src/equities/equityOrder.js";
 import { canonicalForexIntentSchema, type CanonicalForexIntent } from "#src/forex/forexOrder.js";
 import type { CanonicalSingleOptionIntent } from "#src/options/optionOrder.js";
 import type { DerivativeDiscoveryClient } from "./derivativeDiscovery.js";
@@ -316,22 +319,6 @@ const operationSchema = z.strictObject({
   createdAt: z.iso.datetime(),
   latestTransitionAt: z.iso.datetime(),
 }) as unknown as z.ZodType<OrderOperationView>;
-const executionEquityIntentSchema = z.strictObject({
-  contract: z.strictObject({
-    conid: z.number().int().positive(),
-    assetClass: z.literal("STK"),
-    symbol: z.string().regex(/^[A-Z0-9][A-Z0-9 .-]{0,31}$/u),
-    exchange: z.literal("SMART"),
-    primaryExchange: z.string().min(1).max(32),
-    currency: z.literal("USD"),
-  }),
-  side: z.enum(["BUY", "SELL"]),
-  quantity: z.number().int().positive(),
-  tif: z.enum(["DAY", "GTC"]),
-  session: z.enum(["REGULAR", "OVERNIGHT"]),
-  orderType: z.literal("LMT"),
-  limit: z.number().positive(),
-});
 const executionOptionIntentSchema = z.strictObject({
   contract: z.strictObject({
     conid: z.number().int().positive(),
@@ -377,7 +364,7 @@ const submissionSchema = z.discriminatedUnion("operationKind", [
     ...submissionBaseSchema,
     operationKind: z.literal("single"),
     canonicalIntent: z.union([
-      executionEquityIntentSchema,
+      canonicalEquityIntentSchema,
       canonicalForexIntentSchema,
       executionOptionIntentSchema,
     ]),

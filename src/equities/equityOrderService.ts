@@ -1,6 +1,5 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { z } from "zod";
 import type { SingleSubmissionRecord } from "#src/derivatives/derivativeExecutionService.js";
 import {
   FileSingleOrderPreviewStore,
@@ -16,7 +15,11 @@ import {
   type SingleOrderSubmissionRecord,
   type SingleOrderSubmissionStore,
 } from "#src/orders/singleOrderWorkflow.js";
-import type { CanonicalEquityIntent, EquityGatewayClient } from "./equityOrder.js";
+import {
+  canonicalEquityIntentSchema,
+  type CanonicalEquityIntent,
+  type EquityGatewayClient,
+} from "./equityOrder.js";
 
 export type NormalizedEquityTerms =
   | { readonly orderType: "LIMIT"; readonly limit: number }
@@ -87,34 +90,6 @@ export type EquitySubmissionRecord = SingleOrderSubmissionRecord<CanonicalEquity
 export type EquitySubmissionDto = SingleOrderSubmissionDto<CanonicalEquityIntent>;
 export type EquityPreviewStore = SingleOrderPreviewStore<CanonicalEquityIntent>;
 export type EquitySubmissionStore = SingleOrderSubmissionStore<CanonicalEquityIntent>;
-
-const contractSchema = z.strictObject({
-  conid: z.number().int().positive(),
-  assetClass: z.literal("STK"),
-  symbol: z.string().regex(/^[A-Z0-9][A-Z0-9 .-]{0,31}$/),
-  exchange: z.literal("SMART"),
-  primaryExchange: z.string().min(1).max(32),
-  currency: z.literal("USD"),
-});
-const sharedIntentFields = {
-  contract: contractSchema,
-  side: z.enum(["BUY", "SELL"]),
-  quantity: z.number().int().positive(),
-  tif: z.enum(["DAY", "GTC"]),
-  session: z.enum(["REGULAR", "OVERNIGHT"]),
-};
-export const canonicalEquityIntentSchema = z.discriminatedUnion("orderType", [
-  z.strictObject({
-    ...sharedIntentFields,
-    orderType: z.literal("LMT"),
-    limit: z.number().positive(),
-  }),
-  z.strictObject({
-    ...sharedIntentFields,
-    orderType: z.literal("STP"),
-    stopPrice: z.number().positive(),
-  }),
-]);
 
 export class InMemoryEquityPreviewStore extends InMemorySingleOrderPreviewStore<CanonicalEquityIntent> {}
 

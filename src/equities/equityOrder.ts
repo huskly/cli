@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type {
   SingleOrderGateway,
   SingleOrderPreviewResult,
@@ -31,3 +32,35 @@ export type EquityTradingDiagnostics = SingleOrderTradingDiagnostics;
 export interface EquityGatewayClient extends SingleOrderGateway<CanonicalEquityIntent> {
   resolveContract(symbol: string): Promise<EquityContract>;
 }
+
+const contractSchema = z.strictObject({
+  conid: z.number().int().positive(),
+  assetClass: z.literal("STK"),
+  symbol: z.string().regex(/^[A-Z0-9][A-Z0-9 .-]{0,31}$/),
+  exchange: z.literal("SMART"),
+  primaryExchange: z.string().min(1).max(32),
+  currency: z.literal("USD"),
+});
+const sharedIntentFields = {
+  contract: contractSchema,
+  side: z.enum(["BUY", "SELL"]),
+  quantity: z.number().int().positive(),
+  tif: z.enum(["DAY", "GTC"]),
+  session: z.enum(["REGULAR", "OVERNIGHT"]),
+};
+/** The one schema of a canonical equity intent: a LIMIT or a native STOP order. */
+export const canonicalEquityIntentSchema: z.ZodType<CanonicalEquityIntent> = z.discriminatedUnion(
+  "orderType",
+  [
+    z.strictObject({
+      ...sharedIntentFields,
+      orderType: z.literal("LMT"),
+      limit: z.number().positive(),
+    }),
+    z.strictObject({
+      ...sharedIntentFields,
+      orderType: z.literal("STP"),
+      stopPrice: z.number().positive(),
+    }),
+  ]
+);
