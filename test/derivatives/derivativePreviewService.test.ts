@@ -53,6 +53,7 @@ const preview: DerivativePreviewClient = {
       competingSession: false,
       marketDataAvailable: true,
       advisoryAssetPermissions: [],
+      currency: "USD",
       state: "ready",
       readReady: true,
       newMutationReady: false,
@@ -77,6 +78,7 @@ const preview: DerivativePreviewClient = {
       warnings: [],
       rejectionReasons: [],
       advisoryAssetPermissions: ["STK"],
+      currency: "USD",
     }),
 };
 
@@ -164,6 +166,7 @@ void test("preview ignores diagnostics account authority and keeps only masked d
           competingSession: true,
           marketDataAvailable: null,
           advisoryAssetPermissions: [],
+          currency: "USD",
           state: "degraded",
           readReady: false,
           newMutationReady: false,
@@ -236,6 +239,7 @@ void test("stores rejected previews and never submits during preview", async () 
         competingSession: false,
         marketDataAvailable: true,
         advisoryAssetPermissions: [],
+        currency: "USD",
         state: "ready",
         readReady: true,
         newMutationReady: false,
@@ -261,6 +265,7 @@ void test("stores rejected previews and never submits during preview", async () 
         warnings: ["Permissions missing"],
         rejectionReasons: ["Risk rejected"],
         advisoryAssetPermissions: [],
+        currency: "USD",
       });
     },
   };

@@ -243,6 +243,7 @@ const spreadPreview: SpreadPreviewDto = {
     warnings: ["known warning"],
     rejectionReasons: [],
     advisoryAssetPermissions: ["futures-options"],
+    currency: "USD",
   },
   submitted: false,
 };

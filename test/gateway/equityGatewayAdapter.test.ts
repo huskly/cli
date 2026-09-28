@@ -55,6 +55,7 @@ test("equity adapter resolves previews and submits one exact generated request",
         warnings: [],
         rejectionReasons: [],
         advisoryAssetPermissions: [],
+        currency: "USD",
       });
     },
     createOrderOperation: (...args: unknown[]) => {
@@ -158,6 +159,7 @@ test("equity adapter forwards exact STP preview and submit objects", async () =>
         warnings: [],
         rejectionReasons: [],
         advisoryAssetPermissions: [],
+        currency: "USD",
       });
     },
     createOrderOperation: (...args: unknown[]) => {

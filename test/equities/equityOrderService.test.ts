@@ -82,6 +82,7 @@ class Gateway implements EquityGatewayClient {
       warnings: [],
       rejectionReasons: this.accepted ? [] : ["rejected"],
       advisoryAssetPermissions: [],
+      currency: "USD",
     });
   }
   public async create(intent: CanonicalEquityIntent, key: string, operator: string) {

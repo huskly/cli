@@ -65,6 +65,8 @@ export interface DerivativeComboPreviewResult {
   warnings: string[];
   rejectionReasons: string[];
   advisoryAssetPermissions: string[];
+  /** The account base currency of the commission and both margin impacts. */
+  currency: string;
 }
 
 export interface DerivativePreviewClient {

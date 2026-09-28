@@ -110,6 +110,7 @@ const derivativeComboPreviewResultSchema = z.strictObject({
   warnings: z.array(z.string()),
   rejectionReasons: z.array(z.string()),
   advisoryAssetPermissions: z.array(z.string()),
+  currency: z.string().regex(/^[A-Z]{3}$/u),
 });
 export const spreadPreviewDtoSchema = z.strictObject({
   previewId: z.string().regex(/^[a-f0-9]{64}$/),
@@ -141,6 +142,7 @@ export const spreadPreviewDtoSchema = z.strictObject({
     warnings: z.array(z.string()),
     rejectionReasons: z.array(z.string()),
     advisoryAssetPermissions: z.array(z.string()),
+    currency: z.string().regex(/^[A-Z]{3}$/u),
   }),
   submitted: z.literal(false),
 });
@@ -282,6 +284,7 @@ function toSpreadPreviewDto(record: StoredPreviewRecord): SpreadPreviewDto {
       warnings: record.previewResult.warnings,
       rejectionReasons: record.previewResult.rejectionReasons,
       advisoryAssetPermissions: record.previewResult.advisoryAssetPermissions,
+      currency: record.previewResult.currency,
     },
     submitted: false,
   };

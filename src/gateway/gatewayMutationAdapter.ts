@@ -13,6 +13,8 @@ import type {
   PreviewOrdersRequest,
   PreviewOrdersResponse,
   ReconciliationResponse,
+  ResolveForexContractRequest,
+  ResolveForexContractResponse,
 } from "@huskly/ibkr-gateway-client";
 import type { GatewayTransport } from "./gatewayTransport.js";
 import type {
@@ -67,6 +69,7 @@ import type {
 export interface GatewayMutationApi {
   getDiagnostics(): Promise<GetDiagnosticsResponse>;
   resolveEquityContract(body: EquityContractRequest): Promise<EquityContractResponse>;
+  resolveForexContract(body: ResolveForexContractRequest): Promise<ResolveForexContractResponse>;
   previewOrders(body: GatewayPreviewRequest): Promise<PreviewOrdersResponse>;
   createOrderOperation(
     body: GatewayCreateRequest,
@@ -94,6 +97,8 @@ export function createGatewayMutationApi(transport: GatewayTransport): GatewayMu
       transport.call("resolveEquityContract", (client) =>
         (client as unknown as EquityGatewayWireClient).resolveEquityContract(body)
       ),
+    resolveForexContract: (body) =>
+      transport.call("resolveForexContract", (client) => client.resolveForexContract(body)),
     previewOrders: (body) =>
       transport.call("previewOrders", (client) =>
         client.previewOrders(body as PreviewOrdersRequest)

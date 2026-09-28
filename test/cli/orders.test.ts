@@ -521,3 +521,44 @@ test("a long unresolved contract name remains fully visible", () => {
   const output = stripAnsi(renderOrdersObservation(observation, "ibkr", fromDate, toDate, {}));
   assert.match(output, /↳ IBIT {2}260925C00047000 \(unresolved\)/);
 });
+
+test("IBKR spot FX orders show quote-currency prices, never dollar prices", () => {
+  const leg = (symbol: string) => ({
+    instrument: { symbol },
+    instruction: "BUY",
+    brokerId: 15016059,
+    assetClass: "CASH" as const,
+    ratio: 1,
+  });
+  const orders: Observation<BrokerAccountOrders[]> = {
+    observedAt: null,
+    completeness: "available",
+    value: [
+      {
+        orders: [
+          {
+            status: "FILLED",
+            orderType: "LIMIT",
+            quantity: 25000,
+            price: 147.255,
+            averageFillPrice: 147.25,
+            filledQuantity: 25000,
+            orderLegCollection: [leg("USD.JPY")],
+          },
+          {
+            status: "WORKING",
+            orderType: "LIMIT",
+            quantity: 30000,
+            price: 1.0851,
+            filledQuantity: 0,
+            orderLegCollection: [leg("EUR")],
+          },
+        ],
+      },
+    ],
+  };
+  const output = stripAnsi(renderOrdersObservation(orders, "ibkr", fromDate, toDate, {}));
+  assert.match(output, /USD\.JPY\s+BUY\s+25000\s+¥147\.255\s+¥147\.25\s+-/);
+  assert.match(output, /EUR\s+BUY\s+30000\s+1\.0851\s+-/);
+  assert.doesNotMatch(output, /\$|unresolved/);
+});

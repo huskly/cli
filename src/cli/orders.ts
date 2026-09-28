@@ -11,7 +11,7 @@ import {
   type BrokerOrdersOptions,
   type Observation,
 } from "#src/brokers/brokerClient.js";
-import { currencyFormatUsd } from "#src/format.js";
+import { currencyFormatUsd, formatForexPrice } from "#src/format.js";
 import {
   fetchOrderContractQuotes,
   formatOrderCurrentPrice,
@@ -98,9 +98,32 @@ function getStatusColor(status: string | null | undefined): (text: string) => st
 function getIbkrLegSymbol(leg: BrokerOrderLeg): string {
   if (isVerifiedOptionLeg(leg)) return leg.option?.symbol ?? "-";
   const raw = leg.instrument?.symbol ?? "-";
-  return leg.assetClass === "STK" && Number.isSafeInteger(leg.brokerId) && (leg.brokerId ?? 0) > 0
+  return (leg.assetClass === "STK" || leg.assetClass === "CASH") &&
+    Number.isSafeInteger(leg.brokerId) &&
+    (leg.brokerId ?? 0) > 0
     ? raw
     : `${raw} (unresolved)`;
+}
+
+/**
+ * A spot FX order states its prices in the quote currency. The quote currency
+ * comes from a `BASE.QUOTE` leg symbol; `null` when the broker named no pair.
+ */
+interface ForexPricing {
+  readonly quoteCurrency: string | null;
+}
+
+function forexPricing(order: BrokerOrder): ForexPricing | null {
+  const legs = order.orderLegCollection;
+  const leg = legs?.[0];
+  if (legs?.length !== 1 || leg?.assetClass !== "CASH") return null;
+  const pair = /^[A-Z]{3}\.(?<quote>[A-Z]{3})$/u.exec(leg.instrument?.symbol?.trim() ?? "");
+  return { quoteCurrency: pair?.groups?.["quote"] ?? null };
+}
+
+function formatOrderMoney(order: BrokerOrder, value: number | null | undefined): string {
+  const forex = forexPricing(order);
+  return forex === null ? currencyFormatUsd(value) : formatForexPrice(value, forex.quoteCurrency);
 }
 
 function getOrderSymbol(order: BrokerOrder, broker: BrokerName): string {
@@ -133,10 +156,10 @@ function getOrderInstruction(order: BrokerOrder): string {
 
 function getOrderPrice(order: BrokerOrder): string {
   if (order.price !== undefined && order.price !== null) {
-    return currencyFormatUsd(order.price);
+    return formatOrderMoney(order, order.price);
   }
   if (order.stopPrice !== undefined && order.stopPrice !== null) {
-    return `Stop: ${currencyFormatUsd(order.stopPrice)}`;
+    return `Stop: ${formatOrderMoney(order, order.stopPrice)}`;
   }
   return "-";
 }
@@ -215,7 +238,7 @@ export function renderOrdersObservation(
         order.filledQuantity?.toString() ?? (order.filledQuantity === null ? "-" : "0");
 
       lines.push(
-        `${chalk.gray(formatColumn(dateLabel, COLUMN_WIDTHS.date))} ${statusColor(formatColumn(status, COLUMN_WIDTHS.status))} ${chalk.white(formatColumn(orderType, COLUMN_WIDTHS.type))} ${chalk.white(formatColumn(tif, COLUMN_WIDTHS.tif))} ${chalk.white(formatColumn(session, COLUMN_WIDTHS.session))} ${chalk.cyan(formatColumn(symbol, COLUMN_WIDTHS.symbol))} ${chalk.white(formatColumn(instruction, COLUMN_WIDTHS.instruction))} ${chalk.white(formatColumn(quantity, COLUMN_WIDTHS.quantity, "right"))} ${chalk.yellow(formatColumn(price, COLUMN_WIDTHS.price, "right"))}${showCurrent ? ` ${chalk.green(formatColumn(order.averageFillPrice == null ? "-" : currencyFormatUsd(order.averageFillPrice), COLUMN_WIDTHS.averageFill, "right"))} ${chalk.white(formatColumn(formatOrderCurrentPrice(order, currentQuotes), COLUMN_WIDTHS.current, "right"))}` : ""} ${chalk.green(formatColumn(filled, COLUMN_WIDTHS.filled, "right"))}`
+        `${chalk.gray(formatColumn(dateLabel, COLUMN_WIDTHS.date))} ${statusColor(formatColumn(status, COLUMN_WIDTHS.status))} ${chalk.white(formatColumn(orderType, COLUMN_WIDTHS.type))} ${chalk.white(formatColumn(tif, COLUMN_WIDTHS.tif))} ${chalk.white(formatColumn(session, COLUMN_WIDTHS.session))} ${chalk.cyan(formatColumn(symbol, COLUMN_WIDTHS.symbol))} ${chalk.white(formatColumn(instruction, COLUMN_WIDTHS.instruction))} ${chalk.white(formatColumn(quantity, COLUMN_WIDTHS.quantity, "right"))} ${chalk.yellow(formatColumn(price, COLUMN_WIDTHS.price, "right"))}${showCurrent ? ` ${chalk.green(formatColumn(order.averageFillPrice == null ? "-" : formatOrderMoney(order, order.averageFillPrice), COLUMN_WIDTHS.averageFill, "right"))} ${chalk.white(formatColumn(formatOrderCurrentPrice(order, currentQuotes), COLUMN_WIDTHS.current, "right"))}` : ""} ${chalk.green(formatColumn(filled, COLUMN_WIDTHS.filled, "right"))}`
       );
       if (
         showCurrent &&

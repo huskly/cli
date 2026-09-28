@@ -209,11 +209,11 @@ function dto(
   };
 }
 
-/** A `single` submission record can hold an equity or an option intent. */
+/** A `single` submission record can hold an equity, forex, or option intent. */
 function isOptionIntent(
   intent: SingleSubmissionRecord["canonicalIntent"]
 ): intent is CanonicalSingleOptionIntent {
-  return intent.contract.assetClass !== "STK";
+  return intent.contract.assetClass === "OPT" || intent.contract.assetClass === "FOP";
 }
 
 function account(diagnostics: OptionOrderDiagnostics): SingleSubmissionRecord["account"] {

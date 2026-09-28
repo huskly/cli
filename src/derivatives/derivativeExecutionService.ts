@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import type { CanonicalEquityIntent } from "#src/equities/equityOrder.js";
+import { canonicalForexIntentSchema, type CanonicalForexIntent } from "#src/forex/forexOrder.js";
 import type { CanonicalSingleOptionIntent } from "#src/options/optionOrder.js";
 import type { DerivativeDiscoveryClient } from "./derivativeDiscovery.js";
 import type {
@@ -46,13 +47,14 @@ export interface ComboSubmissionRecord extends SubmissionRecordBase {
  * One guarded single-instrument submission.
  *
  * @remarks
- * The gateway uses the same `single` operation kind for an equity order and a
- * single-leg option order, so both share one durable record shape. The intent
- * contract asset class separates them.
+ * The gateway uses the same `single` operation kind for an equity order, a
+ * spot FX order, and a single-leg option order, so all share one durable
+ * record shape. The intent contract asset class separates them.
  */
 export interface SingleSubmissionRecord extends SubmissionRecordBase {
   readonly operationKind: "single";
-  readonly canonicalIntent: CanonicalEquityIntent | CanonicalSingleOptionIntent;
+  readonly canonicalIntent:
+    CanonicalEquityIntent | CanonicalForexIntent | CanonicalSingleOptionIntent;
   readonly operator: string;
   readonly intentHash: string;
   readonly account: {
@@ -374,7 +376,11 @@ const submissionSchema = z.discriminatedUnion("operationKind", [
   z.strictObject({
     ...submissionBaseSchema,
     operationKind: z.literal("single"),
-    canonicalIntent: z.union([executionEquityIntentSchema, executionOptionIntentSchema]),
+    canonicalIntent: z.union([
+      executionEquityIntentSchema,
+      canonicalForexIntentSchema,
+      executionOptionIntentSchema,
+    ]),
     operator: z.string().min(1).max(64),
     intentHash: z.string().regex(/^[a-f0-9]{64}$/u),
     account: z.strictObject({

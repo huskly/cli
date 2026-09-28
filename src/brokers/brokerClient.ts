@@ -208,7 +208,7 @@ export interface BrokerOrderLeg {
   } | null;
   instruction?: string | null;
   brokerId?: number | null;
-  assetClass?: "STK" | "OPT" | "FOP" | null;
+  assetClass?: "STK" | "OPT" | "FOP" | "CASH" | null;
   ratio?: number | null;
   option?: BrokerOrderOption | null;
   uncertainty?: readonly string[];
