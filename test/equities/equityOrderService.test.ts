@@ -356,6 +356,28 @@ test("creating a preview prunes abandoned expired preview files", async () => {
   }
 });
 
+test("the shared execution store persists an equity STOP submission", async () => {
+  const root = await mkdtemp(join(tmpdir(), "huskly-equity-stop-"));
+  try {
+    const gateway = new Gateway();
+    const submissions = new FileEquitySubmissionStore(root);
+    const value = service(gateway, new InMemoryEquityPreviewStore(), submissions).value;
+    const result = await preview(value, "STOP");
+    const submitted = await value.submit({
+      previewId: result.previewId,
+      operator: "operator-7",
+      confirm: true,
+    });
+    assert.equal(submitted.operation.operationId, "operation-1");
+    assert.equal(gateway.createCalls.length, 1);
+    const stored = await submissions.load(result.previewId);
+    assert.deepEqual(stored?.canonicalIntent, result.order);
+    assert.equal(stored.state, "operation_known");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("shared lifecycle storage indexes an equity operation for generic tools", async () => {
   const root = await mkdtemp(join(tmpdir(), "huskly-equity-lifecycle-"));
   try {
