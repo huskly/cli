@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -351,6 +351,38 @@ test("creating a preview prunes abandoned expired preview files", async () => {
     const currentPreview = await preview(fx.value);
     assert.equal(await previews.load(expired.previewId), undefined);
     assert.ok(await previews.load(currentPreview.previewId));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("creating a preview prunes preview files that no longer match the schema", async () => {
+  const root = await mkdtemp(join(tmpdir(), "huskly-equity-prune-invalid-"));
+  const stalePath = join(root, `${"a".repeat(64)}.json`);
+  try {
+    const previews = new FileEquityPreviewStore(root);
+    await writeFile(stalePath, JSON.stringify({ schemaVersion: 1, previewId: "a".repeat(64) }), {
+      mode: 0o600,
+    });
+    await chmod(stalePath, 0o600);
+    const fx = service(new Gateway(), previews);
+    const created = await preview(fx.value);
+    await assert.rejects(stat(stalePath), { code: "ENOENT" });
+    assert.ok(await previews.load(created.previewId));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("pruning previews does not delete files with unsafe permissions", async () => {
+  const root = await mkdtemp(join(tmpdir(), "huskly-equity-prune-unsafe-"));
+  const loosePath = join(root, `${"b".repeat(64)}.json`);
+  try {
+    const previews = new FileEquityPreviewStore(root);
+    await writeFile(loosePath, "{}", { mode: 0o644 });
+    await chmod(loosePath, 0o644);
+    await assert.rejects(previews.pruneExpired(new Date()), /mode 0600/u);
+    assert.ok(await stat(loosePath));
   } finally {
     await rm(root, { recursive: true, force: true });
   }

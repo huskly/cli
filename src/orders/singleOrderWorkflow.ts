@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import { z } from "zod";
 import type { OrderOperation } from "@huskly/ibkr-gateway-client";
-import { PrivateJsonFile } from "#src/storage/privateJsonFile.js";
+import { InvalidPrivateJsonError, PrivateJsonFile } from "#src/storage/privateJsonFile.js";
 import {
   FileExecutionStateStore,
   type ExecutionStateStore,
@@ -224,9 +224,21 @@ export class FileSingleOrderPreviewStore<Intent> implements SingleOrderPreviewSt
     for (const name of names) {
       const match = /^([a-f0-9]{64})\.json$/u.exec(name);
       if (match?.[1] === undefined) continue;
-      const preview = await this.load(match[1]);
-      if (preview !== undefined && new Date(preview.expiresAt).getTime() <= cutoff)
-        await this.delete(preview.previewId);
+      if (await this.isPrunable(match[1], cutoff)) await this.delete(match[1]);
+    }
+  }
+  /**
+   * Previews are short-lived cache entries. An unreadable preview (for example,
+   * one written before a schema change) can never be submitted, so it is pruned
+   * instead of blocking every new preview.
+   */
+  private async isPrunable(previewId: string, cutoff: number): Promise<boolean> {
+    try {
+      const preview = await this.load(previewId);
+      return preview !== undefined && new Date(preview.expiresAt).getTime() <= cutoff;
+    } catch (error: unknown) {
+      if (error instanceof InvalidPrivateJsonError) return true;
+      throw error;
     }
   }
   private file(previewId: string): PrivateJsonFile<SingleOrderPreviewRecord<Intent>> {

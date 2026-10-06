@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import {
+  InvalidPrivateJsonError,
   PrivateJsonFile,
   type PrivateJsonFilesystem,
   type PrivateJsonHandle,
@@ -298,6 +299,31 @@ void test("enforces bounded reads and strict versioned schemas", async () => {
     );
     await chmod(join(target, "state.json"), 0o600);
     await assert.rejects(() => createSubject(target).load(), /schema|version|invalid|unexpected/i);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("reports unreadable content as InvalidPrivateJsonError", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "huskly-private-json-"));
+  const path = join(directory, "state.json");
+  const contents: readonly (string | Buffer)[] = [
+    JSON.stringify({ schemaVersion: 1, value: "x".repeat(80) }),
+    Buffer.from([0xff, 0xfe]),
+    "{not json",
+    JSON.stringify({ schemaVersion: 1 }),
+  ];
+  try {
+    for (const content of contents) {
+      await writeFile(path, content, { mode: 0o600 });
+      await chmod(path, 0o600);
+      await assert.rejects(() => createSubject(directory).load(), InvalidPrivateJsonError);
+    }
+    await chmod(path, 0o644);
+    await assert.rejects(
+      () => createSubject(directory).load(),
+      (error: unknown) => error instanceof Error && !(error instanceof InvalidPrivateJsonError)
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
