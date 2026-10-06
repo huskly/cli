@@ -6,6 +6,19 @@ import type { ZodType } from "zod";
 
 const DEFAULT_MAX_BYTES = 64 * 1024;
 
+/**
+ * The file exists and is safe to read, but its content is not a valid record.
+ *
+ * @remarks
+ * Thrown for oversized files, invalid UTF-8, invalid JSON, and schema failures.
+ * Callers that own disposable data (for example, expired caches) can catch this
+ * error and delete the file. Security failures (symbolic links, wrong mode,
+ * non-regular files) use a plain `Error` and must not be handled this way.
+ */
+export class InvalidPrivateJsonError extends Error {
+  public override readonly name = "InvalidPrivateJsonError";
+}
+
 export interface PrivateJsonStats {
   readonly mode: number;
   readonly size: number;
@@ -263,12 +276,24 @@ async function readBoundedUtf8(
   while (totalBytes < buffer.length) {
     const { bytesRead } = await handle.read(buffer, totalBytes, buffer.length - totalBytes, null);
     if (bytesRead === 0) {
-      return new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, totalBytes));
+      return decodeUtf8(buffer.subarray(0, totalBytes), path);
     }
     totalBytes += bytesRead;
   }
 
-  throw new Error(`Private JSON file at ${path} must be at most ${String(maxBytes)} bytes`);
+  throw new InvalidPrivateJsonError(
+    `Private JSON file at ${path} must be at most ${String(maxBytes)} bytes`
+  );
+}
+
+function decodeUtf8(bytes: Buffer, path: string): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (error: unknown) {
+    throw new InvalidPrivateJsonError(`Private JSON file at ${path} must contain valid UTF-8`, {
+      cause: error,
+    });
+  }
 }
 
 function parsePrivateJson<T>(source: string, schema: ZodType<T>, path: string): T {
@@ -276,12 +301,12 @@ function parsePrivateJson<T>(source: string, schema: ZodType<T>, path: string): 
   try {
     parsed = JSON.parse(source) as unknown;
   } catch {
-    throw new Error(`Private JSON file at ${path} must contain valid JSON`);
+    throw new InvalidPrivateJsonError(`Private JSON file at ${path} must contain valid JSON`);
   }
 
   const result = schema.safeParse(parsed);
   if (!result.success) {
-    throw new Error(
+    throw new InvalidPrivateJsonError(
       `Private JSON file at ${path} is invalid: ${result.error.issues.map((issue) => issue.message).join("; ")}`
     );
   }
