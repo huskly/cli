@@ -8,6 +8,8 @@ import {
   EquityOrderModificationService,
   InMemoryEquityModificationStore,
   FileEquityModificationStore,
+  InMemoryModificationDeclineStore,
+  FileModificationDeclineStore,
 } from "#src/equities/equityOrderModification.js";
 import type { GatewayMutationApi, OrderModification } from "#src/gateway/gatewayMutationAdapter.js";
 
@@ -32,6 +34,7 @@ const accepted: OrderModification = {
   requested: { limit: 251 },
   submitted: { ...before, limit: 251, quantity: 10 },
   pendingWarning: null,
+  reconciliation: null,
   result: { kind: "accepted", reasonCategories: [] },
   createdAt: "2026-10-08T00:00:00Z",
   latestTransitionAt: "2026-10-08T00:00:01Z",
@@ -266,4 +269,95 @@ test("rejected modification without live terms returns a nullable before", async
   const dto = await fake.service.modify(input);
   assert.equal(dto.before, null);
   assert.equal(dto.state, "rejected_before_submission");
+});
+
+test("show reads one modification and reconciliation returns the safe new state", async () => {
+  const calls: string[] = [];
+  const next: OrderModification = {
+    ...accepted,
+    state: "not_applied",
+    result: { kind: "not_applied", reasonCategories: [] },
+    reconciliation: {
+      observedAt: "2026-10-08T01:00:00Z",
+      status: "matched",
+      reason: "before_terms_match",
+    },
+  };
+  const api = {
+    getOrderModification: (id: string) => {
+      calls.push(`get:${id}`);
+      return Promise.resolve(accepted);
+    },
+    reconcileOrderModification: (id: string) => {
+      calls.push(`reconcile:${id}`);
+      return Promise.resolve(next);
+    },
+  } as unknown as GatewayMutationApi;
+  const service = new EquityOrderModificationService(api, new InMemoryEquityModificationStore());
+  assert.equal((await service.get("mod-1")).state, "accepted");
+  const outcome = await service.reconcile("mod-1", true);
+  assert.equal(outcome.state, "not_applied");
+  assert.equal(outcome.result?.kind, "not_applied");
+  assert.deepEqual(outcome.reconciliation, {
+    observedAt: "2026-10-08T01:00:00Z",
+    status: "matched",
+    reason: "before_terms_match",
+  });
+  assert.deepEqual(calls, ["get:mod-1", "reconcile:mod-1"]);
+  await assert.rejects(service.reconcile("mod-1", false), /Confirmation/);
+  await assert.rejects(service.get("  "), /Invalid modification ID/);
+});
+
+test("decline saves one durable key, then uses it again after a lost response", async () => {
+  const ids: string[] = [];
+  let calls = 0;
+  const declined: OrderModification = { ...accepted, state: "warning_declined" };
+  const api = {
+    declineOrderModificationWarning: (_id: string, key: string) => {
+      ids.push(key);
+      if (++calls === 1) return Promise.reject(new Error("answer lost"));
+      return Promise.resolve(declined);
+    },
+  } as unknown as GatewayMutationApi;
+  const service = new EquityOrderModificationService(
+    api,
+    new InMemoryEquityModificationStore(),
+    () => "decline-key",
+    new InMemoryModificationDeclineStore()
+  );
+  await assert.rejects(service.decline("mod-1", true), /answer lost/);
+  assert.equal((await service.decline("mod-1", true)).state, "warning_declined");
+  assert.deepEqual(ids, ["decline-key", "decline-key"]);
+  await assert.rejects(service.decline("mod-1", false), /Confirmation/);
+});
+
+test("warning decline key survives restart in the private state directory", async () => {
+  const root = await mkdtemp(join(tmpdir(), "equity-decline-"));
+  try {
+    const store = new FileModificationDeclineStore(root);
+    assert.equal(await store.create("mod-1", "first-key"), true);
+    assert.equal(await new FileModificationDeclineStore(root).load("mod-1"), "first-key");
+    assert.equal((await stat(join(root, "equity-modification-declines"))).mode & 0o777, 0o700);
+    await store.delete("mod-1");
+    assert.equal(await store.load("mod-1"), undefined);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("attested absence remains a distinct terminal modification state", async () => {
+  const absent: OrderModification = {
+    ...accepted,
+    state: "operator_resolved_absent",
+    reconciliation: {
+      observedAt: "2026-10-08T01:00:00Z",
+      status: "unavailable",
+      reason: "operator_attested_absence",
+    },
+  };
+  const api = {
+    getOrderModification: () => Promise.resolve(absent),
+  } as unknown as GatewayMutationApi;
+  const service = new EquityOrderModificationService(api, new InMemoryEquityModificationStore());
+  assert.equal((await service.get("mod-1")).state, "operator_resolved_absent");
 });

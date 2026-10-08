@@ -67,10 +67,19 @@ const modificationSchema = z.object({
     "warning_declined",
     "broker_refused",
     "unknown_outcome",
+    "not_applied",
+    "operator_resolved_absent",
   ]),
   before: termsSchema.extend({ filledQuantity: z.number().int().nonnegative() }).nullable(),
   requested: changesSchema,
   submitted: termsSchema.nullable(),
+  reconciliation: z
+    .object({
+      observedAt: z.string(),
+      status: z.enum(["matched", "conflicting", "unavailable"]),
+      reason: z.string().max(256),
+    })
+    .nullable(),
   pendingWarning: z
     .object({
       replyId: z.string().min(1),
@@ -80,7 +89,7 @@ const modificationSchema = z.object({
     .nullable(),
   result: z
     .object({
-      kind: z.enum(["accepted", "refused", "unknown_outcome"]),
+      kind: z.enum(["accepted", "refused", "unknown_outcome", "not_applied"]),
       reasonCategories: z.array(z.string()),
     })
     .nullable(),
@@ -115,6 +124,7 @@ export type EquityModificationDto = Pick<
   | "result"
   | "createdAt"
   | "latestTransitionAt"
+  | "reconciliation"
 > & { readonly acknowledgedWarnings: number };
 
 /** Private recovery state for the exact operator request. */
@@ -191,6 +201,65 @@ export class FileEquityModificationStore implements EquityModificationStore {
   }
 }
 
+interface DeclineKeyStore {
+  create(id: string, key: string): Promise<boolean>;
+  load(id: string): Promise<string | undefined>;
+  delete(id: string): Promise<void>;
+}
+
+/** Save a warning decline key before the gateway call so an uncertain answer can replay. */
+export class FileModificationDeclineStore implements DeclineKeyStore {
+  private readonly directory: string;
+  constructor(
+    directory = process.env["HUSKLY_EXECUTION_DIR"] ??
+      join(homedir(), ".cache", "huskly-cli", "execution")
+  ) {
+    this.directory = join(directory, "equity-modification-declines");
+  }
+  private file(id: string): PrivateJsonFile<{ schemaVersion: 1; key: string }> {
+    const name = createHash("sha256").update(id).digest("hex");
+    return new PrivateJsonFile({
+      directory: this.directory,
+      filename: `${name}.json`,
+      schema: z.strictObject({ schemaVersion: z.literal(1), key: z.string().min(1) }),
+    });
+  }
+  create(id: string, key: string): Promise<boolean> {
+    return this.file(id).create({ schemaVersion: 1, key });
+  }
+  async load(id: string): Promise<string | undefined> {
+    return (await this.file(id).load())?.key;
+  }
+  delete(id: string): Promise<void> {
+    return this.file(id).delete();
+  }
+}
+
+/** In-memory recovery keys for tests and nonpersistent callers. */
+export class InMemoryModificationDeclineStore implements DeclineKeyStore {
+  private readonly keys = new Map<string, string>();
+  async create(id: string, key: string): Promise<boolean> {
+    await Promise.resolve();
+    if (this.keys.has(id)) return false;
+    this.keys.set(id, key);
+    return true;
+  }
+  async load(id: string): Promise<string | undefined> {
+    await Promise.resolve();
+    return this.keys.get(id);
+  }
+  async delete(id: string): Promise<void> {
+    await Promise.resolve();
+    this.keys.delete(id);
+  }
+}
+
+function validModificationId(value: string): string {
+  if (value.length === 0 || value.length > 128 || value.trim() !== value || !/^[ -~]+$/.test(value))
+    throw new Error("Invalid modification ID");
+  return value;
+}
+
 type ValidatedInput = Omit<EquityModificationInput, "changes"> & {
   readonly changes: OrderModificationChanges;
 };
@@ -225,6 +294,7 @@ function toDto(
     result: modification.result,
     createdAt: modification.createdAt,
     latestTransitionAt: modification.latestTransitionAt,
+    reconciliation: modification.reconciliation,
     acknowledgedWarnings,
   };
 }
@@ -249,10 +319,15 @@ export class EquityOrderModificationService {
   constructor(
     private readonly api: Pick<
       GatewayMutationApi,
-      "createOrderModification" | "getOrderModification" | "acknowledgeOrderModificationWarning"
+      | "createOrderModification"
+      | "getOrderModification"
+      | "acknowledgeOrderModificationWarning"
+      | "reconcileOrderModification"
+      | "declineOrderModificationWarning"
     >,
     private readonly store: EquityModificationStore = new FileEquityModificationStore(),
-    private readonly key: () => string = randomUUID
+    private readonly key: () => string = randomUUID,
+    private readonly declines: DeclineKeyStore = new FileModificationDeclineStore()
   ) {}
 
   async modify(raw: EquityModificationInput): Promise<EquityModificationDto> {
@@ -262,6 +337,44 @@ export class EquityOrderModificationService {
     const { outcome, count } = await this.acknowledgeWarnings(input, record, modification);
     await this.store.delete(input);
     return toDto(outcome, count);
+  }
+
+  /** Read the latest known modification for the current machine. */
+  async get(modificationId: string): Promise<EquityModificationDto> {
+    const outcome = safeModification(
+      await this.api.getOrderModification(validModificationId(modificationId))
+    );
+    return toDto(outcome, 0);
+  }
+
+  /** Use gateway reads to resolve an uncertain modification; never resend the broker write. */
+  async reconcile(modificationId: string, confirm: boolean): Promise<EquityModificationDto> {
+    if (!confirm) throw new Error("Confirmation must be exactly true");
+    const outcome = safeModification(
+      await this.api.reconcileOrderModification(validModificationId(modificationId))
+    );
+    return toDto(outcome, 0);
+  }
+
+  /** Decline an outstanding broker warning without a broker write. */
+  async decline(modificationId: string, confirm: boolean): Promise<EquityModificationDto> {
+    if (!confirm) throw new Error("Confirmation must be exactly true");
+    const id = validModificationId(modificationId);
+    let key = await this.declines.load(id);
+    if (key === undefined) {
+      const candidate = this.key();
+      key = (await this.declines.create(id, candidate)) ? candidate : await this.declines.load(id);
+      if (key === undefined) throw new Error("Warning decline reservation is unavailable");
+    }
+    let outcome: OrderModification;
+    try {
+      outcome = safeModification(await this.api.declineOrderModificationWarning(id, key));
+    } catch (error: unknown) {
+      if (definitiveNoWrite(error)) await this.declines.delete(id);
+      throw error;
+    }
+    await this.declines.delete(id);
+    return toDto(outcome, 0);
   }
 
   private async reserve(input: ValidatedInput): Promise<EquityModificationRecord> {

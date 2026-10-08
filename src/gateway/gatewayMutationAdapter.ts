@@ -96,17 +96,24 @@ export interface OrderModification {
     | "warning_pending"
     | "warning_declined"
     | "broker_refused"
-    | "unknown_outcome";
+    | "unknown_outcome"
+    | "not_applied"
+    | "operator_resolved_absent";
   readonly before: (OrderModificationTerms & { readonly filledQuantity: number }) | null;
   readonly requested: OrderModificationChanges;
   readonly submitted: OrderModificationTerms | null;
+  readonly reconciliation: {
+    readonly observedAt: string;
+    readonly status: "matched" | "conflicting" | "unavailable";
+    readonly reason: string;
+  } | null;
   readonly pendingWarning: {
     readonly replyId: string;
     readonly sequence: number;
     readonly messageIds: readonly string[];
   } | null;
   readonly result: {
-    readonly kind: "accepted" | "refused" | "unknown_outcome";
+    readonly kind: "accepted" | "refused" | "unknown_outcome" | "not_applied";
     readonly reasonCategories: readonly string[];
   } | null;
   readonly createdAt: string;
@@ -121,6 +128,11 @@ interface ModificationGatewayWireClient {
   acknowledgeOrderModificationWarning(
     modificationId: string,
     replyId: string,
+    idempotencyKey: string
+  ): Promise<OrderModification>;
+  reconcileOrderModification(modificationId: string): Promise<OrderModification>;
+  declineOrderModificationWarning(
+    modificationId: string,
     idempotencyKey: string
   ): Promise<OrderModification>;
 }
@@ -142,6 +154,11 @@ export interface GatewayMutationApi {
   acknowledgeOrderModificationWarning(
     modificationId: string,
     replyId: string,
+    idempotencyKey: string
+  ): Promise<OrderModification>;
+  reconcileOrderModification(modificationId: string): Promise<OrderModification>;
+  declineOrderModificationWarning(
+    modificationId: string,
     idempotencyKey: string
   ): Promise<OrderModification>;
   resolveEquityContract(body: EquityContractRequest): Promise<EquityContractResponse>;
@@ -182,6 +199,17 @@ export function createGatewayMutationApi(transport: GatewayTransport): GatewayMu
         (client as unknown as ModificationGatewayWireClient).acknowledgeOrderModificationWarning(
           id,
           replyId,
+          key
+        )
+      ),
+    reconcileOrderModification: (id) =>
+      transport.call("reconcileOrderModification", (client) =>
+        (client as unknown as ModificationGatewayWireClient).reconcileOrderModification(id)
+      ),
+    declineOrderModificationWarning: (id, key) =>
+      transport.call("declineOrderModificationWarning", (client) =>
+        (client as unknown as ModificationGatewayWireClient).declineOrderModificationWarning(
+          id,
           key
         )
       ),
