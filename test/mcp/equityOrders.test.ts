@@ -30,9 +30,17 @@ function body(result: CallToolResult): Record<string, unknown> {
   return JSON.parse(content.text) as Record<string, unknown>;
 }
 
+const unusedModification = {
+  modify: () => Promise.reject(new Error("unused")),
+  get: () => Promise.reject(new Error("unused")),
+  reconcile: () => Promise.reject(new Error("unused")),
+  decline: () => Promise.reject(new Error("unused")),
+};
+
 function tools() {
   const calls = { initialize: 0, preview: 0, submit: 0 };
   const value: EquityTools = {
+    modification: unusedModification,
     orders: {
       preview: async (input) => {
         await Promise.resolve();
@@ -235,6 +243,7 @@ test("gateway errors stay bounded and redact provider text", async () => {
   registerEquityOrderTools(server, {
     createEquityTools: () =>
       Promise.resolve({
+        modification: unusedModification,
         orders: {
           preview: async () => {
             await Promise.resolve();

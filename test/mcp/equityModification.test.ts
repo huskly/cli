@@ -27,6 +27,12 @@ const expected = {
   latestTransitionAt: "now",
   acknowledgedWarnings: 0,
 } as EquityModificationDto;
+const unusedModification = {
+  get: () => Promise.resolve(expected),
+  reconcile: () => Promise.resolve(expected),
+  decline: () => Promise.resolve(expected),
+};
+
 test("modify_equity_order accepts account-free changes and returns the same safe DTO", async () => {
   const tools = new Map<string, RegisteredMcpTool>();
   let input: unknown;
@@ -48,6 +54,7 @@ test("modify_equity_order accepts account-free changes and returns the same safe
             }) as never,
           },
           modification: {
+            ...unusedModification,
             modify: (value) => {
               input = value;
               return Promise.resolve(expected);
@@ -111,6 +118,7 @@ test("get and reconcile modification tools return state and require confirmation
             }) as never,
           },
           modification: {
+            ...unusedModification,
             modify: (() => {
               throw Error("unused");
             }) as never,

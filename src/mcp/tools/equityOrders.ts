@@ -31,8 +31,10 @@ export interface McpToolRegistrar {
 
 export interface EquityTools {
   readonly orders: Pick<EquityOrderService, "preview" | "submit">;
-  readonly modification?: Pick<EquityOrderModificationService, "modify"> &
-    Partial<Pick<EquityOrderModificationService, "get" | "reconcile">>;
+  readonly modification: Pick<
+    EquityOrderModificationService,
+    "modify" | "get" | "reconcile" | "decline"
+  >;
 }
 
 export interface EquityToolDependencies {
@@ -176,7 +178,6 @@ export function registerEquityOrderTools(
           ...(input.tif === undefined ? {} : { tif: input.tif }),
         };
         const modification = (await equityTools(dependencies)).modification;
-        if (modification === undefined) throw new Error("Equity modification is unavailable");
         return jsonResult(
           await modification.modify({
             orderId: input.orderId,
@@ -198,7 +199,6 @@ export function registerEquityOrderTools(
     async (input: { modificationId: string }): Promise<CallToolResult> =>
       runTool(async () => {
         const service = (await equityTools(dependencies)).modification;
-        if (service?.get === undefined) throw new Error("Equity modification read is unavailable");
         return jsonResult(await service.get(input.modificationId));
       })
   );
@@ -215,8 +215,6 @@ export function registerEquityOrderTools(
       runTool(async () => {
         if (!input.confirm) throw new Error("Confirmation must be exactly true");
         const service = (await equityTools(dependencies)).modification;
-        if (service?.reconcile === undefined)
-          throw new Error("Equity modification reconciliation is unavailable");
         return jsonResult(await service.reconcile(input.modificationId, true));
       })
   );

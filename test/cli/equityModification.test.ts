@@ -39,6 +39,12 @@ const result = {
   latestTransitionAt: "now",
   acknowledgedWarnings: 0,
 } as EquityModificationDto;
+const unusedModification = {
+  get: () => Promise.resolve(result),
+  reconcile: () => Promise.resolve(result),
+  decline: () => Promise.resolve(result),
+};
+
 test("modify command parses changes and renders before and after", async () => {
   let received: unknown;
   const lines: string[] = [];
@@ -47,6 +53,7 @@ test("modify command parses changes and renders before and after", async () => {
   addEquityCommands(program, () => "ibkr", {
     createModificationService: () =>
       Promise.resolve({
+        ...unusedModification,
         modify: (value) => {
           received = value;
           return Promise.resolve(result);
@@ -81,7 +88,8 @@ test("modify JSON uses the same DTO and Schwab is refused", async () => {
   const program = new Command();
   program.exitOverride();
   addEquityCommands(program, (override) => (override === "schwab" ? "schwab" : "ibkr"), {
-    createModificationService: () => Promise.resolve({ modify: () => Promise.resolve(result) }),
+    createModificationService: () =>
+      Promise.resolve({ ...unusedModification, modify: () => Promise.resolve(result) }),
     log: (line) => lines.push(line),
   });
   await program.parseAsync([
@@ -124,6 +132,7 @@ test("modify prints unknown when no live before terms were available", async () 
   addEquityCommands(program, () => "ibkr", {
     createModificationService: () =>
       Promise.resolve({
+        ...unusedModification,
         modify: () =>
           Promise.resolve({
             ...result,
@@ -159,6 +168,7 @@ test("modification show, reconcile, and decline use the shared service", async (
   addEquityCommands(program, () => "ibkr", {
     createModificationService: () =>
       Promise.resolve({
+        ...unusedModification,
         modify: () => Promise.resolve(result),
         get: (id) => {
           events.push(`get:${id}`);
@@ -223,7 +233,10 @@ test("unknown outcome text gives the reconciliation command", async () => {
   program.exitOverride();
   addEquityCommands(program, () => "ibkr", {
     createModificationService: () =>
-      Promise.resolve({ modify: () => Promise.resolve({ ...result, state: "unknown_outcome" }) }),
+      Promise.resolve({
+        ...unusedModification,
+        modify: () => Promise.resolve({ ...result, state: "unknown_outcome" }),
+      }),
     log: (line) => lines.push(line),
   });
   await program.parseAsync([

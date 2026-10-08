@@ -30,10 +30,7 @@ export interface EquityCommandDependencies {
   readonly createExecutionService?: (broker: BrokerName) => Promise<WarningExecutionService>;
   readonly createModificationService?: (
     broker: BrokerName
-  ) => Promise<
-    Pick<EquityOrderModificationService, "modify"> &
-      Partial<Pick<EquityOrderModificationService, "get" | "reconcile" | "decline">>
-  >;
+  ) => Promise<Pick<EquityOrderModificationService, "modify" | "get" | "reconcile" | "decline">>;
   readonly log?: (line: string) => void;
 }
 
@@ -385,7 +382,6 @@ Examples:
     .option("--json", "Emit a stable JSON DTO")
     .action(async (id: string, options: { broker?: string; json?: boolean }) => {
       const service = await modificationService(options.broker);
-      if (service.get === undefined) throw new Error("Order modification read is unavailable");
       output(await service.get(id), options.json, renderEquityModification, log);
     });
   modification
@@ -398,8 +394,6 @@ Examples:
     .action(async (id: string, options: { broker?: string; json?: boolean; confirm?: boolean }) => {
       const confirm = confirmed(options.confirm);
       const service = await modificationService(options.broker);
-      if (service.reconcile === undefined)
-        throw new Error("Order modification reconciliation is unavailable");
       output(await service.reconcile(id, confirm), options.json, renderEquityModification, log);
     });
   modification
@@ -412,8 +406,6 @@ Examples:
     .action(async (id: string, options: { broker?: string; json?: boolean; confirm?: boolean }) => {
       const confirm = confirmed(options.confirm);
       const service = await modificationService(options.broker);
-      if (service.decline === undefined)
-        throw new Error("Order modification warning decline is unavailable");
       output(await service.decline(id, confirm), options.json, renderEquityModification, log);
     });
 
