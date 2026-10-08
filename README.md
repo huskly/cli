@@ -461,6 +461,21 @@ idempotency key before it calls the gateway. If the answer is lost, repeat
 the same command to recover the result. After a known result, a new command
 gets a new key. Schwab does not support this command.
 
+If the state is `unknown_outcome`, do not send the modification again with a
+new key. Check the live terms and resolve the saved modification:
+
+```bash
+huskly-cli equity modification show <modification-id> --json
+huskly-cli equity modification reconcile <modification-id> --confirm --json
+huskly-cli equity modification decline <modification-id> --confirm --json
+```
+
+Reconciliation uses safe broker reads. It can return `accepted`, `not_applied`,
+or `unknown_outcome` with a reconciliation reason. Use `decline` only for a
+pending broker warning. It does not write to the broker. The MCP tools
+`get_order_modification` and `reconcile_order_modification` return the same
+JSON DTO. MCP reconciliation requires `confirm: true`.
+
 The MCP tool `modify_equity_order` uses the same service and returns the same
 JSON DTO as `--json`. It accepts `orderId`, `operator`, `confirm: true`, and at
 least one of `limit`, `stopPrice`, `quantity`, or `tif`. For example:

@@ -117,7 +117,13 @@ test("equity tools register only the approved account-free inputs", () => {
   registerEquityOrderTools(server);
   assert.deepEqual(
     [...server.tools.keys()],
-    ["preview_equity_order", "modify_equity_order", "submit_equity_order"]
+    [
+      "preview_equity_order",
+      "modify_equity_order",
+      "get_order_modification",
+      "reconcile_order_modification",
+      "submit_equity_order",
+    ]
   );
   const preview = server.tools.get("preview_equity_order");
   const submit = server.tools.get("submit_equity_order");

@@ -31,7 +31,8 @@ export interface McpToolRegistrar {
 
 export interface EquityTools {
   readonly orders: Pick<EquityOrderService, "preview" | "submit">;
-  readonly modification?: Pick<EquityOrderModificationService, "modify">;
+  readonly modification?: Pick<EquityOrderModificationService, "modify"> &
+    Partial<Pick<EquityOrderModificationService, "get" | "reconcile">>;
 }
 
 export interface EquityToolDependencies {
@@ -184,6 +185,39 @@ export function registerEquityOrderTools(
             confirm: true,
           })
         );
+      })
+  );
+
+  server.registerTool(
+    "get_order_modification",
+    {
+      title: "Show an IBKR equity order modification",
+      description: "Read the latest state of one equity order modification owned by this machine.",
+      inputSchema: { modificationId: z.string().min(1).max(128) },
+    },
+    async (input: { modificationId: string }): Promise<CallToolResult> =>
+      runTool(async () => {
+        const service = (await equityTools(dependencies)).modification;
+        if (service?.get === undefined) throw new Error("Equity modification read is unavailable");
+        return jsonResult(await service.get(input.modificationId));
+      })
+  );
+
+  server.registerTool(
+    "reconcile_order_modification",
+    {
+      title: "Resolve an uncertain IBKR equity order modification",
+      description:
+        "Compare live terms with the before and submitted terms. This uses safe broker reads and never resends a broker write.",
+      inputSchema: { modificationId: z.string().min(1).max(128), confirm: z.literal(true) },
+    },
+    async (input: { modificationId: string; confirm: boolean }): Promise<CallToolResult> =>
+      runTool(async () => {
+        if (!input.confirm) throw new Error("Confirmation must be exactly true");
+        const service = (await equityTools(dependencies)).modification;
+        if (service?.reconcile === undefined)
+          throw new Error("Equity modification reconciliation is unavailable");
+        return jsonResult(await service.reconcile(input.modificationId, true));
       })
   );
 

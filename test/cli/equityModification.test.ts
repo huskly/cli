@@ -33,6 +33,7 @@ const result = {
     session: "REGULAR",
   },
   pendingWarning: null,
+  reconciliation: null,
   result: null,
   createdAt: "now",
   latestTransitionAt: "now",
@@ -148,4 +149,94 @@ test("modify prints unknown when no live before terms were available", async () 
   assert.match(lines[0] ?? "", /Before: unknown/);
   assert.match(lines[0] ?? "", /After: not submitted/);
   assert.match(lines[0] ?? "", /State: rejected_before_submission/);
+});
+
+test("modification show, reconcile, and decline use the shared service", async () => {
+  const events: string[] = [];
+  const lines: string[] = [];
+  const program = new Command();
+  program.exitOverride();
+  addEquityCommands(program, () => "ibkr", {
+    createModificationService: () =>
+      Promise.resolve({
+        modify: () => Promise.resolve(result),
+        get: (id) => {
+          events.push(`get:${id}`);
+          return Promise.resolve(result);
+        },
+        reconcile: (id, confirm) => {
+          events.push(`reconcile:${id}:${String(confirm)}`);
+          return Promise.resolve({
+            ...result,
+            state: "not_applied",
+            reconciliation: {
+              observedAt: "2026-10-08T01:00:00Z",
+              status: "matched",
+              reason: "before_terms_match",
+            },
+          });
+        },
+        decline: (id, confirm) => {
+          events.push(`decline:${id}:${String(confirm)}`);
+          return Promise.resolve({ ...result, state: "warning_declined" });
+        },
+      }),
+    log: (line) => lines.push(line),
+  });
+  await program.parseAsync(["node", "test", "equity", "modification", "show", "mod-1", "--json"]);
+  await program.parseAsync([
+    "node",
+    "test",
+    "equity",
+    "modification",
+    "reconcile",
+    "mod-1",
+    "--confirm",
+  ]);
+  await program.parseAsync([
+    "node",
+    "test",
+    "equity",
+    "modification",
+    "decline",
+    "mod-1",
+    "--confirm",
+    "--json",
+  ]);
+  assert.deepEqual(events, ["get:mod-1", "reconcile:mod-1:true", "decline:mod-1:true"]);
+  assert.equal((JSON.parse(lines[0] ?? "{}") as EquityModificationDto).modificationId, "mod-1");
+  assert.match(lines[1] ?? "", /not_applied/);
+  assert.equal((JSON.parse(lines[2] ?? "{}") as EquityModificationDto).state, "warning_declined");
+  await assert.rejects(
+    program.parseAsync(["node", "test", "equity", "modification", "reconcile", "mod-1"]),
+    /requires --confirm/
+  );
+  await assert.rejects(
+    program.parseAsync(["node", "test", "equity", "modification", "decline", "mod-1"]),
+    /requires --confirm/
+  );
+});
+
+test("unknown outcome text gives the reconciliation command", async () => {
+  const lines: string[] = [];
+  const program = new Command();
+  program.exitOverride();
+  addEquityCommands(program, () => "ibkr", {
+    createModificationService: () =>
+      Promise.resolve({ modify: () => Promise.resolve({ ...result, state: "unknown_outcome" }) }),
+    log: (line) => lines.push(line),
+  });
+  await program.parseAsync([
+    "node",
+    "test",
+    "equity",
+    "modify",
+    "1234",
+    "--limit",
+    "251",
+    "--operator",
+    "alice",
+    "--confirm",
+  ]);
+  assert.match(lines[0] ?? "", /equity modification reconcile mod-1/);
 });

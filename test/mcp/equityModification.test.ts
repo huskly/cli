@@ -21,6 +21,7 @@ const expected = {
   },
   requested: { limit: 251 },
   submitted: null,
+  reconciliation: null,
   result: null,
   createdAt: "now",
   latestTransitionAt: "now",
@@ -87,4 +88,61 @@ test("modify_equity_order accepts account-free changes and returns the same safe
     confirm: false,
   });
   assert.equal(invalid.isError, true);
+});
+
+test("get and reconcile modification tools return state and require confirmation", async () => {
+  const tools = new Map<string, RegisteredMcpTool>();
+  const calls: string[] = [];
+  registerEquityOrderTools(
+    {
+      registerTool(name, definition, handler) {
+        tools.set(name, { definition, handler });
+      },
+    },
+    {
+      createEquityTools: () =>
+        Promise.resolve({
+          orders: {
+            preview: (() => {
+              throw Error("unused");
+            }) as never,
+            submit: (() => {
+              throw Error("unused");
+            }) as never,
+          },
+          modification: {
+            modify: (() => {
+              throw Error("unused");
+            }) as never,
+            get: async (id) => {
+              await Promise.resolve();
+              calls.push(`get:${id}`);
+              return expected;
+            },
+            reconcile: async (id, confirm) => {
+              await Promise.resolve();
+              calls.push(`reconcile:${id}:${String(confirm)}`);
+              return { ...expected, state: "not_applied" };
+            },
+          },
+        }),
+    }
+  );
+  const get = tools.get("get_order_modification");
+  const reconcile = tools.get("reconcile_order_modification");
+  assert.ok(get && reconcile);
+  const read = await get.handler({ modificationId: "mod-1" });
+  assert.equal(
+    (JSON.parse((read.content[0] as { text: string }).text) as EquityModificationDto)
+      .modificationId,
+    "mod-1"
+  );
+  const invalid = await reconcile.handler({ modificationId: "mod-1", confirm: false });
+  assert.equal(invalid.isError, true);
+  const resolved = await reconcile.handler({ modificationId: "mod-1", confirm: true });
+  assert.equal(
+    (JSON.parse((resolved.content[0] as { text: string }).text) as EquityModificationDto).state,
+    "not_applied"
+  );
+  assert.deepEqual(calls, ["get:mod-1", "reconcile:mod-1:true"]);
 });

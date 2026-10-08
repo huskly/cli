@@ -30,7 +30,10 @@ export interface EquityCommandDependencies {
   readonly createExecutionService?: (broker: BrokerName) => Promise<WarningExecutionService>;
   readonly createModificationService?: (
     broker: BrokerName
-  ) => Promise<Pick<EquityOrderModificationService, "modify">>;
+  ) => Promise<
+    Pick<EquityOrderModificationService, "modify"> &
+      Partial<Pick<EquityOrderModificationService, "get" | "reconcile" | "decline">>
+  >;
   readonly log?: (line: string) => void;
 }
 
@@ -200,6 +203,11 @@ export function renderEquityModification(result: EquityModificationDto): string 
     ...(result.acknowledgedWarnings
       ? [`Broker warnings acknowledged automatically: ${String(result.acknowledgedWarnings)}`]
       : []),
+    ...(result.state === "unknown_outcome"
+      ? [
+          `Run huskly-cli equity modification reconcile ${result.modificationId} --confirm to check the order.`,
+        ]
+      : []),
   ].join("\n");
 }
 
@@ -244,6 +252,13 @@ export function addEquityCommands(
       );
     });
   const broker = (override: string | undefined): BrokerName => resolveBrokerFor(override, "ibkr");
+
+  async function modificationService(override: string | undefined) {
+    const selectedBroker = broker(override);
+    if (selectedBroker !== "ibkr")
+      throw new Error("Equity order modification is not supported for broker 'schwab'.");
+    return createModificationService(selectedBroker);
+  }
 
   const equity = new Command("equity").description("Preview and submit guarded equity orders");
 
@@ -342,9 +357,6 @@ Examples:
       `\nThis changes a real order. --confirm also acknowledges broker warnings.\nUse huskly-cli orders to show the order status.`
     )
     .action(async (orderId: string, options: ModifyOptions) => {
-      const selectedBroker = broker(options.broker);
-      if (selectedBroker !== "ibkr")
-        throw new Error("Equity order modification is not supported for broker 'schwab'.");
       const changes = {
         ...(options.limit === undefined ? {} : { limit: parsePrice(options.limit) }),
         ...(options.stopPrice === undefined ? {} : { stopPrice: parsePrice(options.stopPrice) }),
@@ -352,7 +364,7 @@ Examples:
         ...(options.tif === undefined ? {} : { tif: parseTif(options.tif) }),
       };
       const result = await (
-        await createModificationService(selectedBroker)
+        await modificationService(options.broker)
       ).modify({
         orderId,
         changes,
@@ -360,6 +372,49 @@ Examples:
         confirm: confirmed(options.confirm),
       });
       output(result, options.json, renderEquityModification, log);
+    });
+
+  const modification = equity
+    .command("modification")
+    .description("Read and resolve an IBKR order modification");
+  modification
+    .command("show")
+    .description("Show one order modification")
+    .argument("<modification-id>", "Modification ID")
+    .option(...GATEWAY_BROKER_FLAG)
+    .option("--json", "Emit a stable JSON DTO")
+    .action(async (id: string, options: { broker?: string; json?: boolean }) => {
+      const service = await modificationService(options.broker);
+      if (service.get === undefined) throw new Error("Order modification read is unavailable");
+      output(await service.get(id), options.json, renderEquityModification, log);
+    });
+  modification
+    .command("reconcile")
+    .description("Check live order terms to resolve an uncertain modification; no broker write")
+    .argument("<modification-id>", "Modification ID")
+    .option("--confirm", "Confirm the reconciliation read")
+    .option(...GATEWAY_BROKER_FLAG)
+    .option("--json", "Emit a stable JSON DTO")
+    .action(async (id: string, options: { broker?: string; json?: boolean; confirm?: boolean }) => {
+      const confirm = confirmed(options.confirm);
+      const service = await modificationService(options.broker);
+      if (service.reconcile === undefined)
+        throw new Error("Order modification reconciliation is unavailable");
+      output(await service.reconcile(id, confirm), options.json, renderEquityModification, log);
+    });
+  modification
+    .command("decline")
+    .description("Decline a pending broker warning; this does not write to the broker")
+    .argument("<modification-id>", "Modification ID")
+    .option("--confirm", "Confirm the warning decline")
+    .option(...GATEWAY_BROKER_FLAG)
+    .option("--json", "Emit a stable JSON DTO")
+    .action(async (id: string, options: { broker?: string; json?: boolean; confirm?: boolean }) => {
+      const confirm = confirmed(options.confirm);
+      const service = await modificationService(options.broker);
+      if (service.decline === undefined)
+        throw new Error("Order modification warning decline is unavailable");
+      output(await service.decline(id, confirm), options.json, renderEquityModification, log);
     });
 
   program.addCommand(equity);
