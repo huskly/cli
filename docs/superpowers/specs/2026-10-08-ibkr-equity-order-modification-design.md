@@ -42,6 +42,7 @@ The first version does not support:
 - The caller supplies an operator identity, the same as equity submission.
 - The gateway owns the account identity. No request includes an account ID.
 - The gateway reads the live order from IBKR before each modification. The caller does not supply the contract, the side, the order type, or the session. The gateway copies them from the live order evidence.
+- The live order evidence gives only the conid and the symbol of the contract. The gateway gets the full `EquityContract` from the existing exact equity resolver with the live symbol. The resolved conid must be equal to the live conid. A missing symbol, an ambiguous resolution, or a different conid fails closed before any broker write.
 - The request must change at least one field. A request that changes nothing fails before any broker write.
 - The new total quantity must be more than the filled quantity in the live order evidence.
 - Incomplete, ambiguous, or conflicting live order evidence fails closed before any broker write.
@@ -85,7 +86,7 @@ Also export a read that gives the gateway the exact live terms of one order. If 
 
 A modification is a separate journaled resource. It is not an order operation. Order operations require a submission intent and gateway client order IDs (`hg-...`). An external order has neither, so a modification cannot be an order operation.
 
-Add migration `020_order_modifications.sql` with table `gateway_order_modifications` (exact columns are the implementer's choice, with CHECK constraints in the style of migration 005). It records:
+Add the next free migration (`020_order_modifications.sql` at the time of writing) with table `gateway_order_modifications` (exact columns are the implementer's choice, with CHECK constraints in the style of migration 005). It records:
 
 - `modification_id` (uuid)
 - Account identity, machine identity, idempotency key, and the canonical request hash. The tuple (account, machine, idempotency key) is unique.
@@ -206,3 +207,26 @@ Update `README.md` (commands and MCP tools).
 3. Update the CLI to the new gateway client. Release the CLI.
 
 Each step must work end to end before the next step starts. Implementers do not publish packages or push to `main`. The parent agent coordinates releases with the user.
+
+## Resolving Uncertain Modifications
+
+This section was added after the gateway review. A modification in `unknown_outcome` or `warning_pending` blocks new orders on the same contract, in the same way as an uncertain order operation. Each blocking state must have a documented exit.
+
+### Gateway
+
+- `POST /v1/order-modifications/{modificationId}/reconciliations` (operationId `reconcileOrderModification`). It makes only safe reads. It compares the live order terms with `submitted` and with `before`:
+  - The live terms are equal to `submitted`: the state becomes `accepted`.
+  - The live terms are equal to `before`: the state becomes `not_applied`. This state is terminal and does not block.
+  - In all other cases, the state stays `unknown_outcome`. The answer states why.
+- `POST /v1/order-modifications/{modificationId}/warning-declines` (operationId `declineOrderModificationWarning`). It changes `warning_pending` to `warning_declined`. It does not write to the broker.
+- An admin route records an audited operator attestation for a modification in `unknown_outcome` when its order is no longer working. It uses the existing attested-absence code for operations.
+- The gateway refuses a new modification while an operation or a modification that blocks the same conid exists.
+- The gateway refuses a modification of a gateway-owned order while the owner operation has a child action that is not terminal.
+
+### CLI and MCP
+
+- `huskly-cli equity modification show <modification-id> [--json]`
+- `huskly-cli equity modification reconcile <modification-id> --confirm [--json]`
+- `huskly-cli equity modification decline <modification-id> --confirm [--json]`
+- MCP tools: `get_order_modification` and `reconcile_order_modification`.
+- When `equity modify` ends in `unknown_outcome`, the text output tells the operator to run `equity modification reconcile`.
