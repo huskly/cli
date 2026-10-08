@@ -11,7 +11,8 @@ import {
   InMemoryModificationDeclineStore,
   FileModificationDeclineStore,
 } from "#src/equities/equityOrderModification.js";
-import type { GatewayMutationApi, OrderModification } from "#src/gateway/gatewayMutationAdapter.js";
+import type { OrderModification } from "@huskly/ibkr-gateway-client";
+import type { GatewayMutationApi } from "#src/gateway/gatewayMutationAdapter.js";
 
 const before = {
   symbol: "AAPL",

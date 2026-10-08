@@ -3,10 +3,10 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import type {
-  GatewayMutationApi,
+  CreateOrderModificationRequest,
   OrderModification,
-  OrderModificationChanges,
-} from "#src/gateway/gatewayMutationAdapter.js";
+} from "@huskly/ibkr-gateway-client";
+import type { GatewayMutationApi } from "#src/gateway/gatewayMutationAdapter.js";
 import { ConsumerError } from "#src/gateway/gatewayErrors.js";
 import { PrivateJsonFile } from "#src/storage/privateJsonFile.js";
 
@@ -261,7 +261,7 @@ function validModificationId(value: string): string {
 }
 
 type ValidatedInput = Omit<EquityModificationInput, "changes"> & {
-  readonly changes: OrderModificationChanges;
+  readonly changes: CreateOrderModificationRequest["changes"];
 };
 
 function validateInput(raw: EquityModificationInput): ValidatedInput {
@@ -275,7 +275,7 @@ function validateInput(raw: EquityModificationInput): ValidatedInput {
       ...(parsed.changes.stopPrice === undefined ? {} : { stopPrice: parsed.changes.stopPrice }),
       ...(parsed.changes.quantity === undefined ? {} : { quantity: parsed.changes.quantity }),
       ...(parsed.changes.tif === undefined ? {} : { tif: parsed.changes.tif }),
-    } satisfies OrderModificationChanges,
+    } satisfies CreateOrderModificationRequest["changes"],
   };
 }
 

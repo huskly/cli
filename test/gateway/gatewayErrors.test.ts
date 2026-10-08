@@ -104,7 +104,7 @@ void test("maps a blocking order or modification to a bounded preflight error", 
     new IbkrGatewayApiError({
       operation: "createOrderModification",
       status: 422,
-      code: "blocked_by_operation" as never,
+      code: "blocked_by_operation",
     })
   );
   assert.equal(error.code, "blocked_by_operation");

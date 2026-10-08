@@ -3,6 +3,12 @@ import type {
   AcknowledgeOrderWarningResponse,
   CancelOrderOperationIdempotencyKey,
   CancelOrderOperationResponse,
+  CreateOrderModificationRequest,
+  CreateOrderModificationResponse,
+  GetOrderModificationResponse,
+  AcknowledgeOrderModificationWarningResponse,
+  ReconcileOrderModificationResponse,
+  DeclineOrderModificationWarningResponse,
   CreateOrderOperationIdempotencyKey,
   CreateOrderOperationRequest,
   CreateOrderOperationResponse,
@@ -59,84 +65,6 @@ interface EquityGatewayWireClient {
   resolveEquityContract(body: EquityContractRequest): Promise<EquityContractResponse>;
 }
 
-/** Temporary wire contract until the generated gateway client is released. */
-export interface OrderModificationChanges {
-  readonly limit?: number;
-  readonly stopPrice?: number;
-  readonly quantity?: number;
-  readonly tif?: "DAY" | "GTC";
-}
-export interface CreateOrderModificationRequest {
-  readonly orderId: string;
-  readonly changes: OrderModificationChanges;
-  readonly extOperator: string;
-  readonly manualIndicator: boolean;
-  readonly confirm: true;
-}
-export interface OrderModificationTerms {
-  readonly symbol: string;
-  readonly conid: number;
-  readonly side: "BUY" | "SELL";
-  readonly orderType: "LMT" | "STP";
-  readonly limit: number | null;
-  readonly stopPrice: number | null;
-  readonly quantity: number;
-  readonly tif: "DAY" | "GTC";
-  readonly session: "REGULAR" | "OVERNIGHT";
-}
-export interface OrderModification {
-  readonly modificationId: string;
-  readonly orderId: string;
-  readonly ownerOperationId: string | null;
-  readonly state:
-    | "received"
-    | "rejected_before_submission"
-    | "broker_attempt_started"
-    | "accepted"
-    | "warning_pending"
-    | "warning_declined"
-    | "broker_refused"
-    | "unknown_outcome"
-    | "not_applied"
-    | "operator_resolved_absent";
-  readonly before: (OrderModificationTerms & { readonly filledQuantity: number }) | null;
-  readonly requested: OrderModificationChanges;
-  readonly submitted: OrderModificationTerms | null;
-  readonly reconciliation: {
-    readonly observedAt: string;
-    readonly status: "matched" | "conflicting" | "unavailable";
-    readonly reason: string;
-  } | null;
-  readonly pendingWarning: {
-    readonly replyId: string;
-    readonly sequence: number;
-    readonly messageIds: readonly string[];
-  } | null;
-  readonly result: {
-    readonly kind: "accepted" | "refused" | "unknown_outcome" | "not_applied";
-    readonly reasonCategories: readonly string[];
-  } | null;
-  readonly createdAt: string;
-  readonly latestTransitionAt: string;
-}
-interface ModificationGatewayWireClient {
-  createOrderModification(
-    body: CreateOrderModificationRequest,
-    idempotencyKey: string
-  ): Promise<OrderModification>;
-  getOrderModification(modificationId: string): Promise<OrderModification>;
-  acknowledgeOrderModificationWarning(
-    modificationId: string,
-    replyId: string,
-    idempotencyKey: string
-  ): Promise<OrderModification>;
-  reconcileOrderModification(modificationId: string): Promise<OrderModification>;
-  declineOrderModificationWarning(
-    modificationId: string,
-    idempotencyKey: string
-  ): Promise<OrderModification>;
-}
-
 import type {
   DerivativeExecutionClient,
   OperationKind,
@@ -149,18 +77,18 @@ export interface GatewayMutationApi {
   createOrderModification(
     body: CreateOrderModificationRequest,
     idempotencyKey: string
-  ): Promise<OrderModification>;
-  getOrderModification(modificationId: string): Promise<OrderModification>;
+  ): Promise<CreateOrderModificationResponse>;
+  getOrderModification(modificationId: string): Promise<GetOrderModificationResponse>;
   acknowledgeOrderModificationWarning(
     modificationId: string,
     replyId: string,
     idempotencyKey: string
-  ): Promise<OrderModification>;
-  reconcileOrderModification(modificationId: string): Promise<OrderModification>;
+  ): Promise<AcknowledgeOrderModificationWarningResponse>;
+  reconcileOrderModification(modificationId: string): Promise<ReconcileOrderModificationResponse>;
   declineOrderModificationWarning(
     modificationId: string,
     idempotencyKey: string
-  ): Promise<OrderModification>;
+  ): Promise<DeclineOrderModificationWarningResponse>;
   resolveEquityContract(body: EquityContractRequest): Promise<EquityContractResponse>;
   resolveForexContract(body: ResolveForexContractRequest): Promise<ResolveForexContractResponse>;
   previewOrders(body: GatewayPreviewRequest): Promise<PreviewOrdersResponse>;
@@ -188,30 +116,21 @@ export function createGatewayMutationApi(transport: GatewayTransport): GatewayMu
     getDiagnostics: () => transport.call("getDiagnostics", (client) => client.getDiagnostics()),
     createOrderModification: (body, key) =>
       transport.call("createOrderModification", (client) =>
-        (client as unknown as ModificationGatewayWireClient).createOrderModification(body, key)
+        client.createOrderModification(body, key)
       ),
     getOrderModification: (id) =>
-      transport.call("getOrderModification", (client) =>
-        (client as unknown as ModificationGatewayWireClient).getOrderModification(id)
-      ),
+      transport.call("getOrderModification", (client) => client.getOrderModification(id)),
     acknowledgeOrderModificationWarning: (id, replyId, key) =>
       transport.call("acknowledgeOrderModificationWarning", (client) =>
-        (client as unknown as ModificationGatewayWireClient).acknowledgeOrderModificationWarning(
-          id,
-          replyId,
-          key
-        )
+        client.acknowledgeOrderModificationWarning(id, replyId, key)
       ),
     reconcileOrderModification: (id) =>
       transport.call("reconcileOrderModification", (client) =>
-        (client as unknown as ModificationGatewayWireClient).reconcileOrderModification(id)
+        client.reconcileOrderModification(id)
       ),
     declineOrderModificationWarning: (id, key) =>
       transport.call("declineOrderModificationWarning", (client) =>
-        (client as unknown as ModificationGatewayWireClient).declineOrderModificationWarning(
-          id,
-          key
-        )
+        client.declineOrderModificationWarning(id, key)
       ),
     resolveEquityContract: (body) =>
       transport.call("resolveEquityContract", (client) =>
