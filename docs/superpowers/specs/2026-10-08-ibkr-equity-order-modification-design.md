@@ -85,7 +85,7 @@ Also export a read that gives the gateway the exact live terms of one order. If 
 
 A modification is a separate journaled resource. It is not an order operation. Order operations require a submission intent and gateway client order IDs (`hg-...`). An external order has neither, so a modification cannot be an order operation.
 
-Add migration `016_order_modifications.sql` with table `gateway_order_modifications` (exact columns are the implementer's choice, with CHECK constraints in the style of migration 005). It records:
+Add migration `020_order_modifications.sql` with table `gateway_order_modifications` (exact columns are the implementer's choice, with CHECK constraints in the style of migration 005). It records:
 
 - `modification_id` (uuid)
 - Account identity, machine identity, idempotency key, and the canonical request hash. The tuple (account, machine, idempotency key) is unique.
