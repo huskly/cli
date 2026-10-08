@@ -13,7 +13,12 @@ export type ConsumerErrorCode =
   | "broker_data_unavailable"
   | "mutation_unavailable"
   | "idempotency_conflict"
-  | "recovery_required";
+  | "recovery_required"
+  | "order_not_found"
+  | "order_not_modifiable"
+  | "owner_operation_not_accepted"
+  | "no_change"
+  | "invalid_change";
 
 interface ConsumerErrorInput {
   readonly code: ConsumerErrorCode;
@@ -164,6 +169,25 @@ function translateApiError(
       code: "authorization_failure",
       operation,
       message: "Gateway authorization failed",
+      status: error.status,
+      gatewayCode: error.code,
+      retryAfterSeconds,
+    });
+  }
+
+  const preflightCodes = [
+    "order_not_found",
+    "order_not_modifiable",
+    "owner_operation_not_accepted",
+    "no_change",
+    "invalid_change",
+  ] as const;
+  const preflightCode = preflightCodes.find((code) => code === String(error.code));
+  if (preflightCode !== undefined) {
+    return new ConsumerError({
+      code: preflightCode,
+      operation,
+      message: `Order modification failed: ${preflightCode.replaceAll("_", " ")}`,
       status: error.status,
       gatewayCode: error.code,
       retryAfterSeconds,

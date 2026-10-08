@@ -59,6 +59,72 @@ interface EquityGatewayWireClient {
   resolveEquityContract(body: EquityContractRequest): Promise<EquityContractResponse>;
 }
 
+/** Temporary wire contract until the generated gateway client is released. */
+export interface OrderModificationChanges {
+  readonly limit?: number;
+  readonly stopPrice?: number;
+  readonly quantity?: number;
+  readonly tif?: "DAY" | "GTC";
+}
+export interface CreateOrderModificationRequest {
+  readonly orderId: string;
+  readonly changes: OrderModificationChanges;
+  readonly extOperator: string;
+  readonly manualIndicator: boolean;
+  readonly confirm: true;
+}
+export interface OrderModificationTerms {
+  readonly symbol: string;
+  readonly conid: number;
+  readonly side: "BUY" | "SELL";
+  readonly orderType: "LMT" | "STP";
+  readonly limit: number | null;
+  readonly stopPrice: number | null;
+  readonly quantity: number;
+  readonly tif: "DAY" | "GTC";
+  readonly session: "REGULAR" | "OVERNIGHT";
+}
+export interface OrderModification {
+  readonly modificationId: string;
+  readonly orderId: string;
+  readonly ownerOperationId: string | null;
+  readonly state:
+    | "received"
+    | "rejected_before_submission"
+    | "broker_attempt_started"
+    | "accepted"
+    | "warning_pending"
+    | "warning_declined"
+    | "broker_refused"
+    | "unknown_outcome";
+  readonly before: OrderModificationTerms & { readonly filledQuantity: number };
+  readonly requested: OrderModificationChanges;
+  readonly submitted: OrderModificationTerms | null;
+  readonly pendingWarning: {
+    readonly replyId: string;
+    readonly sequence: number;
+    readonly messageIds: readonly string[];
+  } | null;
+  readonly result: {
+    readonly kind: "accepted" | "refused" | "unknown_outcome";
+    readonly reasonCategories: readonly string[];
+  } | null;
+  readonly createdAt: string;
+  readonly latestTransitionAt: string;
+}
+interface ModificationGatewayWireClient {
+  createOrderModification(
+    body: CreateOrderModificationRequest,
+    idempotencyKey: string
+  ): Promise<OrderModification>;
+  getOrderModification(modificationId: string): Promise<OrderModification>;
+  acknowledgeOrderModificationWarning(
+    modificationId: string,
+    replyId: string,
+    idempotencyKey: string
+  ): Promise<OrderModification>;
+}
+
 import type {
   DerivativeExecutionClient,
   OperationKind,
@@ -68,6 +134,16 @@ import type {
 
 export interface GatewayMutationApi {
   getDiagnostics(): Promise<GetDiagnosticsResponse>;
+  createOrderModification(
+    body: CreateOrderModificationRequest,
+    idempotencyKey: string
+  ): Promise<OrderModification>;
+  getOrderModification(modificationId: string): Promise<OrderModification>;
+  acknowledgeOrderModificationWarning(
+    modificationId: string,
+    replyId: string,
+    idempotencyKey: string
+  ): Promise<OrderModification>;
   resolveEquityContract(body: EquityContractRequest): Promise<EquityContractResponse>;
   resolveForexContract(body: ResolveForexContractRequest): Promise<ResolveForexContractResponse>;
   previewOrders(body: GatewayPreviewRequest): Promise<PreviewOrdersResponse>;
@@ -93,6 +169,22 @@ export interface GatewayMutationApi {
 export function createGatewayMutationApi(transport: GatewayTransport): GatewayMutationApi {
   return {
     getDiagnostics: () => transport.call("getDiagnostics", (client) => client.getDiagnostics()),
+    createOrderModification: (body, key) =>
+      transport.call("createOrderModification", (client) =>
+        (client as unknown as ModificationGatewayWireClient).createOrderModification(body, key)
+      ),
+    getOrderModification: (id) =>
+      transport.call("getOrderModification", (client) =>
+        (client as unknown as ModificationGatewayWireClient).getOrderModification(id)
+      ),
+    acknowledgeOrderModificationWarning: (id, replyId, key) =>
+      transport.call("acknowledgeOrderModificationWarning", (client) =>
+        (client as unknown as ModificationGatewayWireClient).acknowledgeOrderModificationWarning(
+          id,
+          replyId,
+          key
+        )
+      ),
     resolveEquityContract: (body) =>
       transport.call("resolveEquityContract", (client) =>
         (client as unknown as EquityGatewayWireClient).resolveEquityContract(body)
