@@ -70,6 +70,8 @@ function consumerErrorMessage(error: ConsumerError): string {
       return "The request does not change the order.";
     case "invalid_change":
       return "The order change is invalid.";
+    case "blocked_by_operation":
+      return "An unresolved order or modification blocks this change. Reconcile it first.";
     case "recovery_required":
       return "Gateway recovery is required.";
   }

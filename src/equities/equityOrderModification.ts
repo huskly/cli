@@ -310,6 +310,7 @@ function definitiveNoWrite(error: unknown): boolean {
         "owner_operation_not_accepted",
         "no_change",
         "invalid_change",
+        "blocked_by_operation",
       ].includes(error.code))
   );
 }

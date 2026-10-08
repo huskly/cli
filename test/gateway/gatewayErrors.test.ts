@@ -97,3 +97,17 @@ void test("does not copy unstable messages, causes, or response details", () => 
   assert.doesNotMatch(error.message, /bearer-token|client-secret|acct-123/u);
   assert.doesNotMatch(JSON.stringify({ error, source }), /bearer-token|client-secret|acct-123/u);
 });
+
+void test("maps a blocking order or modification to a bounded preflight error", () => {
+  const error = toConsumerError(
+    "createOrderModification",
+    new IbkrGatewayApiError({
+      operation: "createOrderModification",
+      status: 422,
+      code: "blocked_by_operation" as never,
+    })
+  );
+  assert.equal(error.code, "blocked_by_operation");
+  assert.equal(error.status, 422);
+  assert.equal(error.message, "Order modification failed: blocked by operation");
+});

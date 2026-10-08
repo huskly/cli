@@ -67,3 +67,26 @@ void test("runTool redacts read-only authorization failures", async () => {
     },
   });
 });
+
+void test("blocked modification errors remain bounded in MCP output", async () => {
+  const response = await runTool(() =>
+    Promise.reject(
+      new ConsumerError({
+        code: "blocked_by_operation",
+        operation: "createOrderModification",
+        status: 422,
+        gatewayCode: null,
+        retryAfterSeconds: undefined,
+        message: "raw broker account 12345",
+      })
+    )
+  );
+  assert.deepEqual(parse(response), {
+    error: {
+      code: "blocked_by_operation",
+      operation: "createOrderModification",
+      message: "An unresolved order or modification blocks this change. Reconcile it first.",
+    },
+  });
+  assert.equal(response.isError, true);
+});

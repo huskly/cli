@@ -18,7 +18,8 @@ export type ConsumerErrorCode =
   | "order_not_modifiable"
   | "owner_operation_not_accepted"
   | "no_change"
-  | "invalid_change";
+  | "invalid_change"
+  | "blocked_by_operation";
 
 interface ConsumerErrorInput {
   readonly code: ConsumerErrorCode;
@@ -181,6 +182,7 @@ function translateApiError(
     "owner_operation_not_accepted",
     "no_change",
     "invalid_change",
+    "blocked_by_operation",
   ] as const;
   const preflightCode = preflightCodes.find((code) => code === String(error.code));
   if (preflightCode !== undefined) {

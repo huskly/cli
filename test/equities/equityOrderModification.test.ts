@@ -361,3 +361,20 @@ test("attested absence remains a distinct terminal modification state", async ()
   const service = new EquityOrderModificationService(api, new InMemoryEquityModificationStore());
   assert.equal((await service.get("mod-1")).state, "operator_resolved_absent");
 });
+
+test("blocked modification releases the key because no broker write occurred", async () => {
+  const store = new InMemoryEquityModificationStore();
+  const blocked = new ConsumerError({
+    code: "blocked_by_operation",
+    operation: "createOrderModification",
+    message: "Order modification failed: blocked by operation",
+    status: undefined,
+    gatewayCode: null,
+    retryAfterSeconds: undefined,
+  });
+  const api = {
+    createOrderModification: () => Promise.reject(blocked),
+  } as unknown as GatewayMutationApi;
+  await assert.rejects(new EquityOrderModificationService(api, store).modify(input));
+  assert.equal(await store.load(input), undefined);
+});
