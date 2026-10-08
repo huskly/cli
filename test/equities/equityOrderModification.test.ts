@@ -179,7 +179,7 @@ test("file recovery uses private modes and survives service restart", async () =
       /answer lost/
     );
     assert.equal((await store.load(input))?.idempotencyKey, "durable-key");
-    assert.equal((await stat(directory)).mode & 0o777, 0o700);
+    assert.equal((await stat(join(directory, "equity-modifications"))).mode & 0o777, 0o700);
     const resumed = setup();
     const api = {
       createOrderModification: (_body: unknown, key: string) => {
@@ -213,4 +213,43 @@ test("known preflight errors release reservation for a new command run", async (
   } as unknown as GatewayMutationApi;
   await assert.rejects(new EquityOrderModificationService(api, store).modify(input), /No change/);
   assert.equal(await store.load(input), undefined);
+});
+
+test("definitive validation errors release a reserved key", async () => {
+  for (const status of [400, 422]) {
+    const store = new InMemoryEquityModificationStore();
+    const error = new ConsumerError({
+      code: "gateway_transport_failure",
+      operation: "createOrderModification",
+      message: "Gateway request failed",
+      status,
+      gatewayCode: "invalid_request",
+      retryAfterSeconds: undefined,
+    });
+    const api = {
+      createOrderModification: () => Promise.reject(error),
+    } as unknown as GatewayMutationApi;
+    await assert.rejects(new EquityOrderModificationService(api, store).modify(input));
+    assert.equal(await store.load(input), undefined);
+  }
+});
+test("ambiguous outcomes preserve the reserved key for safe replay", async () => {
+  for (const status of [undefined, 409, 500, 503]) {
+    const store = new InMemoryEquityModificationStore();
+    const error = new ConsumerError({
+      code: "gateway_transport_failure",
+      operation: "createOrderModification",
+      message: "Gateway request failed",
+      status,
+      gatewayCode: null,
+      retryAfterSeconds: undefined,
+    });
+    const api = {
+      createOrderModification: () => Promise.reject(error),
+    } as unknown as GatewayMutationApi;
+    await assert.rejects(
+      new EquityOrderModificationService(api, store, () => "saved-key").modify(input)
+    );
+    assert.equal((await store.load(input))?.idempotencyKey, "saved-key");
+  }
 });

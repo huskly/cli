@@ -163,10 +163,13 @@ export class InMemoryEquityModificationStore implements EquityModificationStore 
   }
 }
 export class FileEquityModificationStore implements EquityModificationStore {
+  private readonly directory: string;
   constructor(
-    private readonly directory = process.env["HUSKLY_EXECUTION_DIR"] ??
-      join(homedir(), ".cache", "huskly-cli", "execution", "equity-modifications")
-  ) {}
+    directory = process.env["HUSKLY_EXECUTION_DIR"] ??
+      join(homedir(), ".cache", "huskly-cli", "execution")
+  ) {
+    this.directory = join(directory, "equity-modifications");
+  }
   private file(input: EquityModificationInput): PrivateJsonFile<EquityModificationRecord> {
     return new PrivateJsonFile({
       directory: this.directory,
@@ -188,6 +191,59 @@ export class FileEquityModificationStore implements EquityModificationStore {
   }
 }
 
+type ValidatedInput = Omit<EquityModificationInput, "changes"> & {
+  readonly changes: OrderModificationChanges;
+};
+
+function validateInput(raw: EquityModificationInput): ValidatedInput {
+  const validation = inputSchema.safeParse(raw);
+  if (!validation.success) throw new Error("Invalid equity order modification request");
+  const parsed = validation.data;
+  return {
+    ...parsed,
+    changes: {
+      ...(parsed.changes.limit === undefined ? {} : { limit: parsed.changes.limit }),
+      ...(parsed.changes.stopPrice === undefined ? {} : { stopPrice: parsed.changes.stopPrice }),
+      ...(parsed.changes.quantity === undefined ? {} : { quantity: parsed.changes.quantity }),
+      ...(parsed.changes.tif === undefined ? {} : { tif: parsed.changes.tif }),
+    } satisfies OrderModificationChanges,
+  };
+}
+
+function toDto(
+  modification: OrderModification,
+  acknowledgedWarnings: number
+): EquityModificationDto {
+  return {
+    modificationId: modification.modificationId,
+    orderId: modification.orderId,
+    ownerOperationId: modification.ownerOperationId,
+    state: modification.state,
+    before: modification.before,
+    requested: modification.requested,
+    submitted: modification.submitted,
+    result: modification.result,
+    createdAt: modification.createdAt,
+    latestTransitionAt: modification.latestTransitionAt,
+    acknowledgedWarnings,
+  };
+}
+
+function definitiveNoWrite(error: unknown): boolean {
+  return (
+    error instanceof ConsumerError &&
+    (error.status === 400 ||
+      error.status === 422 ||
+      [
+        "order_not_found",
+        "order_not_modifiable",
+        "owner_operation_not_accepted",
+        "no_change",
+        "invalid_change",
+      ].includes(error.code))
+  );
+}
+
 /** Modify a live IBKR equity order with one durable key per unfinished request. */
 export class EquityOrderModificationService {
   constructor(
@@ -200,18 +256,15 @@ export class EquityOrderModificationService {
   ) {}
 
   async modify(raw: EquityModificationInput): Promise<EquityModificationDto> {
-    const validation = inputSchema.safeParse(raw);
-    if (!validation.success) throw new Error("Invalid equity order modification request");
-    const parsed = validation.data;
-    const input = {
-      ...parsed,
-      changes: {
-        ...(parsed.changes.limit === undefined ? {} : { limit: parsed.changes.limit }),
-        ...(parsed.changes.stopPrice === undefined ? {} : { stopPrice: parsed.changes.stopPrice }),
-        ...(parsed.changes.quantity === undefined ? {} : { quantity: parsed.changes.quantity }),
-        ...(parsed.changes.tif === undefined ? {} : { tif: parsed.changes.tif }),
-      } satisfies OrderModificationChanges,
-    };
+    const input = validateInput(raw);
+    const record = await this.reserve(input);
+    const modification = await this.create(input, record);
+    const { outcome, count } = await this.acknowledgeWarnings(input, record, modification);
+    await this.store.delete(input);
+    return toDto(outcome, count);
+  }
+
+  private async reserve(input: ValidatedInput): Promise<EquityModificationRecord> {
     let record = await this.store.load(input);
     if (record === undefined) {
       record = {
@@ -231,13 +284,18 @@ export class EquityOrderModificationService {
       record.orderId !== input.orderId ||
       JSON.stringify(record.changes) !== JSON.stringify(input.changes) ||
       record.operator !== input.operator
-    ) {
+    )
       throw new Error("Order modification reservation does not match the request");
-    }
-    // Replay is safe after a lost response: the gateway rejects a changed body for this key.
-    let modification: OrderModification;
+    return record;
+  }
+
+  private async create(
+    input: ValidatedInput,
+    record: EquityModificationRecord
+  ): Promise<OrderModification> {
     try {
-      modification = safeModification(
+      // Replaying the same key is safe if the first gateway answer was lost.
+      return safeModification(
         await this.api.createOrderModification(
           {
             orderId: input.orderId,
@@ -250,25 +308,22 @@ export class EquityOrderModificationService {
         )
       );
     } catch (error: unknown) {
-      // A known preflight refusal made no broker write. A later run needs a new key.
-      if (
-        error instanceof ConsumerError &&
-        [
-          "order_not_found",
-          "order_not_modifiable",
-          "owner_operation_not_accepted",
-          "no_change",
-          "invalid_change",
-        ].includes(error.code)
-      ) {
-        await this.store.delete(input);
-      }
+      if (definitiveNoWrite(error)) await this.store.delete(input);
       throw error;
     }
+  }
+
+  private async acknowledgeWarnings(
+    input: EquityModificationInput,
+    initialRecord: EquityModificationRecord,
+    initial: OrderModification
+  ): Promise<{ outcome: OrderModification; count: number }> {
+    let record = initialRecord;
+    let outcome = initial;
     let count = 0;
     const handled = new Set<string>();
-    while (modification.state === "warning_pending") {
-      const warning = modification.pendingWarning;
+    while (outcome.state === "warning_pending") {
+      const warning = outcome.pendingWarning;
       if (warning === null)
         throw new Error("Broker modification is warning_pending without a warning reply");
       const identity = `${String(warning.sequence)}:${warning.replyId}`;
@@ -281,28 +336,15 @@ export class EquityOrderModificationService {
           : { replyId: warning.replyId, sequence: warning.sequence, key: this.key() };
       record = { ...record, warning: pending };
       await this.store.save(input, record);
-      modification = safeModification(
+      outcome = safeModification(
         await this.api.acknowledgeOrderModificationWarning(
-          modification.modificationId,
+          outcome.modificationId,
           warning.replyId,
           pending.key
         )
       );
       count++;
     }
-    await this.store.delete(input);
-    return {
-      modificationId: modification.modificationId,
-      orderId: modification.orderId,
-      ownerOperationId: modification.ownerOperationId,
-      state: modification.state,
-      before: modification.before,
-      requested: modification.requested,
-      submitted: modification.submitted,
-      result: modification.result,
-      createdAt: modification.createdAt,
-      latestTransitionAt: modification.latestTransitionAt,
-      acknowledgedWarnings: count,
-    };
+    return { outcome, count };
   }
 }

@@ -238,9 +238,7 @@ export function addEquityCommands(
   const log = dependencies.log ?? console.log;
   const createModificationService =
     dependencies.createModificationService ??
-    (async (selectedBroker: BrokerName) => {
-      if (selectedBroker !== "ibkr")
-        throw new Error("Equity order modification is not supported for broker 'schwab'.");
+    (async (_selectedBroker: BrokerName) => {
       return new EquityOrderModificationService(
         createGatewayMutationApi(await cliGatewayTransport())
       );
