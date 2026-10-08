@@ -87,6 +87,7 @@ test("modification saves its key before its single create call and returns safe 
     },
   ]);
   assert.equal(dto.modificationId, "mod-1");
+  assert.ok(dto.before);
   assert.equal(dto.before.limit, 250);
   assert.equal(dto.submitted?.limit, 251);
   assert.equal(dto.acknowledgedWarnings, 0);
@@ -252,4 +253,17 @@ test("ambiguous outcomes preserve the reserved key for safe replay", async () =>
     );
     assert.equal((await store.load(input))?.idempotencyKey, "saved-key");
   }
+});
+
+test("rejected modification without live terms returns a nullable before", async () => {
+  const fake = setup({
+    ...accepted,
+    before: null,
+    submitted: null,
+    state: "rejected_before_submission",
+    result: null,
+  });
+  const dto = await fake.service.modify(input);
+  assert.equal(dto.before, null);
+  assert.equal(dto.state, "rejected_before_submission");
 });

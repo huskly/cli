@@ -115,3 +115,37 @@ test("modify JSON uses the same DTO and Schwab is refused", async () => {
     /not supported for broker 'schwab'/
   );
 });
+
+test("modify prints unknown when no live before terms were available", async () => {
+  const lines: string[] = [];
+  const program = new Command();
+  program.exitOverride();
+  addEquityCommands(program, () => "ibkr", {
+    createModificationService: () =>
+      Promise.resolve({
+        modify: () =>
+          Promise.resolve({
+            ...result,
+            before: null,
+            submitted: null,
+            state: "rejected_before_submission",
+          }),
+      }),
+    log: (line) => lines.push(line),
+  });
+  await program.parseAsync([
+    "node",
+    "test",
+    "equity",
+    "modify",
+    "1234",
+    "--limit",
+    "251",
+    "--operator",
+    "alice",
+    "--confirm",
+  ]);
+  assert.match(lines[0] ?? "", /Before: unknown/);
+  assert.match(lines[0] ?? "", /After: not submitted/);
+  assert.match(lines[0] ?? "", /State: rejected_before_submission/);
+});

@@ -68,7 +68,7 @@ const modificationSchema = z.object({
     "broker_refused",
     "unknown_outcome",
   ]),
-  before: termsSchema.extend({ filledQuantity: z.number().int().nonnegative() }),
+  before: termsSchema.extend({ filledQuantity: z.number().int().nonnegative() }).nullable(),
   requested: changesSchema,
   submitted: termsSchema.nullable(),
   pendingWarning: z

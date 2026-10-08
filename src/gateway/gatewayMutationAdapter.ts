@@ -97,7 +97,7 @@ export interface OrderModification {
     | "warning_declined"
     | "broker_refused"
     | "unknown_outcome";
-  readonly before: OrderModificationTerms & { readonly filledQuantity: number };
+  readonly before: (OrderModificationTerms & { readonly filledQuantity: number }) | null;
   readonly requested: OrderModificationChanges;
   readonly submitted: OrderModificationTerms | null;
   readonly pendingWarning: {

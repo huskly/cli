@@ -194,7 +194,7 @@ export function renderEquityModification(result: EquityModificationDto): string 
     `Modification: ${result.modificationId}`,
     `Order: ${result.orderId}`,
     ...(result.ownerOperationId === null ? [] : [`Owner operation: ${result.ownerOperationId}`]),
-    `Before: ${terms(result.before)}`,
+    `Before: ${result.before === null ? "unknown" : terms(result.before)}`,
     `After: ${terms(result.submitted)}`,
     `State: ${result.state}`,
     ...(result.acknowledgedWarnings
