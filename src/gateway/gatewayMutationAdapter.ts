@@ -3,6 +3,12 @@ import type {
   AcknowledgeOrderWarningResponse,
   CancelOrderOperationIdempotencyKey,
   CancelOrderOperationResponse,
+  CreateOrderModificationRequest,
+  CreateOrderModificationResponse,
+  GetOrderModificationResponse,
+  AcknowledgeOrderModificationWarningResponse,
+  ReconcileOrderModificationResponse,
+  DeclineOrderModificationWarningResponse,
   CreateOrderOperationIdempotencyKey,
   CreateOrderOperationRequest,
   CreateOrderOperationResponse,
@@ -68,6 +74,21 @@ import type {
 
 export interface GatewayMutationApi {
   getDiagnostics(): Promise<GetDiagnosticsResponse>;
+  createOrderModification(
+    body: CreateOrderModificationRequest,
+    idempotencyKey: string
+  ): Promise<CreateOrderModificationResponse>;
+  getOrderModification(modificationId: string): Promise<GetOrderModificationResponse>;
+  acknowledgeOrderModificationWarning(
+    modificationId: string,
+    replyId: string,
+    idempotencyKey: string
+  ): Promise<AcknowledgeOrderModificationWarningResponse>;
+  reconcileOrderModification(modificationId: string): Promise<ReconcileOrderModificationResponse>;
+  declineOrderModificationWarning(
+    modificationId: string,
+    idempotencyKey: string
+  ): Promise<DeclineOrderModificationWarningResponse>;
   resolveEquityContract(body: EquityContractRequest): Promise<EquityContractResponse>;
   resolveForexContract(body: ResolveForexContractRequest): Promise<ResolveForexContractResponse>;
   previewOrders(body: GatewayPreviewRequest): Promise<PreviewOrdersResponse>;
@@ -93,6 +114,24 @@ export interface GatewayMutationApi {
 export function createGatewayMutationApi(transport: GatewayTransport): GatewayMutationApi {
   return {
     getDiagnostics: () => transport.call("getDiagnostics", (client) => client.getDiagnostics()),
+    createOrderModification: (body, key) =>
+      transport.call("createOrderModification", (client) =>
+        client.createOrderModification(body, key)
+      ),
+    getOrderModification: (id) =>
+      transport.call("getOrderModification", (client) => client.getOrderModification(id)),
+    acknowledgeOrderModificationWarning: (id, replyId, key) =>
+      transport.call("acknowledgeOrderModificationWarning", (client) =>
+        client.acknowledgeOrderModificationWarning(id, replyId, key)
+      ),
+    reconcileOrderModification: (id) =>
+      transport.call("reconcileOrderModification", (client) =>
+        client.reconcileOrderModification(id)
+      ),
+    declineOrderModificationWarning: (id, key) =>
+      transport.call("declineOrderModificationWarning", (client) =>
+        client.declineOrderModificationWarning(id, key)
+      ),
     resolveEquityContract: (body) =>
       transport.call("resolveEquityContract", (client) =>
         (client as unknown as EquityGatewayWireClient).resolveEquityContract(body)

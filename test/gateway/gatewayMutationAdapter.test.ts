@@ -213,3 +213,43 @@ void test("transport API makes one direct generated client call per operation", 
     "cancelOrderOperation",
   ]);
 });
+
+void test("modification adapter calls each generated route once without retry", async () => {
+  const direct: { name: string; args: unknown[] }[] = [];
+  const client = new Proxy(
+    {},
+    {
+      get:
+        (_target, name) =>
+        (...args: unknown[]) => {
+          direct.push({ name: String(name), args });
+          return Promise.resolve({ modificationId: "mod-1" });
+        },
+    }
+  ) as IbkrGatewayClient;
+  const transport = {
+    client,
+    call: async <T>(_name: string, invoke: (value: IbkrGatewayClient) => Promise<T>) =>
+      invoke(client),
+  } satisfies GatewayTransport;
+  const api = createGatewayMutationApi(transport);
+  const body = {
+    orderId: "1234",
+    changes: { limit: 251 },
+    extOperator: "alice",
+    manualIndicator: true,
+    confirm: true,
+  } as const;
+  await api.createOrderModification(body, "create-key");
+  await api.getOrderModification("mod-1");
+  await api.acknowledgeOrderModificationWarning("mod-1", "reply-1", "warning-key");
+  await api.reconcileOrderModification("mod-1");
+  await api.declineOrderModificationWarning("mod-1", "decline-key");
+  assert.deepEqual(direct, [
+    { name: "createOrderModification", args: [body, "create-key"] },
+    { name: "getOrderModification", args: ["mod-1"] },
+    { name: "acknowledgeOrderModificationWarning", args: ["mod-1", "reply-1", "warning-key"] },
+    { name: "reconcileOrderModification", args: ["mod-1"] },
+    { name: "declineOrderModificationWarning", args: ["mod-1", "decline-key"] },
+  ]);
+});

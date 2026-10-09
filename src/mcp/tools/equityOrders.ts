@@ -9,6 +9,7 @@ import {
   type EquityPreviewStore,
   type EquitySubmissionStore,
 } from "#src/equities/equityOrderService.js";
+import { EquityOrderModificationService } from "#src/equities/equityOrderModification.js";
 import { createGatewayMutationApi } from "#src/gateway/gatewayMutationAdapter.js";
 import { mcpGatewayTransport, type GatewayTransport } from "#src/gateway/gatewayTransport.js";
 import { jsonResult, runTool } from "#src/mcp/toolResult.js";
@@ -30,6 +31,10 @@ export interface McpToolRegistrar {
 
 export interface EquityTools {
   readonly orders: Pick<EquityOrderService, "preview" | "submit">;
+  readonly modification: Pick<
+    EquityOrderModificationService,
+    "modify" | "get" | "reconcile" | "decline"
+  >;
 }
 
 export interface EquityToolDependencies {
@@ -49,8 +54,10 @@ export async function createEquityTools(
   dependencies: EquityToolDependencies = {}
 ): Promise<EquityTools> {
   const transport = await (dependencies.resolveGatewayTransport ?? mcpGatewayTransport)();
-  const gateway = new EquityGatewayAdapter(createGatewayMutationApi(transport));
+  const api = createGatewayMutationApi(transport);
+  const gateway = new EquityGatewayAdapter(api);
   return {
+    modification: new EquityOrderModificationService(api),
     orders: new EquityOrderService(
       gateway,
       dependencies.equityPreviewStore ?? new FileEquityPreviewStore(),
@@ -134,6 +141,81 @@ export function registerEquityOrderTools(
             session: input.session,
           })
         );
+      })
+  );
+
+  server.registerTool(
+    "modify_equity_order",
+    {
+      title: "Modify a working IBKR equity order",
+      description:
+        "Change a real IBKR equity order. Confirmation also acknowledges broker warnings. Use huskly-cli orders to see order status.",
+      inputSchema: {
+        orderId: z.string().min(1).max(128).describe("IBKR order ID"),
+        limit: z.number().positive().optional(),
+        stopPrice: z.number().positive().optional(),
+        quantity: z.number().int().positive().optional(),
+        tif: z.enum(["DAY", "GTC"]).optional(),
+        operator: z.string().min(1).max(64),
+        confirm: z.literal(true),
+      },
+    },
+    async (input: {
+      orderId: string;
+      limit?: number;
+      stopPrice?: number;
+      quantity?: number;
+      tif?: "DAY" | "GTC";
+      operator: string;
+      confirm: boolean;
+    }): Promise<CallToolResult> =>
+      runTool(async () => {
+        if (!input.confirm) throw new Error("Confirmation must be exactly true");
+        const changes = {
+          ...(input.limit === undefined ? {} : { limit: input.limit }),
+          ...(input.stopPrice === undefined ? {} : { stopPrice: input.stopPrice }),
+          ...(input.quantity === undefined ? {} : { quantity: input.quantity }),
+          ...(input.tif === undefined ? {} : { tif: input.tif }),
+        };
+        const modification = (await equityTools(dependencies)).modification;
+        return jsonResult(
+          await modification.modify({
+            orderId: input.orderId,
+            changes,
+            operator: input.operator,
+            confirm: true,
+          })
+        );
+      })
+  );
+
+  server.registerTool(
+    "get_order_modification",
+    {
+      title: "Show an IBKR equity order modification",
+      description: "Read the latest state of one equity order modification owned by this machine.",
+      inputSchema: { modificationId: z.string().min(1).max(128) },
+    },
+    async (input: { modificationId: string }): Promise<CallToolResult> =>
+      runTool(async () => {
+        const service = (await equityTools(dependencies)).modification;
+        return jsonResult(await service.get(input.modificationId));
+      })
+  );
+
+  server.registerTool(
+    "reconcile_order_modification",
+    {
+      title: "Resolve an uncertain IBKR equity order modification",
+      description:
+        "Compare live terms with the before and submitted terms. This uses safe broker reads and never resends a broker write.",
+      inputSchema: { modificationId: z.string().min(1).max(128), confirm: z.literal(true) },
+    },
+    async (input: { modificationId: string; confirm: boolean }): Promise<CallToolResult> =>
+      runTool(async () => {
+        if (!input.confirm) throw new Error("Confirmation must be exactly true");
+        const service = (await equityTools(dependencies)).modification;
+        return jsonResult(await service.reconcile(input.modificationId, true));
       })
   );
 

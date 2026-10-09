@@ -7,6 +7,11 @@ import {
   type EquitySubmissionDto,
 } from "#src/equities/equityOrderService.js";
 import { cliGatewayTransport } from "#src/gateway/gatewayTransport.js";
+import { createGatewayMutationApi } from "#src/gateway/gatewayMutationAdapter.js";
+import {
+  EquityOrderModificationService,
+  type EquityModificationDto,
+} from "#src/equities/equityOrderModification.js";
 import { renderSafeOperation, safeOperation, type SafeOperationView } from "./operationView.js";
 import { requireOperator, type BrokerResolver } from "./shared.js";
 import { createGatewayExecutionService } from "./gatewayExecutionService.js";
@@ -23,6 +28,9 @@ import {
 export interface EquityCommandDependencies {
   readonly createEquityOrders?: (broker: BrokerName) => Promise<EquityTools["orders"]>;
   readonly createExecutionService?: (broker: BrokerName) => Promise<WarningExecutionService>;
+  readonly createModificationService?: (
+    broker: BrokerName
+  ) => Promise<Pick<EquityOrderModificationService, "modify" | "get" | "reconcile" | "decline">>;
   readonly log?: (line: string) => void;
 }
 
@@ -34,6 +42,13 @@ interface PreviewOptions {
   tif: string;
   session: string;
   json?: boolean;
+}
+
+interface ModifyOptions extends SubmitOptions {
+  limit?: string;
+  stopPrice?: string;
+  quantity?: string;
+  tif?: string;
 }
 
 interface SubmitOptions {
@@ -167,6 +182,32 @@ export function renderEquitySubmission(result: SafeEquitySubmissionView): string
   ].join("\n");
 }
 
+/** Show only the gateway's bounded order terms and state. */
+export function renderEquityModification(result: EquityModificationDto): string {
+  const terms = (
+    value: EquityModificationDto["before"] | EquityModificationDto["submitted"]
+  ): string =>
+    value === null
+      ? "not submitted"
+      : `${value.side} ${String(value.quantity)} ${value.symbol} ${value.orderType === "LMT" ? `limit ${String(value.limit)}` : `stop ${String(value.stopPrice)}`} ${value.tif} ${value.session}`;
+  return [
+    `Modification: ${result.modificationId}`,
+    `Order: ${result.orderId}`,
+    ...(result.ownerOperationId === null ? [] : [`Owner operation: ${result.ownerOperationId}`]),
+    `Before: ${result.before === null ? "unknown" : terms(result.before)}`,
+    `After: ${terms(result.submitted)}`,
+    `State: ${result.state}`,
+    ...(result.acknowledgedWarnings
+      ? [`Broker warnings acknowledged automatically: ${String(result.acknowledgedWarnings)}`]
+      : []),
+    ...(result.state === "unknown_outcome"
+      ? [
+          `Run huskly-cli equity modification reconcile ${result.modificationId} --confirm to check the order.`,
+        ]
+      : []),
+  ].join("\n");
+}
+
 let ordersPromise: Promise<EquityTools["orders"]> | undefined;
 
 async function equityOrders(broker: BrokerName): Promise<EquityTools["orders"]> {
@@ -200,7 +241,21 @@ export function addEquityCommands(
   const createExecutionService =
     dependencies.createExecutionService ?? createGatewayExecutionService;
   const log = dependencies.log ?? console.log;
+  const createModificationService =
+    dependencies.createModificationService ??
+    (async (_selectedBroker: BrokerName) => {
+      return new EquityOrderModificationService(
+        createGatewayMutationApi(await cliGatewayTransport())
+      );
+    });
   const broker = (override: string | undefined): BrokerName => resolveBrokerFor(override, "ibkr");
+
+  async function modificationService(override: string | undefined) {
+    const selectedBroker = broker(override);
+    if (selectedBroker !== "ibkr")
+      throw new Error("Equity order modification is not supported for broker 'schwab'.");
+    return createModificationService(selectedBroker);
+  }
 
   const equity = new Command("equity").description("Preview and submit guarded equity orders");
 
@@ -280,6 +335,78 @@ Examples:
         createExecutionService(selectedBroker)
       );
       output(toSubmissionView(result, count), options.json, renderEquitySubmission, log);
+    });
+
+  equity
+    .command("modify")
+    .description("Change a real working IBKR equity order")
+    .argument("<order-id>", "IBKR order ID")
+    .option("--limit <price>", "New limit price")
+    .option("--stop-price <price>", "New stop price")
+    .option("--quantity <shares>", "New total whole-share quantity")
+    .option("--tif <value>", "New time in force: DAY or GTC")
+    .option("--operator <name>", "Operator identity; defaults to HUSKLY_EXT_OPERATOR")
+    .option("--confirm", "Confirm the modification and broker warnings")
+    .option(...GATEWAY_BROKER_FLAG)
+    .option("--json", "Emit a stable JSON DTO")
+    .addHelpText(
+      "after",
+      `\nThis changes a real order. --confirm also acknowledges broker warnings.\nUse huskly-cli orders to show the order status.`
+    )
+    .action(async (orderId: string, options: ModifyOptions) => {
+      const changes = {
+        ...(options.limit === undefined ? {} : { limit: parsePrice(options.limit) }),
+        ...(options.stopPrice === undefined ? {} : { stopPrice: parsePrice(options.stopPrice) }),
+        ...(options.quantity === undefined ? {} : { quantity: shares(options.quantity) }),
+        ...(options.tif === undefined ? {} : { tif: parseTif(options.tif) }),
+      };
+      const result = await (
+        await modificationService(options.broker)
+      ).modify({
+        orderId,
+        changes,
+        operator: requireOperator(options.operator),
+        confirm: confirmed(options.confirm),
+      });
+      output(result, options.json, renderEquityModification, log);
+    });
+
+  const modification = equity
+    .command("modification")
+    .description("Read and resolve an IBKR order modification");
+  modification
+    .command("show")
+    .description("Show one order modification")
+    .argument("<modification-id>", "Modification ID")
+    .option(...GATEWAY_BROKER_FLAG)
+    .option("--json", "Emit a stable JSON DTO")
+    .action(async (id: string, options: { broker?: string; json?: boolean }) => {
+      const service = await modificationService(options.broker);
+      output(await service.get(id), options.json, renderEquityModification, log);
+    });
+  modification
+    .command("reconcile")
+    .description("Check live order terms to resolve an uncertain modification; no broker write")
+    .argument("<modification-id>", "Modification ID")
+    .option("--confirm", "Confirm the reconciliation read")
+    .option(...GATEWAY_BROKER_FLAG)
+    .option("--json", "Emit a stable JSON DTO")
+    .action(async (id: string, options: { broker?: string; json?: boolean; confirm?: boolean }) => {
+      const confirm = confirmed(options.confirm);
+      const service = await modificationService(options.broker);
+      output(await service.reconcile(id, confirm), options.json, renderEquityModification, log);
+    });
+  modification
+    .command("decline")
+    .description("Decline a pending broker warning; this does not write to the broker")
+    .argument("<modification-id>", "Modification ID")
+    .option("--confirm", "Confirm the warning decline")
+    .option(...GATEWAY_BROKER_FLAG)
+    .option("--json", "Emit a stable JSON DTO")
+    .action(async (id: string, options: { broker?: string; json?: boolean; confirm?: boolean }) => {
+      const confirm = confirmed(options.confirm);
+      const service = await modificationService(options.broker);
+      output(await service.decline(id, confirm), options.json, renderEquityModification, log);
     });
 
   program.addCommand(equity);

@@ -48,6 +48,7 @@ huskly-cli --broker ibkr repl
 | `order show/watch/acknowledge/reconcile/cancel` | ✗      | ✓    |
 | `equity preview`                                | ✗      | ✓    |
 | `equity submit`                                 | ✗      | ✓    |
+| `equity modify`                                 | ✗      | ✓    |
 | `fx preview`                                    | ✗      | ✓    |
 | `fx submit`                                     | ✗      | ✓    |
 | `broker doctor`                                 | ✓      | ✓    |
@@ -101,6 +102,7 @@ huskly-cli equity preview AAPL BUY 10 --limit 250.00
 huskly-cli equity preview AAPL BUY 10 --order-type LIMIT --limit 250.00
 huskly-cli equity preview AAPL SELL 10 --order-type STOP --stop-price 240.00
 huskly-cli equity submit <preview-id> --operator alice --confirm
+huskly-cli equity modify <order-id> --limit 251.25 --operator alice --confirm
 ```
 
 `equity preview` and `equity submit` drive the same guarded service as the
@@ -437,6 +439,56 @@ Then call `submit_equity_order` with only the preview ID, operator, and exact co
 
 Submission uses only the immutable terms in the unexpired preview.
 Use `get_order_status`, `acknowledge_order_warning`, `reconcile_order_operation`, and `cancel_order` for the returned operation ID.
+
+### Modify a working IBKR equity order
+
+`equity modify` changes a real working or partially filled IBKR stock order.
+It does not use a preview. Use the IBKR order ID from the gateway or IBKR.
+You can change the limit price of a limit order, the stop price of a stop order,
+the total whole-share quantity, or the time in force (`DAY` or `GTC`).
+You cannot change the order type, side, contract, session, or account.
+The new total quantity must be more than the filled quantity.
+
+```bash
+huskly-cli equity modify <order-id> --limit 251.25 --quantity 20 --tif GTC --confirm
+huskly-cli equity modify <order-id> --stop-price 240 --operator alice --confirm --json
+huskly-cli orders --broker ibkr
+```
+
+Set `HUSKLY_EXT_OPERATOR` or use `--operator`. You must use `--confirm`.
+This flag also acknowledges broker warnings. The command saves a private
+idempotency key before it calls the gateway. If the answer is lost, repeat
+the same command to recover the result. After a known result, a new command
+gets a new key. Schwab does not support this command.
+
+If the state is `unknown_outcome`, do not send the modification again with a
+new key. Check the live terms and resolve the saved modification:
+
+```bash
+huskly-cli equity modification show <modification-id> --json
+huskly-cli equity modification reconcile <modification-id> --confirm --json
+huskly-cli equity modification decline <modification-id> --confirm --json
+```
+
+Reconciliation uses safe broker reads. It can return `accepted`, `not_applied`,
+or `unknown_outcome` with a reconciliation reason. Use `decline` only for a
+pending broker warning. It does not write to the broker. The MCP tools
+`get_order_modification` and `reconcile_order_modification` return the same
+JSON DTO. MCP reconciliation requires `confirm: true`.
+
+The MCP tool `modify_equity_order` uses the same service and returns the same
+JSON DTO as `--json`. It accepts `orderId`, `operator`, `confirm: true`, and at
+least one of `limit`, `stopPrice`, `quantity`, or `tif`. For example:
+
+```json
+{
+  "orderId": "1234567890",
+  "limit": 251.25,
+  "quantity": 20,
+  "operator": "alice",
+  "confirm": true
+}
+```
 
 ### Guarded spot FX MCP workflow
 

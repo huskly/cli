@@ -60,6 +60,18 @@ function consumerErrorMessage(error: ConsumerError): string {
       return "Order mutations are unavailable.";
     case "idempotency_conflict":
       return "The idempotency key conflicts with an existing operation.";
+    case "order_not_found":
+      return "The working order was not found.";
+    case "order_not_modifiable":
+      return "The order cannot be modified.";
+    case "owner_operation_not_accepted":
+      return "The owner operation is not accepted.";
+    case "no_change":
+      return "The request does not change the order.";
+    case "invalid_change":
+      return "The order change is invalid.";
+    case "blocked_by_operation":
+      return "An unresolved order or modification blocks this change. Reconcile it first.";
     case "recovery_required":
       return "Gateway recovery is required.";
   }
