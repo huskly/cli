@@ -394,7 +394,7 @@ const submissionSchema = z.discriminatedUnion("operationKind", [
 const actionSchema = z.strictObject({
   schemaVersion: z.literal(1),
   operationId: z.string().min(1),
-  action: z.enum(["warning_acknowledgement", "cancellation"]),
+  action: z.enum(["warning_acknowledgement", "warning_decline", "cancellation"]),
   warningSequence: z.number().int().positive().nullable(),
   replyId: z.string().nullable(),
   idempotencyKey: z.string().min(1).max(128),
