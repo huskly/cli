@@ -243,6 +243,19 @@ const orderOutcomeSchema = z.strictObject({
   observedAt: z.iso.datetime(),
   version: z.number(),
 });
+const brokerMessageGroupSchema = z.strictObject({
+  operationId: z.string(),
+  observedAt: z.iso.datetime(),
+  outcome: z.enum(["refused", "recovery_required", "unknown_outcome"]),
+  messages: z.array(
+    z.strictObject({
+      source: z.enum(["reason", "error", "http"]),
+      code: z.string().nullable(),
+      statusCode: z.number().nullable(),
+      message: z.string(),
+    })
+  ),
+});
 const operationSchema = z.strictObject({
   operationId: z.string(),
   kind: z.enum(["single", "combo", "graph"]),
@@ -316,6 +329,7 @@ const operationSchema = z.strictObject({
     .nullable(),
   blockedCause: z.string().nullable().default(null),
   outcome: orderOutcomeSchema.nullable().default(null),
+  brokerMessages: z.array(brokerMessageGroupSchema).default([]),
   createdAt: z.iso.datetime(),
   latestTransitionAt: z.iso.datetime(),
 }) as unknown as z.ZodType<OrderOperationView>;
