@@ -275,6 +275,30 @@ void test("submission reservation is durable before the one create call", async 
   assert.equal(network.createCalls, 1);
 });
 
+void test("warning decline persists its action record in the real file store", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "execution-decline-"));
+  try {
+    const store = new FileExecutionStateStore(directory);
+    const network = new FakeNetwork();
+    network.created = operation({ state: "warning_pending", kind: "warning" });
+    network.declineHandler = () => {
+      network.created = operation({ state: "warning_declined" });
+      return Promise.resolve(network.created);
+    };
+    const execution = service(store, network, () => "file-decline-key");
+    await execution.submit({ previewId: preview.previewId, operator: "x", confirm: true });
+
+    const declined = await execution.declineWarning({ operationId: "op-1", confirm: true });
+    assert.equal(declined.operation.state, "warning_declined");
+    assert.equal(
+      (await store.loadAction("op-1", "warning_decline", 1, "reply-1"))?.state,
+      "completed"
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 void test("two real-file services reserve one durable submission key and make one network call", async () => {
   const directory = await mkdtemp(join(tmpdir(), "execution-submit-race-"));
   try {
