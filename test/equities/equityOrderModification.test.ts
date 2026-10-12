@@ -36,7 +36,7 @@ const accepted: OrderModification = {
   submitted: { ...before, limit: 251, quantity: 10 },
   pendingWarning: null,
   reconciliation: null,
-  result: { kind: "accepted", reasonCategories: [] },
+  result: { kind: "accepted", reasonCategories: [], brokerMessages: [] },
   createdAt: "2026-10-08T00:00:00Z",
   latestTransitionAt: "2026-10-08T00:00:01Z",
 };
@@ -277,7 +277,7 @@ test("show reads one modification and reconciliation returns the safe new state"
   const next: OrderModification = {
     ...accepted,
     state: "not_applied",
-    result: { kind: "not_applied", reasonCategories: [] },
+    result: { kind: "not_applied", reasonCategories: [], brokerMessages: [] },
     reconciliation: {
       observedAt: "2026-10-08T01:00:00Z",
       status: "matched",

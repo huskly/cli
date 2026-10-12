@@ -42,6 +42,7 @@ const operation = {
   result: { kind: "accepted", orders: [], warningCount: 0 },
   blockedCause: null,
   outcome: null,
+  brokerMessages: [],
   createdAt: "2026-09-25T12:00:00.000Z",
   latestTransitionAt: "2026-09-25T12:00:01.000Z",
 } as OrderOperation;

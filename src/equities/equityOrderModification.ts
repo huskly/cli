@@ -91,6 +91,16 @@ const modificationSchema = z.object({
     .object({
       kind: z.enum(["accepted", "refused", "unknown_outcome", "not_applied"]),
       reasonCategories: z.array(z.string()),
+      brokerMessages: z
+        .array(
+          z.strictObject({
+            source: z.enum(["reason", "error", "http"]),
+            code: z.string().nullable(),
+            statusCode: z.number().nullable(),
+            message: z.string(),
+          })
+        )
+        .default([]),
     })
     .nullable(),
   createdAt: z.string(),

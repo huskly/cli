@@ -160,6 +160,7 @@ function operation(
         : { kind, orders: [], warningCount: 0, reasonCategories: ["unknown"] },
     blockedCause: null,
     outcome: null,
+    brokerMessages: [],
     createdAt: "2026-09-04T00:00:00.000Z",
     latestTransitionAt: "2026-09-04T00:00:01.000Z",
   };
@@ -645,6 +646,49 @@ void test("file store reloads and updates the gateway v0.14 operation shape", as
     assert.equal(result.state, "accepted");
     assert.equal(result.operation.outcome?.status, "working");
     assert.equal(network.acknowledgeCalls, 1);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("file store reloads the broker messages of a gateway operation", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "execution-broker-messages-"));
+  try {
+    const store = new FileExecutionStateStore(directory);
+    const brokerMessages: OrderOperationView["brokerMessages"] = [
+      {
+        operationId: "op-1",
+        observedAt: "2026-09-04T00:00:01.000Z",
+        outcome: "refused",
+        messages: [{ source: "reason", code: null, statusCode: null, message: "Cap price" }],
+      },
+    ];
+    const record: SubmissionRecord = {
+      schemaVersion: 1,
+      previewId: preview.previewId,
+      operationKind: "combo",
+      idempotencyKey: "key",
+      canonicalIntent: intent,
+      account: preview.account,
+      state: "operation_known",
+      operationId: "op-1",
+      operation: { ...operation({ state: "warning_pending", kind: "warning" }), brokerMessages },
+      createdAt: preview.createdAt,
+      updatedAt: preview.createdAt,
+    };
+    await store.saveSubmission(record);
+    const reloaded = await store.loadSubmissionByOperation("op-1");
+    assert.deepEqual(reloaded?.operation?.brokerMessages, brokerMessages);
+
+    const { brokerMessages: _omitted, ...olderOperation } = operation();
+    await store.saveSubmission({
+      ...record,
+      operation: olderOperation as unknown as OrderOperationView,
+    });
+    assert.deepEqual(
+      (await store.loadSubmission(preview.previewId))?.operation?.brokerMessages,
+      []
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

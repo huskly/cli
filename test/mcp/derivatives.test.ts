@@ -59,6 +59,7 @@ function reconciliationOperation(operationId: string): OrderReconciliationView {
     },
     blockedCause: null,
     outcome: null,
+    brokerMessages: [],
     createdAt: "2026-09-04T00:00:00.000Z",
     latestTransitionAt: "2026-09-04T00:03:00.000Z",
   };
