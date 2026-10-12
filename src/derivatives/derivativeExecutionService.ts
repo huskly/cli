@@ -72,7 +72,7 @@ export type SubmissionRecord = ComboSubmissionRecord | SingleSubmissionRecord;
 export interface ActionRecord {
   readonly schemaVersion: 1;
   readonly operationId: string;
-  readonly action: "warning_acknowledgement" | "cancellation";
+  readonly action: "warning_acknowledgement" | "warning_decline" | "cancellation";
   readonly warningSequence: number | null;
   readonly replyId: string | null;
   readonly idempotencyKey: string;
@@ -105,7 +105,7 @@ function actionIdentity(
 ): string {
   return action === "cancellation"
     ? `${operationId}:cancellation`
-    : `${operationId}:warning_acknowledgement:${String(warningSequence)}:${replyId ?? ""}`;
+    : `${operationId}:${action}:${String(warningSequence)}:${replyId ?? ""}`;
 }
 
 export class InMemoryExecutionStateStore implements ExecutionStateStore {
@@ -550,10 +550,16 @@ export interface OrderLifecycleDto extends SubmissionDto {
 // order. The gateway states it as terminal and it blocks no further mutation.
 const terminalStates = new Set([
   "accepted",
+  "warning_declined",
   "cancelled",
   "broker_refused",
   "operator_resolved_absent",
 ]);
+const actionLabels: Readonly<Record<ActionRecord["action"], string>> = {
+  warning_acknowledgement: "Warning acknowledgement",
+  warning_decline: "Warning decline",
+  cancellation: "Cancellation",
+};
 const defaultDelay = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -672,6 +678,35 @@ export class DerivativeExecutionService {
     return this.runAction(action, record);
   }
 
+  /** Decline the pending broker warning. The gateway sends nothing to the broker. */
+  async declineWarning(input: { operationId: string; confirm: true }): Promise<OrderLifecycleDto> {
+    const record = await this.requiredOperation(input.operationId);
+    const current = await this.execution.get(input.operationId);
+    const updated = await this.saveParentOperation(record, current);
+    if (current.state === "warning_declined") return this.operationDto(current, updated);
+    const warning = current.pendingWarning;
+    if (current.state !== "warning_pending" || warning === null) {
+      throw new Error(`Operation has no pending broker warning (state: ${current.state})`);
+    }
+    const existing = await this.store.loadAction(
+      input.operationId,
+      "warning_decline",
+      warning.sequence,
+      warning.replyId
+    );
+    if (existing !== undefined) return this.resumeAction(existing, updated);
+    const action = this.pendingAction(
+      input.operationId,
+      "warning_decline",
+      warning.sequence,
+      warning.replyId
+    );
+    if (!(await this.store.reserveAction(action))) {
+      throw new Error("Warning decline is already reserved");
+    }
+    return this.runAction(action, updated);
+  }
+
   async reconcile(operationId: string): Promise<OrderReconciliationView> {
     const record = await this.requiredOperation(operationId);
     const operation = await this.execution.reconcile(operationId);
@@ -719,9 +754,7 @@ export class DerivativeExecutionService {
       return this.operationDto(action.operation, record);
     }
     if (action.state === "pending") {
-      throw new Error(
-        `${action.action === "cancellation" ? "Cancellation" : "Warning acknowledgement"} recovery is required`
-      );
+      throw new Error(`${actionLabels[action.action]} recovery is required`);
     }
 
     const parent = await this.execution.get(action.operationId);
@@ -756,14 +789,7 @@ export class DerivativeExecutionService {
     record: SubmissionRecord
   ): Promise<OrderLifecycleDto> {
     try {
-      const operation =
-        action.action === "warning_acknowledgement"
-          ? await this.execution.acknowledge(
-              action.operationId,
-              action.replyId ?? "",
-              action.idempotencyKey
-            )
-          : await this.execution.cancel(action.operationId, action.idempotencyKey);
+      const operation = await this.sendAction(action);
       const updated = await this.completeAction(action, record, operation);
       return this.operationDto(operation, updated);
     } catch (error: unknown) {
@@ -773,6 +799,21 @@ export class DerivativeExecutionService {
         updatedAt: this.now().toISOString(),
       });
       throw error;
+    }
+  }
+
+  private sendAction(action: ActionRecord): Promise<OrderOperationView> {
+    switch (action.action) {
+      case "warning_acknowledgement":
+        return this.execution.acknowledge(
+          action.operationId,
+          action.replyId ?? "",
+          action.idempotencyKey
+        );
+      case "warning_decline":
+        return this.execution.decline(action.operationId, action.idempotencyKey);
+      case "cancellation":
+        return this.execution.cancel(action.operationId, action.idempotencyKey);
     }
   }
 

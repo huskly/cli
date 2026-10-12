@@ -20,6 +20,8 @@ export interface DerivativeExecutionClient {
     replyId: string,
     idempotencyKey: string
   ): Promise<OrderOperationView>;
+  /** Decline the pending broker warning without a broker write. */
+  decline(operationId: string, idempotencyKey: string): Promise<OrderOperationView>;
   reconcile(operationId: string): Promise<OrderReconciliationView>;
   cancel(operationId: string, idempotencyKey: string): Promise<OrderOperationView>;
 }

@@ -387,10 +387,16 @@ huskly-cli spread recover <preview-id> --broker ibkr --json
 huskly-cli order show <operation-id> --broker ibkr --json
 huskly-cli order watch <operation-id> --broker ibkr --json
 huskly-cli order acknowledge <operation-id> --reply <reply-id> --broker ibkr --confirm --json
+huskly-cli order decline <operation-id> --broker ibkr --confirm --json
 huskly-cli order reconcile <operation-id> --broker ibkr --confirm --json
 huskly-cli order cancel <operation-id> --broker ibkr --operator operator-example --confirm --json
 huskly-cli broker doctor --broker ibkr --json
 ```
+
+`order decline` declines the pending broker warning. It does not write to the
+broker, and the operation ends in `warning_declined`. Like the other `order`
+commands, it needs the local submission record, so run it on the host that
+submitted the order.
 
 Preview and execution state store masked account data only.
 Live execution stays fail-closed behind the existing live-execution controls.

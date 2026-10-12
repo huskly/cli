@@ -111,6 +111,7 @@ void test("adapter uses exact generated requests and preserves normalized recove
   await adapter.lookup("combo", "submit-key");
   await adapter.get("op-1");
   await adapter.acknowledge("op-1", "reply-1", "warning-key");
+  await adapter.decline("op-1", "decline-key");
   await adapter.reconcile("op-1");
   await adapter.cancel("op-1", "cancel-key");
   assert.deepEqual(
@@ -121,6 +122,7 @@ void test("adapter uses exact generated requests and preserves normalized recove
       "lookupOrderOperation",
       "getOrderOperation",
       "acknowledgeOrderWarning",
+      "declineOrderWarning",
       "reconcileOrderOperation",
       "cancelOrderOperation",
     ]
@@ -128,7 +130,8 @@ void test("adapter uses exact generated requests and preserves normalized recove
   assert.equal(calls.filter((call) => call.name === "createOrderOperation").length, 1);
   assert.deepEqual(calls[2]?.args, [{ kind: "combo", idempotencyKey: "submit-key" }]);
   assert.deepEqual(calls[4]?.args, ["op-1", "reply-1", "warning-key"]);
-  assert.deepEqual(calls[6]?.args, ["op-1", "cancel-key"]);
+  assert.deepEqual(calls[5]?.args, ["op-1", "decline-key"]);
+  assert.deepEqual(calls[7]?.args, ["op-1", "cancel-key"]);
   const createBody = calls[1]?.args[0] as Record<string, unknown>;
   assert.equal(createBody["kind"], "combo");
   assert.equal(createBody["extOperator"], "felipecsl");
@@ -201,6 +204,7 @@ void test("transport API makes one direct generated client call per operation", 
   await api.lookupOrderOperation({ kind: "combo", idempotencyKey: "s" });
   await api.getOrderOperation("op-1");
   await api.acknowledgeOrderWarning("op-1", "r", "w");
+  await api.declineOrderWarning("op-1", "d");
   await api.reconcileOrderOperation("op-1");
   await api.cancelOrderOperation("op-1", "c");
   assert.deepEqual(direct, [
@@ -209,6 +213,7 @@ void test("transport API makes one direct generated client call per operation", 
     "lookupOrderOperation",
     "getOrderOperation",
     "acknowledgeOrderWarning",
+    "declineOrderWarning",
     "reconcileOrderOperation",
     "cancelOrderOperation",
   ]);

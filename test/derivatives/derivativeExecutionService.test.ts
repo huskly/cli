@@ -171,6 +171,7 @@ class FakeNetwork implements DerivativeExecutionClient {
   lookupCalls = 0;
   getCalls = 0;
   acknowledgeCalls = 0;
+  declineCalls = 0;
   reconcileCalls = 0;
   cancelCalls = 0;
   created = operation();
@@ -185,6 +186,7 @@ class FakeNetwork implements DerivativeExecutionClient {
     key: string
   ) => Promise<OrderOperationView>;
   cancelHandler?: (operationId: string, key: string) => Promise<OrderOperationView>;
+  declineHandler?: (operationId: string, key: string) => Promise<OrderOperationView>;
   getHandler?: (operationId: string) => Promise<OrderOperationView>;
   createKeys: string[] = [];
   actionKeys: string[] = [];
@@ -206,6 +208,11 @@ class FakeNetwork implements DerivativeExecutionClient {
     this.acknowledgeCalls += 1;
     this.actionKeys.push(key);
     return this.acknowledgeHandler?.(operationId, replyId, key) ?? Promise.resolve(this.created);
+  }
+  decline(operationId: string, key: string) {
+    this.declineCalls += 1;
+    this.actionKeys.push(key);
+    return this.declineHandler?.(operationId, key) ?? Promise.resolve(this.created);
   }
   reconcile(_operationId: string): Promise<OrderReconciliationView> {
     this.reconcileCalls += 1;
@@ -423,6 +430,67 @@ void test("uncertain warning recovery replays exactly once with the same durable
   await execution.acknowledgeWarning({ operationId: "op-1", replyId: "reply-1", confirm: true });
   assert.equal(network.acknowledgeCalls, 2);
   assert.deepEqual(network.actionKeys, ["durable-warning-key", "durable-warning-key"]);
+});
+
+void test("warning decline reads the live warning, sends one decline, and repeats without a second call", async () => {
+  const store = new InMemoryExecutionStateStore();
+  const network = new FakeNetwork();
+  network.created = operation({ state: "warning_pending", kind: "warning" });
+  network.declineHandler = () => {
+    network.created = operation({ state: "warning_declined" });
+    return Promise.resolve(network.created);
+  };
+  const execution = service(store, network, () => "decline-key");
+  await execution.submit({ previewId: preview.previewId, operator: "x", confirm: true });
+
+  const declined = await execution.declineWarning({ operationId: "op-1", confirm: true });
+  assert.equal(declined.operation.state, "warning_declined");
+  assert.deepEqual(network.actionKeys, ["decline-key"]);
+  assert.equal(
+    (await store.loadAction("op-1", "warning_decline", 1, "reply-1"))?.state,
+    "completed"
+  );
+  assert.equal(
+    (await store.loadSubmissionByOperation("op-1"))?.operation?.state,
+    "warning_declined"
+  );
+
+  const repeated = await execution.declineWarning({ operationId: "op-1", confirm: true });
+  assert.equal(repeated.operation.state, "warning_declined");
+  assert.equal(network.declineCalls, 1);
+});
+
+void test("warning decline refuses an operation without a pending warning", async () => {
+  const store = new InMemoryExecutionStateStore();
+  const network = new FakeNetwork();
+  const execution = service(store, network);
+  await execution.submit({ previewId: preview.previewId, operator: "x", confirm: true });
+  await assert.rejects(
+    () => execution.declineWarning({ operationId: "op-1", confirm: true }),
+    /no pending broker warning \(state: accepted\)/
+  );
+  assert.equal(network.declineCalls, 0);
+});
+
+void test("uncertain warning decline replays with the same durable key when parent evidence is unchanged", async () => {
+  const store = new InMemoryExecutionStateStore();
+  const network = new FakeNetwork();
+  network.created = operation({ state: "warning_pending", kind: "warning" });
+  let lost = true;
+  network.declineHandler = () => {
+    if (lost) {
+      lost = false;
+      return Promise.reject(new Error("response lost"));
+    }
+    network.created = operation({ state: "warning_declined" });
+    return Promise.resolve(network.created);
+  };
+  const execution = service(store, network, () => "durable-decline-key");
+  await execution.submit({ previewId: preview.previewId, operator: "x", confirm: true });
+  await assert.rejects(() => execution.declineWarning({ operationId: "op-1", confirm: true }));
+  const declined = await execution.declineWarning({ operationId: "op-1", confirm: true });
+  assert.equal(declined.operation.state, "warning_declined");
+  assert.deepEqual(network.actionKeys, ["durable-decline-key", "durable-decline-key"]);
 });
 
 void test("uncertain cancellation recovery completes from parent evidence without a second action call", async () => {

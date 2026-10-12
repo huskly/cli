@@ -843,6 +843,20 @@ export function addDerivativeCommands(
       output(toLifecycleView(result), options.json, renderOrderLifecycle, log);
     });
   order
+    .command("decline")
+    .description("Decline a pending broker warning; this does not write to the broker")
+    .argument("<operation-id>", "Gateway operation ID")
+    .option(...GATEWAY_BROKER_FLAG)
+    .option("--confirm", "Confirm the warning decline")
+    .option("--json", "Emit a stable JSON DTO")
+    .action(async (operationId: string, options: ExecutionOptions) => {
+      const confirm = confirmed(options.confirm);
+      const result = await (
+        await createExecutionService(broker(options.broker))
+      ).declineWarning({ operationId, confirm });
+      output(toLifecycleView(result), options.json, renderOrderLifecycle, log);
+    });
+  order
     .command("reconcile")
     .argument("<operation-id>", "Gateway operation ID")
     .option(...GATEWAY_BROKER_FLAG)
