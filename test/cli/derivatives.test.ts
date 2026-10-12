@@ -376,6 +376,7 @@ void test("submission output uses preview and operation ids with safe human and 
         getStatus: () => Promise.resolve(lifecycle),
         watch: () => Promise.resolve(lifecycle),
         acknowledgeWarning: () => Promise.resolve(lifecycle),
+        declineWarning: () => Promise.resolve(lifecycle),
         reconcile: () => Promise.resolve(reconciliation),
         cancel: () => Promise.resolve(lifecycle),
       }),
@@ -442,6 +443,10 @@ void test("operation commands use gateway operation ids and make one service cal
       calls.push({ name: "acknowledge", input });
       return Promise.resolve(lifecycle);
     },
+    declineWarning: (input: { operationId: string; confirm: true }) => {
+      calls.push({ name: "decline", input });
+      return Promise.resolve(lifecycle);
+    },
     reconcile: (operationId: string) => {
       calls.push({ name: "reconcile", input: operationId });
       return Promise.resolve(reconciliation);
@@ -478,6 +483,11 @@ void test("operation commands use gateway operation ids and make one service cal
     "reply-1",
     "--confirm",
   ]);
+  await assert.rejects(
+    () => root.parseAsync(["node", "test", "order", "decline", "op-1"]),
+    /requires --confirm/
+  );
+  await root.parseAsync(["node", "test", "order", "decline", "op-1", "--confirm"]);
   await root.parseAsync(["node", "test", "order", "reconcile", "op-1", "--confirm", "--json"]);
   await root.parseAsync(["node", "test", "order", "cancel", "op-1", "--confirm"]);
   const reconciliationOutput = output.find((line) => line.trimStart().startsWith("{"));
@@ -493,6 +503,7 @@ void test("operation commands use gateway operation ids and make one service cal
     { name: "show", input: "op-1" },
     { name: "watch", input: { operationId: "op-1", timeoutMs: 7000, pollMs: 3000 } },
     { name: "acknowledge", input: { operationId: "op-1", replyId: "reply-1", confirm: true } },
+    { name: "decline", input: { operationId: "op-1", confirm: true } },
     { name: "reconcile", input: "op-1" },
     { name: "cancel", input: { operationId: "op-1", confirm: true } },
   ]);
@@ -652,6 +663,7 @@ void test("CLI lifecycle JSON keeps unavailable account and broker lifecycle fac
         getStatus: () => Promise.resolve(unavailable),
         watch: () => Promise.resolve(unavailable),
         acknowledgeWarning: () => Promise.resolve(unavailable),
+        declineWarning: () => Promise.resolve(unavailable),
         reconcile: () => Promise.resolve(reconciliation),
         cancel: () => Promise.resolve(unavailable),
       }),

@@ -15,7 +15,14 @@ import {
 
 export type GatewayExecutionService = Pick<
   DerivativeExecutionService,
-  "submit" | "recover" | "getStatus" | "watch" | "acknowledgeWarning" | "reconcile" | "cancel"
+  | "submit"
+  | "recover"
+  | "getStatus"
+  | "watch"
+  | "acknowledgeWarning"
+  | "declineWarning"
+  | "reconcile"
+  | "cancel"
 >;
 
 /** Create the durable gateway operation service shared by equity and derivative commands. */

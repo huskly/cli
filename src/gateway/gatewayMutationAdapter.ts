@@ -12,6 +12,8 @@ import type {
   CreateOrderOperationIdempotencyKey,
   CreateOrderOperationRequest,
   CreateOrderOperationResponse,
+  DeclineOrderWarningIdempotencyKey,
+  DeclineOrderWarningResponse,
   GetDiagnosticsResponse,
   GetOrderOperationResponse,
   LookupOrderOperationRequest,
@@ -103,6 +105,10 @@ export interface GatewayMutationApi {
     replyId: string,
     idempotencyKey: AcknowledgeOrderWarningIdempotencyKey
   ): Promise<AcknowledgeOrderWarningResponse>;
+  declineOrderWarning(
+    operationId: string,
+    idempotencyKey: DeclineOrderWarningIdempotencyKey
+  ): Promise<DeclineOrderWarningResponse>;
   reconcileOrderOperation(operationId: string): Promise<ReconciliationResponse>;
   cancelOrderOperation(
     operationId: string,
@@ -153,6 +159,10 @@ export function createGatewayMutationApi(transport: GatewayTransport): GatewayMu
     acknowledgeOrderWarning: (operationId, replyId, key) =>
       transport.call("acknowledgeOrderWarning", (client) =>
         client.acknowledgeOrderWarning(operationId, replyId, key)
+      ),
+    declineOrderWarning: (operationId, key) =>
+      transport.call("declineOrderWarning", (client) =>
+        client.declineOrderWarning(operationId, key)
       ),
     reconcileOrderOperation: (operationId) =>
       transport.call("reconcileOrderOperation", (client) =>
@@ -254,6 +264,10 @@ export class GatewayMutationAdapter implements DerivativeExecutionClient {
     idempotencyKey: string
   ): Promise<OrderOperationView> {
     return this.api.acknowledgeOrderWarning(operationId, replyId, idempotencyKey);
+  }
+
+  decline(operationId: string, idempotencyKey: string): Promise<OrderOperationView> {
+    return this.api.declineOrderWarning(operationId, idempotencyKey);
   }
 
   reconcile(operationId: string): Promise<OrderReconciliationView> {
