@@ -442,10 +442,16 @@ test("an incomplete spread does not produce a plausible net price", () => {
   assert.equal(formatOrderCurrentPrice(differentMultiplier, { quotes: new Map() }), "-");
 });
 
+test("IBKR orders table shows the order ID first", () => {
+  const output = stripAnsi(renderOrdersObservation(optionOrders, "ibkr", fromDate, toDate, {}));
+  assert.match(output, /^Order ID\s+Date\s+Status/m);
+  assert.match(output, /^4\s+-\s+PreSubmitted/m);
+});
+
 test("Schwab columns stay unchanged and IBKR JSON preserves contract fields", () => {
   const schwab = stripAnsi(renderOrdersObservation(optionOrders, "schwab", fromDate, toDate, {}));
   assert.match(schwab, /Price\s+Filled/);
-  assert.doesNotMatch(schwab, /Current|Avg Fill/);
+  assert.doesNotMatch(schwab, /Current|Avg Fill|Order ID/);
   const json = JSON.parse(
     renderOrdersObservation(optionOrders, "ibkr", fromDate, toDate, { json: true })
   ) as Observation<BrokerAccountOrders[]>;
