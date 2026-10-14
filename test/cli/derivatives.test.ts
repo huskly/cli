@@ -713,3 +713,91 @@ void test("CLI spread quote preserves empty and unavailable leg failures", async
     );
   }
 });
+
+void test("spread preview --submit submits the accepted preview in one step", async () => {
+  const lines: string[] = [];
+  let submitted: unknown;
+  await program({
+    createPreviewService: () =>
+      Promise.resolve({
+        previewVertical: () => Promise.resolve(spreadPreview),
+        getTradingDiagnostics: () => Promise.resolve(diagnostics),
+      }),
+    createExecutionService: () =>
+      Promise.resolve({
+        submit: (input: unknown) => {
+          submitted = input;
+          return Promise.resolve(submission);
+        },
+      } as unknown as Awaited<
+        ReturnType<NonNullable<DerivativeCommandDependencies["createExecutionService"]>>
+      >),
+    log: (line) => lines.push(line),
+  }).parseAsync([
+    "node",
+    "test",
+    "spread",
+    "preview",
+    "put-credit",
+    "NQ",
+    "--expiry",
+    "2026-09-18",
+    "--long",
+    "26400",
+    "--short",
+    "26600",
+    "--credit",
+    "1.5",
+    "--operator",
+    "tester",
+    "--submit",
+  ]);
+
+  assert.deepEqual(submitted, { previewId, operator: "tester", confirm: true });
+  const output = lines.join("\n");
+  assert.match(output, /put-credit x2 credit 1\.5/);
+  assert.match(output, /Operation: op-1/);
+  assert.doesNotMatch(output, /NO ORDER WAS SUBMITTED/);
+});
+
+void test("spread preview --submit does not submit a rejected preview", async () => {
+  let executionFactoryCalls = 0;
+  await assert.rejects(
+    program({
+      createPreviewService: () =>
+        Promise.resolve({
+          previewVertical: () =>
+            Promise.resolve({
+              ...spreadPreview,
+              whatIf: { ...spreadPreview.whatIf, accepted: false, rejectionReasons: ["No margin"] },
+            }),
+          getTradingDiagnostics: () => Promise.resolve(diagnostics),
+        }),
+      createExecutionService: () => {
+        executionFactoryCalls++;
+        return Promise.reject(new Error("should not initialize execution service"));
+      },
+      log: () => undefined,
+    }).parseAsync([
+      "node",
+      "test",
+      "spread",
+      "preview",
+      "put-credit",
+      "NQ",
+      "--expiry",
+      "2026-09-18",
+      "--long",
+      "26400",
+      "--short",
+      "26600",
+      "--credit",
+      "1.5",
+      "--operator",
+      "tester",
+      "--submit",
+    ]),
+    /No margin\)\. No order was submitted\./
+  );
+  assert.equal(executionFactoryCalls, 0);
+});

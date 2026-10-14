@@ -41,6 +41,7 @@ import {
   createGatewayExecutionService,
   type GatewayExecutionService,
 } from "./gatewayExecutionService.js";
+import { requireAcceptedPreview } from "./guardedOrderCommands.js";
 
 interface SeriesOptions {
   asset: string;
@@ -69,6 +70,8 @@ interface PreviewOptions extends SpreadOptions {
   debit?: string;
   session: string;
   tif: string;
+  operator?: string;
+  submit?: boolean;
 }
 
 interface ResolveOptions extends SeriesOptions {
@@ -520,7 +523,7 @@ function toTradingDiagnosticsView(result: TradingDiagnostics): SafeTradingDiagno
   };
 }
 
-function renderSpreadPreview(result: SafeSpreadPreviewView): string {
+function spreadPreviewLines(result: SafeSpreadPreviewView): string[] {
   return [
     `Preview: ${result.previewId}`,
     `Account: ${result.account.maskedId ?? "unknown"}  Environment: ${result.account.environment ?? "unknown"}`,
@@ -533,8 +536,23 @@ function renderSpreadPreview(result: SafeSpreadPreviewView): string {
     `Commission/fees: ${formatPrice(result.whatIf.commission)}`,
     `Warnings: ${result.whatIf.warnings.join(" | ") || "none"}`,
     `Rejections: ${result.whatIf.rejectionReasons.join(" | ") || "none"}`,
-    "NO ORDER WAS SUBMITTED.",
-  ].join("\n");
+  ];
+}
+
+function renderSpreadPreview(result: SafeSpreadPreviewView): string {
+  return [...spreadPreviewLines(result), "NO ORDER WAS SUBMITTED."].join("\n");
+}
+
+/** Output of `spread preview --submit`: the reviewed terms and the submission. */
+interface SafeSpreadPreviewAndSubmissionView {
+  readonly preview: SafeSpreadPreviewView;
+  readonly submission: SafeSubmissionView;
+}
+
+function renderSpreadPreviewAndSubmission(result: SafeSpreadPreviewAndSubmissionView): string {
+  return [...spreadPreviewLines(result.preview), "", renderSubmission(result.submission)].join(
+    "\n"
+  );
 }
 
 function renderSubmission(result: SafeSubmissionView): string {
@@ -733,7 +751,27 @@ export function addDerivativeCommands(
       .option("--quantity <count>", "Number of spreads", "1")
       .option("--tif <value>", "DAY or GTC", "DAY")
       .option("--session <value>", "REGULAR or OVERNIGHT", "REGULAR")
+      .option("--submit", "Submit the order right after the broker accepts the preview")
+      .option(
+        "--operator <name>",
+        "CME operator identity for --submit; defaults to HUSKLY_EXT_OPERATOR"
+      )
+      .addHelpText(
+        "after",
+        `
+Without --submit, this never submits an order. The preview ID expires after a
+short time.
+
+--submit places a real order in one step. It submits only when the broker
+accepts the preview with no rejections. --submit also confirms the order, as
+"spread submit --confirm" does. Use "order acknowledge" for broker warnings.
+
+Examples:
+  $ huskly-cli spread preview put-credit SPY --expiry 2026-12-18 --long 500 --short 510 --credit 2.10
+  $ huskly-cli spread preview put-credit SPY --expiry 2026-12-18 --long 500 --short 510 --credit 2.10 --operator alice --submit`
+      )
   ).action(async (kindValue: string, underlying: string, options: PreviewOptions) => {
+    const extOperator = options.submit === true ? requireOperator(options.operator) : undefined;
     if ((options.credit === undefined) === (options.debit === undefined)) {
       throw new Error("Provide exactly one of --credit or --debit.");
     }
@@ -742,8 +780,9 @@ export function addDerivativeCommands(
     const priceEffect = options.credit !== undefined ? "CREDIT" : "DEBIT";
     const limitValue = options.credit ?? options.debit;
     if (limitValue === undefined) throw new Error("A credit or debit is required.");
+    const selectedBroker = broker(options.broker);
     const result = await (
-      await createPreviewService(broker(options.broker))
+      await createPreviewService(selectedBroker)
     ).previewVertical({
       ...seriesRequest(underlying, options),
       kind: spreadKind(kindValue),
@@ -755,7 +794,20 @@ export function addDerivativeCommands(
       tif: tif(options.tif),
       session: session(options.session),
     });
-    output(toSpreadPreviewView(result), options.json, renderSpreadPreview, log);
+    if (extOperator === undefined) {
+      output(toSpreadPreviewView(result), options.json, renderSpreadPreview, log);
+      return;
+    }
+    requireAcceptedPreview(result);
+    const submitted = await (
+      await createExecutionService(selectedBroker)
+    ).submit({ previewId: result.previewId, operator: extOperator, confirm: true });
+    output(
+      { preview: toSpreadPreviewView(result), submission: toSubmissionView(submitted) },
+      options.json,
+      renderSpreadPreviewAndSubmission,
+      log
+    );
   });
 
   spread

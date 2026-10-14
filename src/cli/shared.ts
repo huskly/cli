@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { parse as parseEnv } from "dotenv";
 import { ensure } from "#src/helpers.js";
 import { SchwabClient } from "@huskly/schwab-client";
 import { cliGatewayTransport } from "#src/gateway/gatewayTransport.js";
@@ -79,14 +81,31 @@ export function resolveBroker(value: string | undefined): BrokerName {
  *
  * @remarks
  * Every gateway mutation needs operator evidence. The flag wins, then the
- * ambient `HUSKLY_EXT_OPERATOR`, so scripts and interactive use share one rule.
+ * ambient `HUSKLY_EXT_OPERATOR`, then `HUSKLY_EXT_OPERATOR` in the `.env` file
+ * of the current directory, so scripts and interactive use share one rule.
  */
 export function requireOperator(value: string | undefined): string {
-  const result = value ?? process.env["HUSKLY_EXT_OPERATOR"];
+  const result = value ?? process.env["HUSKLY_EXT_OPERATOR"] ?? envFileOperator();
   if (!result?.trim()) {
     throw new Error("An exact --operator or HUSKLY_EXT_OPERATOR is required.");
   }
   return result;
+}
+
+/**
+ * Read only `HUSKLY_EXT_OPERATOR` from `.env`.
+ *
+ * @remarks
+ * The file can also hold broker secrets, so it is parsed and not loaded into
+ * `process.env`, where child processes would inherit them.
+ */
+function envFileOperator(): string | undefined {
+  try {
+    return parseEnv(readFileSync(".env"))["HUSKLY_EXT_OPERATOR"];
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
 }
 
 /** Guard for Schwab-only commands: throws a clear error under any other broker. */

@@ -3,6 +3,7 @@ import test from "node:test";
 import { Command } from "commander";
 import { addEquityCommands, type EquityCommandDependencies } from "#src/cli/equityOrders.js";
 import { chooseBroker } from "#src/cli/shared.js";
+import { withOperatorEnvironment } from "./operatorEnvironment.js";
 import type { EquityPreviewDto, EquitySubmissionDto } from "#src/equities/equityOrderService.js";
 
 const intent = {
@@ -166,14 +167,148 @@ void test("equity preview rejects fractional shares and bad enums", async () => 
   await assert.rejects(run("AAPL", "BUY", "1", "--limit", "0"), /Invalid limit price/);
 });
 
+void test("equity preview --submit submits the accepted preview in one step", async () => {
+  const lines: string[] = [];
+  let submitted: unknown;
+  await program({
+    createEquityOrders: () =>
+      Promise.resolve(
+        orders({
+          submit: (input: unknown) => {
+            submitted = input;
+            return Promise.resolve(submission);
+          },
+        })
+      ),
+    log: (line) => lines.push(line),
+  }).parseAsync([
+    "node",
+    "t",
+    "equity",
+    "preview",
+    "AAPL",
+    "BUY",
+    "10",
+    "--limit",
+    "250",
+    "--operator",
+    "alice",
+    "--submit",
+  ]);
+
+  assert.deepEqual(submitted, { previewId: "a".repeat(64), operator: "alice", confirm: true });
+  const output = lines.join("\n");
+  assert.match(output, /BUY 10 AAPL limit 250/);
+  assert.match(output, /Submission: new/);
+  assert.doesNotMatch(output, /NO ORDER WAS SUBMITTED/);
+});
+
+void test("equity preview --submit JSON holds the preview and the submission", async () => {
+  const lines: string[] = [];
+  await program({
+    createEquityOrders: () => Promise.resolve(orders()),
+    log: (line) => lines.push(line),
+  }).parseAsync([
+    "node",
+    "t",
+    "equity",
+    "preview",
+    "AAPL",
+    "BUY",
+    "10",
+    "--limit",
+    "250",
+    "--operator",
+    "alice",
+    "--submit",
+    "--json",
+  ]);
+
+  const json = JSON.parse(lines.join("\n")) as {
+    preview: { submitted: boolean };
+    submission: { operation: { result: { orderCount: number } } };
+  };
+  assert.equal(json.preview.submitted, false);
+  assert.equal(json.submission.operation.result.orderCount, 1);
+});
+
+void test("equity preview --submit does not submit a rejected preview", async () => {
+  let submitCalls = 0;
+  const rejected = {
+    ...preview,
+    whatIf: { ...preview.whatIf, accepted: false, rejectionReasons: ["Insufficient funds"] },
+  };
+  await assert.rejects(
+    program({
+      createEquityOrders: () =>
+        Promise.resolve(
+          orders({
+            preview: () => Promise.resolve(rejected),
+            submit: () => {
+              submitCalls += 1;
+              return Promise.resolve(submission);
+            },
+          })
+        ),
+      log: () => undefined,
+    }).parseAsync([
+      "node",
+      "t",
+      "equity",
+      "preview",
+      "AAPL",
+      "BUY",
+      "10",
+      "--limit",
+      "250",
+      "--operator",
+      "alice",
+      "--submit",
+    ]),
+    /Insufficient funds\)\. No order was submitted\./
+  );
+  assert.equal(submitCalls, 0);
+});
+
+void test("equity preview --submit requires an operator before the preview", async () => {
+  let previewCalls = 0;
+  await withOperatorEnvironment(undefined, async () => {
+    await assert.rejects(
+      program({
+        createEquityOrders: () =>
+          Promise.resolve(
+            orders({
+              preview: () => {
+                previewCalls += 1;
+                return Promise.resolve(preview);
+              },
+            })
+          ),
+        log: () => undefined,
+      }).parseAsync([
+        "node",
+        "t",
+        "equity",
+        "preview",
+        "AAPL",
+        "BUY",
+        "10",
+        "--limit",
+        "250",
+        "--submit",
+      ]),
+      /--operator or HUSKLY_EXT_OPERATOR is required/
+    );
+  });
+  assert.equal(previewCalls, 0);
+});
+
 void test("equity submit requires --confirm and an operator", async () => {
   const deps = {
     createEquityOrders: () => Promise.resolve(orders()),
     log: () => undefined,
   };
-  const previousOperator = process.env["HUSKLY_EXT_OPERATOR"];
-  delete process.env["HUSKLY_EXT_OPERATOR"];
-  try {
+  await withOperatorEnvironment(undefined, async () => {
     await assert.rejects(
       program(deps).parseAsync(["node", "t", "equity", "submit", "a".repeat(64)]),
       /requires --confirm/
@@ -182,9 +317,38 @@ void test("equity submit requires --confirm and an operator", async () => {
       program(deps).parseAsync(["node", "t", "equity", "submit", "a".repeat(64), "--confirm"]),
       /--operator or HUSKLY_EXT_OPERATOR is required/
     );
-  } finally {
-    if (previousOperator !== undefined) process.env["HUSKLY_EXT_OPERATOR"] = previousOperator;
-  }
+  });
+});
+
+void test("equity preview --submit reads the operator from .env", async () => {
+  let submitted: unknown;
+  await withOperatorEnvironment("HUSKLY_EXT_OPERATOR=carol\nOTHER_SECRET=hidden\n", async () => {
+    await program({
+      createEquityOrders: () =>
+        Promise.resolve(
+          orders({
+            submit: (input: unknown) => {
+              submitted = input;
+              return Promise.resolve(submission);
+            },
+          })
+        ),
+      log: () => undefined,
+    }).parseAsync([
+      "node",
+      "t",
+      "equity",
+      "preview",
+      "AAPL",
+      "BUY",
+      "10",
+      "--limit",
+      "250",
+      "--submit",
+    ]);
+    assert.equal(process.env["OTHER_SECRET"], undefined);
+  });
+  assert.deepEqual(submitted, { previewId: "a".repeat(64), operator: "carol", confirm: true });
 });
 
 void test("equity submit JSON keeps gateway order payloads out of the output", async () => {

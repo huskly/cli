@@ -22,6 +22,7 @@ import {
   output,
   parseSide,
   parseTif,
+  requireAcceptedPreview,
   type WarningExecutionService,
 } from "./guardedOrderCommands.js";
 
@@ -41,6 +42,8 @@ interface PreviewOptions {
   stopPrice?: string;
   tif: string;
   session: string;
+  operator?: string;
+  submit?: boolean;
   json?: boolean;
 }
 
@@ -152,7 +155,7 @@ function formatPrice(value: number | null): string {
   return value === null ? "-" : String(value);
 }
 
-export function renderEquityPreview(result: SafeEquityPreviewView): string {
+function previewLines(result: SafeEquityPreviewView): string[] {
   return [
     `Preview: ${result.previewId}`,
     `Account: ${result.account.maskedId ?? "unknown"}  Environment: ${result.environment}`,
@@ -165,8 +168,25 @@ export function renderEquityPreview(result: SafeEquityPreviewView): string {
     `Commission/fees: ${formatPrice(result.whatIf.commission)}`,
     `Warnings: ${result.whatIf.warnings.join(" | ") || "none"}`,
     `Rejections: ${result.whatIf.rejectionReasons.join(" | ") || "none"}`,
-    "NO ORDER WAS SUBMITTED.",
-  ].join("\n");
+  ];
+}
+
+export function renderEquityPreview(result: SafeEquityPreviewView): string {
+  return [...previewLines(result), "NO ORDER WAS SUBMITTED."].join("\n");
+}
+
+/** Output of `equity preview --submit`: the reviewed terms and the submission. */
+export interface SafeEquityPreviewAndSubmissionView {
+  readonly preview: SafeEquityPreviewView;
+  readonly submission: SafeEquitySubmissionView;
+}
+
+export function renderEquityPreviewAndSubmission(
+  result: SafeEquityPreviewAndSubmissionView
+): string {
+  return [...previewLines(result.preview), "", renderEquitySubmission(result.submission)].join(
+    "\n"
+  );
 }
 
 export function renderEquitySubmission(result: SafeEquitySubmissionView): string {
@@ -230,7 +250,8 @@ async function equityOrders(broker: BrokerName): Promise<EquityTools["orders"]> 
  * These mirror the `preview_equity_order` and `submit_equity_order` MCP tools,
  * so the terminal and the agent surface drive the same service and the same
  * preview store. The preview/submit split is what keeps a submission bound to
- * reviewed, unexpired terms.
+ * reviewed, unexpired terms. `equity preview --submit` runs both steps in one
+ * command, and submits only a preview that the broker accepts.
  */
 export function addEquityCommands(
   program: Command,
@@ -270,30 +291,38 @@ export function addEquityCommands(
     .option("--stop-price <price>", "Stop price per share (STOP orders, native stop-market)")
     .option("--tif <value>", "DAY or GTC", "DAY")
     .option("--session <value>", "REGULAR or OVERNIGHT", "REGULAR")
+    .option("--submit", "Submit the order right after the broker accepts the preview")
+    .option("--operator <name>", "Operator identity for --submit; defaults to HUSKLY_EXT_OPERATOR")
     .option(...GATEWAY_BROKER_FLAG)
     .option("--json", "Emit a stable JSON DTO")
     .addHelpText(
       "after",
       `
-This never submits an order. The preview ID expires after a short time.
-STOP is a native stop-market order, not stop-limit.
+Without --submit, this never submits an order. The preview ID expires after a
+short time. STOP is a native stop-market order, not stop-limit.
+
+--submit places a real order in one step. It submits only when the broker
+accepts the preview with no rejections. --submit also confirms the order and
+acknowledges broker warnings, as "equity submit --confirm" does.
 
 Examples:
   $ huskly-cli equity preview AAPL BUY 10 --limit 250.00
   $ huskly-cli equity preview AAPL BUY 10 --order-type LIMIT --limit 250.00
   $ huskly-cli equity preview AAPL SELL 10 --order-type STOP --stop-price 240.00
-  $ huskly-cli equity preview AAPL SELL 10 --limit 260.00 --tif GTC --json`
+  $ huskly-cli equity preview AAPL SELL 10 --limit 260.00 --tif GTC --json
+  $ huskly-cli equity preview AAPL BUY 10 --limit 250.00 --operator alice --submit`
     )
     .action(
       async (symbolValue: string, sideValue: string, quantity: string, options: PreviewOptions) => {
+        const extOperator = options.submit === true ? requireOperator(options.operator) : undefined;
+        const selectedBroker = broker(options.broker);
         const raw: Record<string, string | number> = {};
         if (options.orderType !== undefined) raw["orderType"] = options.orderType;
         if (options.limit !== undefined) raw["limit"] = parsePrice(options.limit);
         if (options.stopPrice !== undefined) raw["stopPrice"] = parsePrice(options.stopPrice);
         const terms = normalizeEquityOrderTerms(raw);
-        const result = await (
-          await createEquityOrders(broker(options.broker))
-        ).preview({
+        const equityOrderService = await createEquityOrders(selectedBroker);
+        const result = await equityOrderService.preview({
           symbol: symbolValue.toUpperCase(),
           side: parseSide(sideValue),
           quantity: shares(quantity),
@@ -301,7 +330,28 @@ Examples:
           tif: parseTif(options.tif),
           session: session(options.session),
         });
-        output(toPreviewView(result), options.json, renderEquityPreview, log);
+        if (extOperator === undefined) {
+          output(toPreviewView(result), options.json, renderEquityPreview, log);
+          return;
+        }
+        requireAcceptedPreview(result);
+        const submitted = await equityOrderService.submit({
+          previewId: result.previewId,
+          operator: extOperator,
+          confirm: true,
+        });
+        const acknowledged = await acknowledgeWarnings(submitted, () =>
+          createExecutionService(selectedBroker)
+        );
+        output(
+          {
+            preview: toPreviewView(result),
+            submission: toSubmissionView(acknowledged.result, acknowledged.count),
+          },
+          options.json,
+          renderEquityPreviewAndSubmission,
+          log
+        );
       }
     );
 

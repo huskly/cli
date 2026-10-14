@@ -258,3 +258,77 @@ void test("fx submit requires --confirm and reports the operation", async () => 
   assert.match(output, /Submission: new/);
   assert.match(output, /BUY \$25,000 USD\.JPY limit ¥147\.255/);
 });
+
+void test("fx preview --submit submits the accepted preview in one step", async () => {
+  const lines: string[] = [];
+  let submitted: unknown;
+  await program({
+    createForexOrders: () =>
+      Promise.resolve(
+        orders({
+          submit: (input: unknown) => {
+            submitted = input;
+            return Promise.resolve(submission);
+          },
+        })
+      ),
+    log: (line) => lines.push(line),
+  }).parseAsync([
+    "node",
+    "t",
+    "fx",
+    "preview",
+    "USD.JPY",
+    "BUY",
+    "25000",
+    "--limit",
+    "147.255",
+    "--operator",
+    "alice",
+    "--submit",
+  ]);
+
+  assert.deepEqual(submitted, { previewId: "b".repeat(64), operator: "alice", confirm: true });
+  const output = lines.join("\n");
+  assert.match(output, /BUY \$25,000 USD\.JPY limit ¥147\.255/);
+  assert.match(output, /Submission: new/);
+  assert.doesNotMatch(output, /NO ORDER WAS SUBMITTED/);
+});
+
+void test("fx preview --submit does not submit a rejected preview", async () => {
+  let submitCalls = 0;
+  const rejected = {
+    ...preview,
+    whatIf: { ...preview.whatIf, accepted: false, rejectionReasons: ["Size too small"] },
+  };
+  await assert.rejects(
+    program({
+      createForexOrders: () =>
+        Promise.resolve(
+          orders({
+            preview: () => Promise.resolve(rejected),
+            submit: () => {
+              submitCalls += 1;
+              return Promise.resolve(submission);
+            },
+          })
+        ),
+      log: () => undefined,
+    }).parseAsync([
+      "node",
+      "t",
+      "fx",
+      "preview",
+      "USD.JPY",
+      "BUY",
+      "25000",
+      "--limit",
+      "147",
+      "--operator",
+      "alice",
+      "--submit",
+    ]),
+    /Size too small\)\. No order was submitted\./
+  );
+  assert.equal(submitCalls, 0);
+});

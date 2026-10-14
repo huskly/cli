@@ -35,6 +35,18 @@ export function confirmed(value: boolean | undefined): true {
   return true;
 }
 
+/** Allow `preview --submit` to submit only a preview that the broker accepts. */
+export function requireAcceptedPreview(preview: {
+  readonly previewId: string;
+  readonly whatIf: { readonly accepted: boolean; readonly rejectionReasons: readonly string[] };
+}): void {
+  if (preview.whatIf.accepted && preview.whatIf.rejectionReasons.length === 0) return;
+  const reasons = preview.whatIf.rejectionReasons.join(" | ") || "none";
+  throw new Error(
+    `The broker did not accept preview ${preview.previewId} (rejections: ${reasons}). No order was submitted.`
+  );
+}
+
 export function output<T>(
   value: T,
   json: boolean | undefined,

@@ -102,11 +102,18 @@ huskly-cli equity preview AAPL BUY 10 --limit 250.00
 huskly-cli equity preview AAPL BUY 10 --order-type LIMIT --limit 250.00
 huskly-cli equity preview AAPL SELL 10 --order-type STOP --stop-price 240.00
 huskly-cli equity submit <preview-id> --operator alice --confirm
+huskly-cli equity preview AAPL BUY 10 --limit 250.00 --operator alice --submit
 huskly-cli equity modify <order-id> --limit 251.25 --operator alice --confirm
 ```
 
 `equity preview` and `equity submit` drive the same guarded service as the
 `preview_equity_order` and `submit_equity_order` MCP tools.
+`equity preview --submit` does the preview and the submission in one command.
+It submits only when the broker accepts the preview with no rejections.
+`--submit` also confirms the order and acknowledges broker warnings.
+`fx preview --submit` works the same way. `spread preview --submit` also
+submits in one command, but use `order acknowledge` for broker warnings, as
+after `spread submit`.
 STOP is a native stop-market order, not stop-limit.
 
 ### Spot FX orders (IBKR only)
@@ -563,7 +570,9 @@ test/
 - `LOG_LEVEL` - Pino log level
 - `REDIS_URL` - Redis connection URL
 - `HUSKLY_MCP_DEFAULT_BROKER` - Default broker for broker-neutral MCP read tools
-- `HUSKLY_EXT_OPERATOR` - CME operator identity for submit and cancel when `--operator` is omitted
+- `HUSKLY_EXT_OPERATOR` - CME operator identity for submit and cancel when `--operator` is omitted.
+  The CLI also reads this key from the `.env` file in the current directory. It
+  does not load the other keys of that file.
 - `HUSKLY_ENABLE_LIVE_EXECUTION` - Must be `true` to allow live derivative execution
 - `HUSKLY_LIVE_ACCOUNT_ALLOWLIST` - Comma-separated live accounts allowed for derivative execution
 - `HUSKLY_PREVIEW_DIR` - Private derivative preview state directory override

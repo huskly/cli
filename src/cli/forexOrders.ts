@@ -12,6 +12,7 @@ import {
   output,
   parseSide,
   parseTif,
+  requireAcceptedPreview,
   type WarningExecutionService,
 } from "./guardedOrderCommands.js";
 import { renderSafeOperation, safeOperation, type SafeOperationView } from "./operationView.js";
@@ -27,6 +28,8 @@ interface PreviewOptions {
   broker?: string;
   limit?: string;
   tif: string;
+  operator?: string;
+  submit?: boolean;
   json?: boolean;
 }
 
@@ -133,7 +136,7 @@ function orderLine(order: SafeForexOrderView): string {
   return `${order.side} ${formatMoney(order.quantity, order.baseCurrency, { minimum: 0, maximum: 0 })} ${order.pair} limit ${formatForexPrice(order.limit, order.quoteCurrency)}`;
 }
 
-export function renderForexPreview(result: SafeForexPreviewView): string {
+function previewLines(result: SafeForexPreviewView): string[] {
   const money = (value: number | null | undefined): string =>
     formatMoney(value, result.whatIf.currency);
   return [
@@ -148,8 +151,21 @@ export function renderForexPreview(result: SafeForexPreviewView): string {
     `Commission/fees: ${money(result.whatIf.commission)}`,
     `Warnings: ${result.whatIf.warnings.join(" | ") || "none"}`,
     `Rejections: ${result.whatIf.rejectionReasons.join(" | ") || "none"}`,
-    "NO ORDER WAS SUBMITTED.",
-  ].join("\n");
+  ];
+}
+
+export function renderForexPreview(result: SafeForexPreviewView): string {
+  return [...previewLines(result), "NO ORDER WAS SUBMITTED."].join("\n");
+}
+
+/** Output of `fx preview --submit`: the reviewed terms and the submission. */
+export interface SafeForexPreviewAndSubmissionView {
+  readonly preview: SafeForexPreviewView;
+  readonly submission: SafeForexSubmissionView;
+}
+
+export function renderForexPreviewAndSubmission(result: SafeForexPreviewAndSubmissionView): string {
+  return [...previewLines(result.preview), "", renderForexSubmission(result.submission)].join("\n");
 }
 
 export function renderForexSubmission(result: SafeForexSubmissionView): string {
@@ -182,8 +198,9 @@ async function forexOrders(broker: BrokerName): Promise<ForexTools["orders"]> {
  * Register the guarded IBKR spot FX order commands.
  *
  * @remarks
- * These mirror the `fx_order_preview` and `fx_order_submit` MCP tools. Use the
- * `order` commands for status, recovery, reconciliation, and cancellation.
+ * These mirror the `fx_order_preview` and `fx_order_submit` MCP tools.
+ * `fx preview --submit` runs both steps in one command, and submits only a
+ * preview that the broker accepts. Use the `order` commands for status, recovery, reconciliation, and cancellation.
  */
 export function addForexCommands(
   program: Command,
@@ -209,22 +226,32 @@ export function addForexCommands(
     .argument("<quantity>", "Whole base-currency units, for example 25000")
     .option("--limit <price>", "Quote-currency price of one base unit")
     .option("--tif <value>", "DAY or GTC", "DAY")
+    .option("--submit", "Submit the order right after the broker accepts the preview")
+    .option("--operator <name>", "Operator identity for --submit; defaults to HUSKLY_EXT_OPERATOR")
     .option(...GATEWAY_BROKER_FLAG)
     .option("--json", "Emit a stable JSON DTO")
     .addHelpText(
       "after",
       `
-This never submits an order. The preview ID expires after a short time.
+Without --submit, this never submits an order. The preview ID expires after a
+short time.
+
+--submit places a real order in one step. It submits only when the broker
+accepts the preview with no rejections. --submit also confirms the order and
+acknowledges broker warnings, as "fx submit --confirm" does.
+
 IBKR checks the price increment and the minimum size. A small order can
 route to IDEALPRO as an odd lot at a worse price; the preview then shows
 the IBKR warning.
 
 Examples:
   $ huskly-cli fx preview USD.JPY BUY 25000 --limit 147.25
-  $ huskly-cli fx preview EUR/USD SELL 30000 --limit 1.0850 --tif GTC --json`
+  $ huskly-cli fx preview EUR/USD SELL 30000 --limit 1.0850 --tif GTC --json
+  $ huskly-cli fx preview USD.JPY BUY 25000 --limit 147.25 --operator alice --submit`
     )
     .action(async (pair: string, sideValue: string, quantity: string, options: PreviewOptions) => {
       const selectedBroker = broker(options.broker);
+      const operator = options.submit === true ? requireOperator(options.operator) : undefined;
       const input = {
         pair,
         side: parseSide(sideValue),
@@ -232,8 +259,30 @@ Examples:
         limit: limitPrice(options.limit),
         tif: parseTif(options.tif),
       };
-      const result = await (await createForexOrders(selectedBroker)).preview(input);
-      output(toPreviewView(result), options.json, renderForexPreview, log);
+      const forexOrderService = await createForexOrders(selectedBroker);
+      const result = await forexOrderService.preview(input);
+      if (operator === undefined) {
+        output(toPreviewView(result), options.json, renderForexPreview, log);
+        return;
+      }
+      requireAcceptedPreview(result);
+      const submitted = await forexOrderService.submit({
+        previewId: result.previewId,
+        operator,
+        confirm: true,
+      });
+      const acknowledged = await acknowledgeWarnings(submitted, () =>
+        createExecutionService(selectedBroker)
+      );
+      output(
+        {
+          preview: toPreviewView(result),
+          submission: toSubmissionView(acknowledged.result, acknowledged.count),
+        },
+        options.json,
+        renderForexPreviewAndSubmission,
+        log
+      );
     });
 
   fx.command("submit")
