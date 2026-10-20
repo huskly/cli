@@ -87,6 +87,8 @@ export interface ExecutionStateStore {
   saveSubmission(value: SubmissionRecord): Promise<void>;
   loadSubmission(previewId: string): Promise<SubmissionRecord | undefined>;
   loadSubmissionByOperation(operationId: string): Promise<SubmissionRecord | undefined>;
+  /** Find the submission whose accepted operation placed this broker order. */
+  loadSubmissionByOrderId(orderId: string): Promise<SubmissionRecord | undefined>;
   reserveAction(value: ActionRecord): Promise<boolean>;
   saveAction(value: ActionRecord): Promise<void>;
   loadAction(
@@ -106,6 +108,10 @@ function actionIdentity(
   return action === "cancellation"
     ? `${operationId}:cancellation`
     : `${operationId}:${action}:${String(warningSequence)}:${replyId ?? ""}`;
+}
+
+function placed(record: SubmissionRecord, orderId: string): boolean {
+  return record.operation?.result?.orders.some((order) => order.orderId === orderId) ?? false;
 }
 
 export class InMemoryExecutionStateStore implements ExecutionStateStore {
@@ -132,6 +138,9 @@ export class InMemoryExecutionStateStore implements ExecutionStateStore {
     const record = [...this.submissions.values()].find((item) => item.operationId === operationId);
     if (record !== undefined) this.operationIndex.set(operationId, record.previewId);
     return Promise.resolve(record);
+  }
+  loadSubmissionByOrderId(orderId: string): Promise<SubmissionRecord | undefined> {
+    return Promise.resolve([...this.submissions.values()].find((item) => placed(item, orderId)));
   }
   reserveAction(value: ActionRecord): Promise<boolean> {
     const identity = actionIdentity(
@@ -440,9 +449,12 @@ export class FileExecutionStateStore implements ExecutionStateStore {
       const indexed = await this.loadSubmission(index.previewId);
       if (indexed?.operationId === operationId) return indexed;
     }
-    const derived = await this.deriveSubmission(operationId);
+    const derived = await this.findSubmission((record) => record.operationId === operationId);
     if (derived !== undefined) await this.saveSubmission(derived);
     return derived;
+  }
+  loadSubmissionByOrderId(orderId: string): Promise<SubmissionRecord | undefined> {
+    return this.findSubmission((record) => placed(record, orderId));
   }
   reserveAction(value: ActionRecord): Promise<boolean> {
     return this.actionFile(
@@ -480,7 +492,9 @@ export class FileExecutionStateStore implements ExecutionStateStore {
       actionSchema
     );
   }
-  private async deriveSubmission(operationId: string): Promise<SubmissionRecord | undefined> {
+  private async findSubmission(
+    match: (record: SubmissionRecord) => boolean
+  ): Promise<SubmissionRecord | undefined> {
     const directory = join(this.directory, "submissions");
     let names: string[];
     try {
@@ -498,7 +512,7 @@ export class FileExecutionStateStore implements ExecutionStateStore {
         schema: submissionSchema,
         maxBytes: 256 * 1024,
       }).load();
-      if (record?.operationId === operationId) return record;
+      if (record !== undefined && match(record)) return record;
     }
     return undefined;
   }
@@ -736,10 +750,10 @@ export class DerivativeExecutionService {
     timeoutMs?: number;
     pollMs?: number;
   }): Promise<OrderLifecycleDto> {
-    const record = await this.requiredOperation(input.operationId);
-    const existing = await this.store.loadAction(input.operationId, "cancellation");
+    const record = await this.operationOrBrokerOrder(input.operationId);
+    const existing = await this.store.loadAction(record.operationId, "cancellation");
     if (existing !== undefined) return this.resumeAction(existing, record);
-    const action = this.pendingAction(input.operationId, "cancellation", null, null);
+    const action = this.pendingAction(record.operationId, "cancellation", null, null);
     if (!(await this.store.reserveAction(action))) {
       throw new Error("Cancellation is already reserved");
     }
@@ -884,6 +898,19 @@ export class DerivativeExecutionService {
     const record = await this.store.loadSubmissionByOperation(operationId);
     if (record?.operationId !== operationId) throw new Error("Unknown guarded operation identity");
     return record;
+  }
+  /** Accept the broker order ID that `orders` shows as well as the gateway operation ID. */
+  private async operationOrBrokerOrder(
+    id: string
+  ): Promise<SubmissionRecord & { operationId: string }> {
+    const byOperation = await this.store.loadSubmissionByOperation(id);
+    if (byOperation?.operationId === id) return { ...byOperation, operationId: id };
+    const byOrder = await this.store.loadSubmissionByOrderId(id);
+    if (byOrder?.operationId == null)
+      throw new Error(
+        "Unknown guarded operation or order ID. Only orders submitted from this machine can be cancelled here."
+      );
+    return { ...byOrder, operationId: byOrder.operationId };
   }
   private async operationIdForPreview(previewId: string | undefined): Promise<string> {
     if (previewId === undefined) throw new Error("Operation ID is required");
