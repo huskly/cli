@@ -923,7 +923,7 @@ Examples:
     });
   order
     .command("cancel")
-    .argument("<operation-id>", "Gateway operation ID")
+    .argument("<id>", "Gateway operation ID, or the broker order ID shown by 'orders'")
     .option(...GATEWAY_BROKER_FLAG)
     .option("--confirm", "Confirm cancellation")
     .option("--json", "Emit a stable JSON DTO")

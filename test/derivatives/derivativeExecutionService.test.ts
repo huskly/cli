@@ -534,6 +534,29 @@ void test("uncertain cancellation recovery completes from parent evidence withou
   assert.deepEqual(network.actionKeys, ["durable-cancel-key"]);
 });
 
+void test("cancel accepts the broker order ID of a submission from this machine", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "execution-cancel-order-id-"));
+  try {
+    const network = new FakeNetwork();
+    const execution = service(new FileExecutionStateStore(directory), network, () => "key");
+    await execution.submit({ previewId: preview.previewId, operator: "x", confirm: true });
+    const cancelled: string[] = [];
+    network.cancelHandler = (operationId) => {
+      cancelled.push(operationId);
+      return Promise.resolve(operation({ state: "cancelled" }));
+    };
+    const result = await execution.cancel({ operationId: "777", confirm: true });
+    assert.equal(result.operation.state, "cancelled");
+    assert.deepEqual(cancelled, ["op-1"]);
+    await assert.rejects(
+      () => execution.cancel({ operationId: "778", confirm: true }),
+      /Unknown guarded operation or order ID/
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 void test("two real-file services reserve one cancellation action and make one network call", async () => {
   const directory = await mkdtemp(join(tmpdir(), "execution-action-race-"));
   try {
