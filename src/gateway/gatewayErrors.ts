@@ -189,7 +189,9 @@ function translateApiError(
     return new ConsumerError({
       code: preflightCode,
       operation,
-      message: `Order modification failed: ${preflightCode.replaceAll("_", " ")}`,
+      message:
+        `Order modification failed: ${preflightCode.replaceAll("_", " ")}` +
+        (error.detail === null ? "" : ` (${error.detail.replaceAll("_", " ")})`),
       status: error.status,
       gatewayCode: error.code,
       retryAfterSeconds,

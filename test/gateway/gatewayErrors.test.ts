@@ -111,3 +111,20 @@ void test("maps a blocking order or modification to a bounded preflight error", 
   assert.equal(error.status, 422);
   assert.equal(error.message, "Order modification failed: blocked by operation");
 });
+
+void test("names the failed live-order condition of a not modifiable order", () => {
+  const error = toConsumerError(
+    "createOrderModification",
+    new IbkrGatewayApiError({
+      operation: "createOrderModification",
+      status: 422,
+      code: "order_not_modifiable",
+      detail: "limit_and_stop_price",
+    })
+  );
+  assert.equal(error.code, "order_not_modifiable");
+  assert.equal(
+    error.message,
+    "Order modification failed: order not modifiable (limit and stop price)"
+  );
+});
